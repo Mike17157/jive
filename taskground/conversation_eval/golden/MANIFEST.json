@@ -1,0 +1,16 @@
+{
+  "source": "https://huggingface.co/datasets/nvidia/HelpSteer2/resolve/main/validation.jsonl.gz",
+  "seed": 2026,
+  "dev": 100,
+  "test": 200,
+  "max_chars": 12000,
+  "attributes": [
+    "helpfulness",
+    "correctness",
+    "coherence",
+    "complexity",
+    "verbosity"
+  ],
+  "scale": "0-4 integers",
+  "license": "CC-BY-4.0 (NVIDIA HelpSteer2)"
+}

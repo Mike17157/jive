@@ -8,6 +8,7 @@ other context: layout, tooling, the dev loop, and the definition of done.
 | -------------------- | -------------------------------------------------------------------- | ------------------------- |
 | `wikipedia_crawl/`   | build the English-Wikipedia flower link graph via the `wikigraph` CLI | python3, network (rate-limited) |
 | `goldmark_profiling/` | profile the goldmark Markdown library (Go) and speed up a component with output-identical, test-green changes | go 1.26+, no network |
+| `conversation_eval/` | design a Jev grading rubric for HelpSteer2 assistant responses, calibrate on labelled dev data, score agreement with human raters on a held-out test split | python3, no network after setup |
 
 Conventions shared by every task folder:
 
