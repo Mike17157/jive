@@ -4,7 +4,9 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import type { GraphReport } from "../src/core/types.ts";
-import { GraphAgentController } from "../src/planner/agent.ts";
+import { saveGraphForEditing } from "../src/core/graph-edits.ts";
+import { validateGraph } from "../src/core/schema.ts";
+import { defaultEffortFor, GraphAgentController } from "../src/planner/agent.ts";
 import { mergeModelOptions } from "../src/planner/models.ts";
 import { OpenRouterClient } from "../src/planner/openrouter.ts";
 
@@ -396,6 +398,17 @@ describe("OpenRouter planner", () => {
     expect(controller.store.events.filter((event) => event.type === "plugin.catalog")).toHaveLength(2);
   });
 
+  test("auto effort resolves to medium or the nearest supported level, and to nothing without an effort control", () => {
+    expect(defaultEffortFor(undefined)).toBe("medium");
+    expect(defaultEffortFor({ id: "m", name: "m" })).toBe("medium");
+    expect(defaultEffortFor({ id: "m", name: "m", reasoningEfforts: ["low", "medium", "high"] })).toBe("medium");
+    expect(defaultEffortFor({ id: "m", name: "m", reasoningEfforts: ["xhigh", "high"] })).toBe("high");
+    expect(defaultEffortFor({ id: "m", name: "m", reasoningEfforts: ["low", "high"] })).toBe("low");
+    expect(defaultEffortFor({ id: "m", name: "m", reasoningEfforts: ["max"] })).toBe("max");
+    expect(defaultEffortFor({ id: "m", name: "m", reasoningEfforts: ["none"], reasoningMandatory: true })).toBeUndefined();
+    expect(defaultEffortFor({ id: "m", name: "m", reasoningEfforts: [] })).toBeUndefined();
+  });
+
   test("uses only reasoning efforts returned by model metadata", () => {
     const models = mergeModelOptions({
       fetchedAt: "2026-09-18T00:00:00.000Z",
@@ -501,5 +514,116 @@ describe("OpenRouter planner", () => {
       'Invalid graph: /version must be the number 1 (received the number 2); /nodes/a/type must be one of "bash", "jev" (received the string "shell")',
     );
     expect(toolResult.hint).toBeDefined();
+  });
+
+  type ToolResults = Array<{ name: string; result: any }>;
+  interface PlannedCall { id: string; name: string; arguments: unknown | ((previous: ToolResults) => unknown) }
+
+  function callResponse(calls: PlannedCall[], previous: ToolResults) {
+    return splitSse([
+      { model: "test/model", choices: [{ delta: {
+        tool_calls: calls.map((call, index) => ({ index, id: call.id, function: {
+          name: call.name,
+          arguments: JSON.stringify(typeof call.arguments === "function" ? call.arguments(previous) : call.arguments),
+        } })),
+      }, finish_reason: "tool_calls" }] },
+      "[DONE]",
+    ]);
+  }
+
+  function toolResultsIn(body: Record<string, any>): ToolResults {
+    return body.messages
+      .filter((message: Record<string, unknown>) => message.role === "tool")
+      .map((message: Record<string, any>) => ({ name: message.name, result: JSON.parse(message.content) }));
+  }
+
+  /** Runs one planner turn whose rounds are the given tool calls, then a final answer. Later rounds may read earlier results. */
+  async function runRounds(
+    cwd: string,
+    rounds: PlannedCall[][],
+    execute: (graph: any) => Promise<GraphReport>,
+  ) {
+    const bodies: Array<Record<string, any>> = [];
+    let fetches = 0;
+    globalThis.fetch = (async (_input: RequestInfo | URL, init?: RequestInit) => {
+      const body = JSON.parse(String(init?.body));
+      bodies.push(body);
+      const round = rounds[fetches++];
+      return round ? callResponse(round, toolResultsIn(body)) : answerResponse();
+    }) as unknown as typeof fetch;
+    const controller = new GraphAgentController({
+      cwd, model: "test/model", sessionId: "mod-test", apiKey: "test-key", toolSchema,
+      supportsStreaming: true, getPluginCatalog: async () => "", execute,
+    });
+    await controller.ready();
+    await controller.submit("go");
+    return { controller, bodies, toolResults: toolResultsIn(bodies.at(-1)!) };
+  }
+
+  test("execute_graph_mod loads the saved base, applies edits, executes the result, and records the rerun", async () => {
+    const cwd = await makeCwd();
+    await saveGraphForEditing(cwd, "g-base", {
+      version: 1, label: "base", nodes: { a: { type: "bash", script: "ls", env: { X: "1" } }, b: { type: "bash", script: "pwd" } }, returns: ["a"],
+    });
+    const executed: any[] = [];
+    const { controller, toolResults, bodies } = await runRounds(cwd, [[{
+      id: "call-mod", name: "execute_graph_mod",
+      arguments: { base: "g-base", label: "fixed", edits: [
+        { path: "/nodes/a/script", old: "ls", new: "ls -la" },
+        { path: "/nodes/b", new: null },
+      ] },
+    }]], async (graph) => {
+      executed.push(graph);
+      return { graphId: "g-next", label: graph.label, status: "done", previews: [], requested: {}, recordPath: "/dev/null" };
+    });
+    expect(bodies[0]!.tools.map((tool: any) => tool.function.name)).toEqual(["execute_graph", "execute_graph_mod"]);
+    expect(executed).toEqual([{ version: 1, label: "fixed", nodes: { a: { type: "bash", script: "ls -la", env: { X: "1" } } }, returns: ["a"] }]);
+    expect(toolResults).toHaveLength(1);
+    expect(toolResults[0].name).toBe("execute_graph_mod");
+    expect(toolResults[0].result.status).toBe("done");
+    expect(toolResults[0].result.applied).toEqual(["/nodes/a/script: replaced 2 characters", "/nodes/b: deleted"]);
+    expect(toolResults[0].result.rerun).toContain('execute_graph_mod with base "g-next"');
+    const started = controller.store.events.find((event) => event.type === "graph.started");
+    expect(started?.data).toMatchObject({ callId: "call-mod", base: "g-base", edits: [{ path: "/nodes/a/script", old: "ls", new: "ls -la" }, { path: "/nodes/b", new: null }] });
+    expect(started?.data.graph.nodes.a.script).toBe("ls -la");
+    expect(controller.getSnapshot().error).toBeUndefined();
+  });
+
+  test("a schema-rejected graph is saved under the returned graphId so one edit can fix it", async () => {
+    const cwd = await makeCwd();
+    const executed: any[] = [];
+    const { toolResults } = await runRounds(cwd, [
+      [{ id: "call-1", name: "execute_graph", arguments: { version: 1, label: "big", nodes: { a: { type: "shell", script: "ls" }, b: { type: "bash", script: "pwd" } } } }],
+      [{ id: "call-2", name: "execute_graph_mod", arguments: (previous: ToolResults) => ({ base: previous[0]!.result.graphId, edits: [{ path: "/nodes/a/type", new: "bash" }] }) }],
+    ], async (graph) => {
+      validateGraph(graph);
+      executed.push(graph);
+      return { graphId: "g-fixed", label: graph.label, status: "done", previews: [], requested: {}, recordPath: "/dev/null" };
+    });
+    expect(toolResults.map((entry: any) => entry.result.status), JSON.stringify(toolResults)).toEqual(["error", "done"]);
+    expect(toolResults[0].result.error).toContain("/nodes/a/type must be one of");
+    const rejectedId = toolResults[0].result.graphId;
+    expect(rejectedId).toMatch(/^[a-zA-Z0-9_-]+$/);
+    expect(toolResults[0].result.rerun).toContain(`execute_graph_mod with base "${rejectedId}"`);
+    expect(toolResults[0].result.hint).toContain("call execute_graph_mod with that base");
+    expect(await readFile(join(cwd, ".jev", "runs", rejectedId, "graph.json"), "utf8")).toContain('"type": "shell"');
+    expect(executed).toEqual([{ version: 1, label: "big", nodes: { a: { type: "bash", script: "ls" }, b: { type: "bash", script: "pwd" } } }]);
+  });
+
+  test("an unknown base or a non-matching edit answers the call without executing anything", async () => {
+    const cwd = await makeCwd();
+    await saveGraphForEditing(cwd, "g-base", { version: 1, label: "base", nodes: { a: { type: "bash", script: "ls" } } });
+    const { controller, toolResults } = await runRounds(cwd, [[
+      { id: "m1", name: "execute_graph_mod", arguments: { base: "nope", edits: [{ path: "/nodes/a/script", new: "x" }] } },
+      { id: "m2", name: "execute_graph_mod", arguments: { base: "g-base", edits: [{ path: "/nodes/a/script", old: "pwd", new: "x" }] } },
+      { id: "m3", name: "execute_graph_mod", arguments: { base: "g-base", edits: "not edits" } },
+    ]], async () => { throw new Error("must not execute"); });
+    expect(toolResults.map((entry: any) => entry.result.status)).toEqual(["error", "error", "error"]);
+    expect(toolResults[0].result.error).toBe('No saved graph with graphId "nope". Use the graphId from an earlier execute_graph result; saved graphs live under .jev/runs/.');
+    expect(toolResults[0].result.base).toBe("nope");
+    expect(toolResults[1].result.error).toContain("old was not found. Current value:\nls");
+    expect(toolResults[1].result.hint).toContain("No edit was applied");
+    expect(toolResults[2].result.error).toBe("edits must be a non-empty array of {path, old?, new?} objects.");
+    expect(controller.store.events.some((event) => event.type === "graph.started")).toBe(false);
   });
 });

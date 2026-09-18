@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { graphSchema, repairGraph, validateGraph } from "../src/core/schema.ts";
 import { graphToolParameters } from "../src/core/tool-schema.ts";
+import { graphModToolParameters } from "../src/core/graph-edits.ts";
 
 const bash = { type: "bash", script: "ls" };
 
@@ -95,14 +96,16 @@ describe("tool parameter schema", () => {
   }
 
   test("uses only keywords every provider forwards", () => {
-    walk(graphToolParameters, "$", (node, path) => {
-      if (path.endsWith(".properties")) return; // keys here are property names, not schema keywords
-      for (const keyword of forbidden) expect(node, `${keyword} at ${path}`).not.toHaveProperty(keyword);
-      expect(node.additionalProperties, path).not.toBe(false);
-      if (typeof node.type === "string" && path !== "$" && !path.endsWith(".items")) {
-        expect(typeof node.description, `description at ${path}`).toBe("string");
-      }
-    });
+    for (const parameters of [graphToolParameters, graphModToolParameters]) {
+      walk(parameters, "$", (node, path) => {
+        if (path.endsWith(".properties")) return; // keys here are property names, not schema keywords
+        for (const keyword of forbidden) expect(node, `${keyword} at ${path}`).not.toHaveProperty(keyword);
+        expect(node.additionalProperties, path).not.toBe(false);
+        if (typeof node.type === "string" && path !== "$" && !path.endsWith(".items")) {
+          expect(typeof node.description, `description at ${path}`).toBe("string");
+        }
+      });
+    }
   });
 
   test("fixed values are enums with a type", () => {

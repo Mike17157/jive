@@ -36,7 +36,7 @@ export function EffortPicker(props:{model?:ModelOption;current?:string;width:num
   const message=props.loading?"Loading this model’s effort levels…"
     :props.error??(props.model?.reasoningEfforts===undefined?"Effort metadata unavailable; keep auto or retry /effort."
       :levels.length===1?"This model does not expose an effort control."
-      :current==="auto"?`Use the model default${props.model?.reasoningDefault?` (${props.model.reasoningDefault})`:""}.`
+      :current==="auto"?"Use medium, or the nearest level this model supports."
       :`${current} reasoning effort`);
   const step=Math.max(2,Math.min(7,Math.floor((width-8)/Math.max(1,levels.length-1))));
   return <box flexDirection="column" flexShrink={0} marginX={2} width={width} border borderStyle="rounded"
