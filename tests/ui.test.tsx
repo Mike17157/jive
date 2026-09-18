@@ -5,9 +5,11 @@ import type { TestRendererSetup } from "@opentui/core/testing";
 import type { AgentController, AgentSnapshot, ExecutionEvent } from "../src/core/types.ts";
 import { App, runWithRenderer } from "../src/ui/app.tsx";
 import { COMMANDS, filterCommands, parseComposerInput, slashQuery } from "../src/ui/commands.ts";
-import { EDGE_SWEEP_MS_PER_CELL, edgeCellState, layoutGraph, layoutToText, sweepActive, visibleRows } from "../src/ui/graph/layout.ts";
+import { EDGE_SWEEP_MS_PER_CELL, edgeCellState, foldableIds, groupSummary, gutterText, layoutGraph, layoutToText, sweepActive, visibleRows } from "../src/ui/graph/layout.ts";
 import { countStatuses, edgeReady, reduceGraphs, statusTone, type UIExecutionEvent } from "../src/ui/graph/model.ts";
 import { orbSize, orbToString, renderOrb } from "../src/ui/orb.ts";
+import { toneColor } from "../src/ui/components/GraphView.tsx";
+import { palette } from "../src/ui/theme.ts";
 
 // ---------------------------------------------------------------------------
 // Fixtures
@@ -296,27 +298,166 @@ describe("construction previews", () => {
   });
 });
 
+describe("toneColor", () => {
+  test("a completed Jev judgement is purple; everything else done is green", () => {
+    expect(toneColor("done", "jev")).toBe(palette.purple);
+    expect(toneColor("done", "bash")).toBe(palette.green);
+    expect(toneColor("done")).toBe(palette.green);
+    expect(toneColor("running", "jev")).toBe(palette.accent);
+  });
+});
+
 describe("layoutGraph", () => {
   test("draws joins, branches and folded groups in creation order", () => {
     const [g] = reduceGraphs(sampleEvents());
-    const layout = layoutGraph(g!, { expanded: new Set() });
+    const layout = layoutGraph(g!, { expanded: new Set(), folded: new Set(["loop"]) });
     expect(layout.rows.map((r) => r.id)).toEqual(["scan", "grep", "pick", "loop", "verify"]);
     expect(layout.hidden).toBe(2);
     const text = layoutToText(layout);
-    expect(text).toBe(["●   scan repo [done]", "│ ✖ grep tests [failed]", "├─○ pick file [blocked]", "│ ○ ▸ per file [pending]", "○─╯ verify [pending]"].join("\n"));
+    expect(text).toBe(["●   scan repo [done]", "│ ✖ grep tests [failed]", "├─○ pick file [blocked]", "│ ○ ▸ ≡ per file [pending]", "○─╯ verify [pending]"].join("\n"));
+  });
+
+  test("a loop draws its body once and moves back and forth over the same rows as passes run", () => {
+    const ev = eventFactory("loop");
+    const child = (id: string, iteration: number, key: string, needs: string[] = []) =>
+      ev("node.created", `${id}[${iteration}]/${key}`, { label: key, type: "bash", needs: needs.map((n) => `${id}[${iteration}]/${n}`), parent: id, iteration });
+    const events = [
+      ev("graph.started", undefined, { label: "crawl" }),
+      ev("node.created", "rounds", { label: "rounds", type: "repeat", needs: [], template: "round", maxIterations: 5 }),
+      ev("node.started", "rounds", { type: "repeat" }),
+      child("rounds", 0, "fetch"),
+      child("rounds", 0, "merge", ["fetch"]),
+      ev("node.started", "rounds[0]/fetch", {}),
+      ev("node.finished", "rounds[0]/fetch", { result: { status: "done" } }),
+      ev("edge.ready", undefined, { from: "rounds[0]/fetch", to: "rounds[0]/merge" }),
+      ev("node.started", "rounds[0]/merge", {}),
+      ev("node.finished", "rounds[0]/merge", { result: { status: "done" } }),
+      ev("node.created", "report", { label: "report", type: "bash", needs: ["rounds"] }),
+    ];
+    const [afterFirst] = reduceGraphs(events);
+    expect(afterFirst!.nodes.rounds!.loop).toEqual({ template: "round", max: 5 });
+    expect(afterFirst!.nodes["rounds[0]/merge"]!.iteration).toBe(0);
+    // Groups open by default; the body is one row per template entry with a loop-back lane.
+    const first = layoutGraph(afterFirst!, { expanded: new Set() });
+    expect(layoutToText(first)).toBe([
+      "⠋     ▾ ↻ rounds [running]",
+      "│ ╭─●   fetch [done]",
+      "│ ╰─●   merge [done]",
+      "○     report [pending]",
+    ].join("\n"));
+    expect(first.rows.map((r) => r.id)).toEqual(["rounds", "rounds[*]/fetch", "rounds[*]/merge", "report"]);
+    expect(groupSummary(first.rows[0]!)).toBe("repeat · 1/5");
+    const loopCells = first.rows[1]!.cells.filter((c) => c.kind === "loop");
+    expect(loopCells.map((c) => c.ch)).toEqual(["╭"]);
+    expect(loopCells[0]!.from).toBe("rounds");
+    expect(first.rows[2]!.cells[1]).toMatchObject({ ch: "╰", kind: "loop", hright: true });
+    // The lane between body rows tracks the instance behind the row, so it sweeps per pass.
+    expect(first.rows[2]!.cells[2]).toMatchObject({ kind: "node" });
+    expect(first.rows[2]!.above[2]).toMatchObject({ kind: "pass", from: "rounds[0]/fetch", targets: ["rounds[0]/merge"] });
+    expect(first.rows[1]!.instance!.id).toBe("rounds[0]/fetch");
+
+    // The next pass reuses the rows: the same ids, now showing iteration 1.
+    const second = reduceGraphs([...events, child("rounds", 1, "fetch"), child("rounds", 1, "merge", ["fetch"]), ev("node.started", "rounds[1]/fetch", {})])[0]!;
+    const layout = layoutGraph(second, { expanded: new Set() });
+    expect(layoutToText(layout)).toBe([
+      "⠋     ▾ ↻ rounds [running]",
+      "│ ╭─⠋   fetch [running]",
+      "│ ╰─○   merge [pending]",
+      "○     report [pending]",
+    ].join("\n"));
+    expect(layout.rows.map((r) => r.id)).toEqual(first.rows.map((r) => r.id));
+    expect(layout.rows[1]!.instance!.id).toBe("rounds[1]/fetch");
+    expect(layout.rows[2]!.above[2]).toMatchObject({ from: "rounds[1]/fetch", targets: ["rounds[1]/merge"] });
+    expect(layout.rows[1]!.parentId).toBe("rounds");
+    expect(groupSummary(layout.rows[0]!)).toBe("repeat · 2/5");
+    expect(layout.hidden).toBe(0);
+
+    const folded = layoutGraph(second, { expanded: new Set(), folded: new Set(["rounds"]) });
+    expect(folded.rows.map((r) => r.id)).toEqual(["rounds", "report"]);
+    expect(folded.hidden).toBe(4);
+    expect(foldableIds(second)).toEqual(["rounds"]);
+  });
+
+  test("a loop that has not run yet shows its template body as ghost rows, nested loops included", () => {
+    const ev = eventFactory("ghost");
+    const preview = ev("graph.preview", undefined, { graph: {
+      templates: {
+        expand: { nodes: { links: { type: "bash", script: "curl" }, pick: { type: "jev", label: "pick next", state: { $ref: "/nodes/links/output/stdout" }, questions: {} } } },
+        round: { groups: { expand: { kind: "foreach", items: { $ref: "/state/frontier" }, template: "expand", maxItems: 20 } }, nodes: { merge: { type: "bash", stdin: { $ref: "/groups/expand/output/items" }, script: "python3" } } },
+      },
+      groups: { crawl: { kind: "repeat", label: "crawl", template: "round", initial: {}, next: {}, until: { op: "exists", args: [1] }, maxIterations: 8 } },
+    } });
+    const [g] = reduceGraphs([ev("graph.building", undefined, {}), preview]);
+    expect(Object.keys(g!.templates)).toEqual(["expand", "round"]);
+    expect(g!.templates.round!.map((e) => `${e.key}:${e.type}:${e.needs.join(",")}`)).toEqual(["merge:bash:expand", "expand:foreach:"]);
+    const layout = layoutGraph(g!, { expanded: new Set() });
+    // merge is defined before the group it consumes; rows follow dependencies so lanes run downward.
+    // Each loop gets its own loop-back lane, nested bodies included.
+    expect(layoutToText(layout)).toBe([
+      "◌       ▾ ↻ crawl [building]",
+      "╭─◌       ▾ ≡ expand [body]",
+      "│ │ ╭─◌     links [body]",
+      "│ │ ╰─◌     pick next [body]",
+      "╰─◌       merge [body]",
+    ].join("\n"));
+    expect(layout.rows.map((r) => r.id)).toEqual(["crawl", "crawl[*]/expand", "crawl[*]/expand[*]/links", "crawl[*]/expand[*]/pick", "crawl[*]/merge"]);
+    expect(layout.rows.at(-1)!.cells[1]!.kind).toBe("node");
+    expect(layout.rows[2]!.cells[1]).toMatchObject({ kind: "pass", targets: ["crawl[*]/merge"] });
+    expect(layout.rows.slice(1).every((r) => r.kind === "body" && r.instance === undefined)).toBe(true);
+    expect(layout.hidden).toBe(0);
+    expect(groupSummary(layout.rows[0]!)).toBe("repeat · ≤8 iterations");
+    expect(groupSummary(layout.rows[1]!)).toBe("foreach · ≤20 items");
+    expect(foldableIds(g!)).toEqual(["crawl", "crawl[*]/expand"]);
+
+    // Once a pass starts, the same rows pick up the instances that exist so far.
+    const started = reduceGraphs([ev("graph.building", undefined, {}), preview, ev("graph.started", undefined, { label: "crawl" }),
+      ev("node.created", "crawl", { label: "crawl", type: "repeat", needs: [], template: "round" }), ev("node.started", "crawl", {}),
+      ev("node.created", "crawl[0]/merge", { label: "merge", type: "bash", needs: [], parent: "crawl", iteration: 0 }), ev("node.started", "crawl[0]/merge", {})])[0]!;
+    const running = layoutGraph(started, { expanded: new Set() });
+    expect(running.rows.map((r) => `${r.id}:${r.instance?.id ?? "-"}`)).toEqual(["crawl:crawl", "crawl[*]/expand:-", "crawl[*]/expand[*]/links:-", "crawl[*]/expand[*]/pick:-", "crawl[*]/merge:crawl[0]/merge"]);
+    expect(running.rows.at(-1)!.node.status).toBe("running");
+  });
+
+  test("the connector line above a row carries every lane that is still alive there", () => {
+    const [g] = reduceGraphs(sampleEvents());
+    const layout = layoutGraph(g!, { expanded: new Set(), folded: new Set(["loop"]) });
+    const above = layout.rows.map((row) => row.above.map((cell) => cell.ch).join(""));
+    // Lanes that end on a row arrive from above just like the ones passing through it.
+    expect(above).toEqual(["  ", "│ ", "││", "││", "││"]);
+
+    const ev = eventFactory("g2");
+    const fanIn = reduceGraphs([
+      ev("graph.started", undefined, { label: "fan in" }),
+      ev("node.created", "a", { label: "a", type: "bash", needs: [] }),
+      ev("node.created", "b", { label: "b", type: "bash", needs: [] }),
+      ev("node.created", "c", { label: "c", type: "bash", needs: [] }),
+      ev("node.created", "sum", { label: "sum", type: "bash", needs: ["a", "b", "c"] }),
+    ])[0]!;
+    const joined = layoutGraph(fanIn, { expanded: new Set() });
+    expect(joined.rows.at(-1)!.above.map((cell) => cell.ch).join("")).toBe("│││");
+    expect(gutterText(joined.rows.at(-1)!)).toBe("●─┴─╯ ");
+    for (const row of joined.rows) expect(row.above).toHaveLength(joined.laneCount);
   });
 
   test("expanding a group inserts its children without reordering existing rows", () => {
     const [g] = reduceGraphs(sampleEvents());
-    const folded = layoutGraph(g!, { expanded: new Set() });
+    const folded = layoutGraph(g!, { expanded: new Set(), folded: new Set(["loop"]) });
     const open = layoutGraph(g!, { expanded: new Set(["loop"]) });
-    expect(open.rows.map((r) => r.id)).toEqual(["scan", "grep", "pick", "loop", "loop/0/read", "loop/1/read", "verify"]);
-    expect(open.rows.filter((r) => r.depth === 1).map((r) => r.id)).toEqual(["loop/0/read", "loop/1/read"]);
+    // Without a template, the body is reconstructed from the instances: one row per key,
+    // showing the latest item (older records name children group/index/key).
+    expect(open.rows.map((r) => r.id)).toEqual(["scan", "grep", "pick", "loop", "loop[*]/read", "verify"]);
+    expect(open.rows.filter((r) => r.depth === 1).map((r) => r.id)).toEqual(["loop[*]/read"]);
+    const body = open.rows.find((r) => r.id === "loop[*]/read")!;
+    expect(body.kind).toBe("body");
+    expect(body.instance!.id).toBe("loop/1/read");
+    expect(body.node.label).toBe("read b.ts");
+    expect(body.cells.find((c) => c.kind === "loop")!.ch).toBe("↻");
     // Rows above the group keep their columns.
     for (const id of ["scan", "grep", "pick"]) {
       expect(open.rows.find((r) => r.id === id)!.col).toBe(folded.rows.find((r) => r.id === id)!.col);
     }
-    expect(visibleRows(g!, new Set(["loop"])).length).toBe(7);
+    expect(visibleRows(g!, new Set(["loop"])).length).toBe(6);
+    expect(visibleRows(g!, new Set(), new Set(["loop"])).length).toBe(5);
   });
 
   test("dynamically created nodes append rows and leave earlier rows in place", () => {
@@ -481,6 +622,45 @@ describe("App", () => {
     }
   });
 
+  test("Ctrl+O opens every round's reasoning in full and closes it again", async () => {
+    const c = makeController({
+      messages: [
+        { id: "u1", role: "user", text: "find the expiry bug" },
+        { id: "t1", role: "thinking", text: "Checking the store first.\n\nThe session store is read before any test runs." },
+        { id: "a1", role: "assistant", text: "The expiry check runs before the refresh." },
+      ],
+    });
+    const { setup, frame, press } = await mount(c, 80, 24);
+    try {
+      expect(await frame()).not.toContain("Checking the store first.");
+      await press("o", { ctrl: true });
+      let f = await frame();
+      expect(f).toContain("▾");
+      expect(f).toContain("Checking the store first.");
+      expect(f).toContain("The session store is read before any test runs.");
+      expect(f).toContain("reasoning shown");
+      // Replies and prompts are untouched by the toggle.
+      expect(f).toContain("The expiry check runs before the refresh.");
+      await press("o", { ctrl: true });
+      f = await frame();
+      expect(f).not.toContain("Checking the store first.");
+      expect(f).toContain("▸ The session store is read before any test…");
+    } finally {
+      setup.renderer.destroy();
+    }
+  });
+
+  test("Ctrl+O says so when the session has no reasoning to show", async () => {
+    const c = makeController({ messages: [{ id: "u1", role: "user", text: "go" }] });
+    const { setup, frame, press } = await mount(c, 110, 24);
+    try {
+      await press("o", { ctrl: true });
+      expect(await frame()).toContain("no reasoning recorded yet");
+    } finally {
+      setup.renderer.destroy();
+    }
+  });
+
   test("a reply with no text yet leaves no bare marker in the transcript", async () => {
     const c = makeController({
       messages: [
@@ -563,11 +743,14 @@ describe("App", () => {
       expect(f).toContain("◆ Scanning the repository first.");
       expect(f).toContain("investigate expiry");
       expect(f).toMatch(/scan repo\s+bash\s+done/);
-      expect(f).toMatch(/✖ grep tests\s+bash\s+failed/);
-      expect(f).toMatch(/├─○ pick file\s+jev\s+blocked/);
-      expect(f).toMatch(/▸ per file \(2\)\s+foreach\s+pending/);
-      expect(f).toMatch(/○─╯ verify\s+bash\s+pending/);
-      expect(f).toContain("2 folded");
+      expect(f).toMatch(/✖\s+grep tests\s+bash\s+failed/);
+      expect(f).toMatch(/├─○\s+pick file\s+jev\s+blocked/);
+      // Loops open by default: the group row names the loop and its body shows the latest item.
+      expect(f).toMatch(/▾ ≡ per file\s+foreach · 2 items\s+pending/);
+      expect(f).toMatch(/↻─○\s+read b\.ts\s+bash\s+pending/);
+      expect(f).not.toContain("read a.ts");
+      expect(f).toMatch(/╯\s+verify\s+bash\s+pending/);
+      expect(f).not.toContain("folded");
       expect(f).toContain("working… Ctrl+C interrupts");
       expect(f).toContain("⎘"); // artifact marker
     } finally {
@@ -588,15 +771,30 @@ describe("App", () => {
       await arrow("down");
       await arrow("down");
       await arrow("down");
+      await arrow("left"); // fold the (open by default) group
+      f = await frame();
+      expect(f).toContain("▸ ≡ per file");
+      expect(f).not.toContain("read a.ts");
+      expect(f).toContain("2 folded");
       await arrow("right");
       f = await frame();
-      expect(f).toContain("▾ per file (2)");
-      expect(f).toContain("read a.ts");
+      expect(f).toContain("▾ ≡ per file");
       expect(f).toContain("read b.ts");
       expect(f).not.toContain("folded");
-      await arrow("left");
+      await arrow("down"); // the body row inspects the instance behind it
+      await enter();
       f = await frame();
-      expect(f).toContain("▸ per file (2)");
+      expect(f).toContain(" read b.ts ");
+      expect(f).toContain("loop/1/read · bash · pending");
+      await escape();
+      await press("c");
+      f = await frame();
+      expect(f).toContain("▸ ≡ per file");
+      expect(f).toContain("2 folded");
+      await press("e");
+      f = await frame();
+      expect(f).toContain("read b.ts");
+      expect(f).not.toContain("folded");
       await press("]");
       await enter();
       f = await frame();
@@ -803,7 +1001,7 @@ describe("App", () => {
       expect(f).toContain("3 nodes");
       expect(f).toMatch(/scan repo\s+bash\s+drafted/);
       expect(f).toMatch(/pick file\s+jev\s+drafted/);
-      expect(f).toMatch(/▸ per file\s+foreach\s+drafted/);
+      expect(f).toMatch(/▾ ≡ per file\s+foreach · ≤3 items\s+drafted/);
       expect(f).not.toContain("running");
       await sleep(350);
       f = await frame();

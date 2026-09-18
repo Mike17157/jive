@@ -80,10 +80,12 @@ export class GraphBuildingRound {
         }
       }
     } catch (error) {
+      // Committed effects cannot be undone, so a broken tail stops the remaining work and is
+      // reported as this call's result. Tearing down the whole turn would only force the user
+      // to ask the planner to continue from evidence it can already read here.
       state.error = error instanceof Error ? error.message : String(error);
       state.abort.abort(new Error(state.error));
       state.queue.close();
-      if (state.run) throw new Error(`Committed graph stream failed: ${state.error}`);
     }
   }
 

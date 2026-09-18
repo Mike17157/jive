@@ -37,6 +37,13 @@ export type GraphPhase = "building" | "ready" | "running" | "finished" | "interr
 
 export type GraphNodeType = NodeResult["type"] | "unknown";
 
+/** What a foreach/repeat group declared about its shape; the executor and previews both report it. */
+export interface LoopInfo {
+  template?: string;
+  /** maxIterations for repeat, maxItems for foreach. */
+  max?: number;
+}
+
 export interface GraphNode {
   id: string;
   label: string;
@@ -44,6 +51,10 @@ export interface GraphNode {
   needs: string[];
   /** Enclosing group id (foreach/repeat instance) or undefined for top-level nodes. */
   parent?: string;
+  /** Index of the enclosing group's iteration (or item) this node was instantiated in. */
+  iteration?: number;
+  /** Set on foreach/repeat rows. */
+  loop?: LoopInfo;
   status: UINodeStatus;
   createdSeq: number;
   /** Time the node definition first appeared in a construction preview. */
@@ -66,6 +77,16 @@ export interface GraphEdge {
   readyAt?: number;
 }
 
+/** One entry of a template body, in definition order, so a loop's body can be drawn before it runs. */
+export interface TemplateEntry {
+  key: string;
+  label: string;
+  type: GraphNodeType;
+  /** Local keys inside the same template body. */
+  needs: string[];
+  loop?: LoopInfo;
+}
+
 export interface GraphModel {
   id: string;
   label: string;
@@ -82,6 +103,8 @@ export interface GraphModel {
   order: string[];
   nodes: Record<string, GraphNode>;
   edges: GraphEdge[];
+  /** Template bodies by name, from construction previews or graph.started. */
+  templates: Record<string, TemplateEntry[]>;
   lastSequence: number;
 }
 
@@ -93,8 +116,34 @@ function str(v: unknown): string | undefined {
 function strArray(v: unknown): string[] {
   return Array.isArray(v) ? v.filter((x): x is string => typeof x === "string") : [];
 }
+function num(v: unknown): number | undefined {
+  return typeof v === "number" && Number.isFinite(v) ? v : undefined;
+}
 function nodeType(v: unknown): GraphNodeType {
   return v === "bash" || v === "jev" || v === "foreach" || v === "repeat" ? v : "unknown";
+}
+
+/**
+ * The executor names instantiated nodes `${group}[${index}]/${key}`; older records used
+ * `${group}/${index}/${key}`. Either way the iteration index sits between parent and key.
+ */
+export function parseIteration(id: string, parent: string | undefined): number | undefined {
+  if (!parent || !id.startsWith(parent)) return undefined;
+  const match = /^(?:\[(\d+)\]|\/(\d+))\//.exec(id.slice(parent.length));
+  return match ? Number(match[1] ?? match[2]) : undefined;
+}
+
+function loopInfo(data: Record<string, unknown>): LoopInfo | undefined {
+  const type = nodeType(data.type ?? data.kind);
+  if (!GROUP_TYPES.has(type)) return undefined;
+  const max = num(type === "repeat" ? data.maxIterations : data.maxItems);
+  return { template: str(data.template), ...(max !== undefined ? { max } : {}) };
+}
+
+function mergeLoop(n: GraphNode, data: Record<string, unknown>): void {
+  const info = loopInfo({ ...data, type: n.type });
+  if (!info) return;
+  n.loop = { ...n.loop, ...(info.template ? { template: info.template } : {}), ...(info.max !== undefined ? { max: info.max } : {}) };
 }
 
 export function isGroupType(t: GraphNodeType): boolean {
@@ -104,7 +153,7 @@ export function isGroupType(t: GraphNodeType): boolean {
 function ensureGraph(map: Map<string, GraphModel>, ev: UIExecutionEvent): GraphModel {
   let g = map.get(ev.graphId);
   if (!g) {
-    g = { id: ev.graphId, label: ev.graphId, phase: "running", order: [], nodes: Object.create(null), edges: [], lastSequence: ev.sequence };
+    g = { id: ev.graphId, label: ev.graphId, phase: "running", order: [], nodes: Object.create(null), edges: [], templates: Object.create(null), lastSequence: ev.sequence };
     map.set(ev.graphId, g);
   }
   g.lastSequence = Math.max(g.lastSequence, ev.sequence);
@@ -127,6 +176,7 @@ function ensureNode(g: GraphModel, id: string, ev: UIExecutionEvent, data: Recor
       jevResponses: [],
       activity: [],
     };
+    n.iteration = num(data.iteration) ?? parseIteration(id, n.parent);
     g.nodes[id] = n;
     g.order.push(id);
   }
@@ -152,7 +202,7 @@ function outputChunk(data: Record<string, unknown>): string {
   }
 }
 
-/** Apply a preview's node/group definitions as "building" rows without disturbing real ones. */
+/** Dependencies a definition declares, by explicit needs or by reference, as local keys. */
 function previewNeeds(spec: Record<string, unknown>): string[] {
   const inputs = spec.kind === "foreach" ? {items:spec.items,input:spec.input,when:spec.when}
     : spec.kind === "repeat" ? {initial:spec.initial,when:spec.when} : spec;
@@ -162,7 +212,32 @@ function previewNeeds(spec: Record<string, unknown>): string[] {
   })])];
 }
 
+/** Read a template body's nodes and groups into display entries, tolerating partial previews. */
+function templateEntries(body: unknown): TemplateEntry[] {
+  if (!body || typeof body !== "object" || Array.isArray(body)) return [];
+  const record = body as Record<string, unknown>;
+  const out: TemplateEntry[] = [];
+  for (const namespace of ["nodes", "groups"] as const) {
+    const map = record[namespace];
+    if (!map || typeof map !== "object" || Array.isArray(map)) continue;
+    for (const [key, spec] of Object.entries(map as Record<string, unknown>)) {
+      const s = (spec ?? {}) as Record<string, unknown>;
+      const type = nodeType(namespace === "groups" ? s.kind : s.type);
+      const loop = loopInfo({ ...s, type });
+      out.push({ key, label: str(s.label) ?? key, type, needs: previewNeeds(s), ...(loop ? { loop } : {}) });
+    }
+  }
+  return out;
+}
+
+function applyTemplates(g: GraphModel, templates: unknown): void {
+  if (!templates || typeof templates !== "object" || Array.isArray(templates)) return;
+  for (const [name, body] of Object.entries(templates as Record<string, unknown>)) g.templates[name] = templateEntries(body);
+}
+
+/** Apply a preview's node/group definitions as "building" rows without disturbing real ones. */
 function applyPreview(g: GraphModel, ev: UIExecutionEvent, graph: Record<string, unknown>): void {
+  applyTemplates(g, graph.templates);
   const nodes = graph.nodes;
   if (nodes && typeof nodes === "object" && !Array.isArray(nodes)) {
     for (const [id, spec] of Object.entries(nodes as Record<string, unknown>)) {
@@ -190,6 +265,7 @@ function applyPreview(g: GraphModel, ev: UIExecutionEvent, graph: Record<string,
       }
       if (str(s.label)) n.label = str(s.label)!;
       if (n.type === "unknown") n.type = nodeType(s.kind);
+      mergeLoop(n, s);
       addNeeds(g, n, previewNeeds(s));
     }
   }
@@ -236,12 +312,14 @@ export function reduceGraphs(events: readonly (ExecutionEvent | UIExecutionEvent
         g.startedAt = ev.time;
         g.phase = "running";
         g.label = str(data.label) ?? g.label;
+        applyTemplates(g, data.templates);
         const nodes = data.nodes;
         if (nodes && typeof nodes === "object" && !Array.isArray(nodes)) {
           for (const [id, spec] of Object.entries(nodes as Record<string, unknown>)) {
             const s = (spec ?? {}) as Record<string, unknown>;
             const n = ensureNode(g, id, ev, s);
             if (n.status === "building") n.status = "pending";
+            mergeLoop(n, s);
             addNeeds(g, n, strArray(s.needs));
           }
         }
@@ -255,6 +333,8 @@ export function reduceGraphs(events: readonly (ExecutionEvent | UIExecutionEvent
         if (str(data.label)) n.label = str(data.label)!;
         if (data.type !== undefined) n.type = nodeType(data.type);
         if (!n.parent) n.parent = str(data.parent) ?? str(data.scope);
+        if (n.iteration === undefined) n.iteration = num(data.iteration) ?? parseIteration(id, n.parent);
+        mergeLoop(n, data);
         addNeeds(g, n, strArray(data.needs));
         break;
       }

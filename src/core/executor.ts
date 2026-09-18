@@ -100,7 +100,8 @@ export async function executeGraph(input: unknown, options: ExecuteOptions): Pro
       const record: NodeResult = { id, label: definition.label ?? key, type: "type" in definition ? definition.type : definition.kind, status: "pending" };
       ("type" in definition ? nodes : groups)[key] = record;
       records.set(id, record);
-      emit("node.created", { id, label: record.label, type: record.type, needs: dependencies(definition).map(dep => prefix + dep), parent: prefix ? prefix.replace(/\[\d+\]\/$/, "") : undefined }, id);
+      const shape = "kind" in definition ? { template: definition.template, ...(definition.kind === "repeat" ? { maxIterations: definition.maxIterations } : { maxItems: definition.maxItems }) } : {};
+      emit("node.created", { id, label: record.label, type: record.type, needs: dependencies(definition).map(dep => prefix + dep), parent: prefix ? prefix.replace(/\[\d+\]\/$/, "") : undefined, iteration: variables.index, ...shape }, id);
     }
     }
     const tasks = new Map<string, Promise<void>>();
@@ -278,7 +279,7 @@ export async function executeGraph(input: unknown, options: ExecuteOptions): Pro
       result.status = "exhausted"; result.error = `Loop reached maxIterations=${def.maxIterations}`;
     }
   }
-  emit("graph.started", { label: graph.label, limits });
+  emit("graph.started", { label: graph.label, limits, templates: graph.templates });
   let outcome: ScopeResult | undefined;
   try { outcome = await scopeRun(graph, "", {}, options.updates); }
   catch (error) { stoppingReason ??= error instanceof Error ? error.message : String(error); }

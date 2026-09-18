@@ -90,7 +90,7 @@ export function parseComposerInput(raw: string): ComposerCommand {
 
 export const keyHelp = [
   "Enter sends · Shift+Enter or Ctrl+J newline · Ctrl+C interrupts a running turn",
-  "Graph focus: ↑/↓ select · → or Enter expand/inspect · ← collapse · [ ] switch graph · Esc back",
+  "Graph focus: ↑/↓ select · → or Enter expand/inspect · ← collapse · e/c open/fold all · [ ] switch graph · Esc back",
 ];
 
 export const helpText = [...COMMANDS.map((c) => `${c.usage.padEnd(14)}${c.description}`), ...keyHelp].join("\n");

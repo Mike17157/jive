@@ -137,6 +137,35 @@ describe("GraphStreamParser", () => {
     expect(() => invalidHeader.push(withUnknown)).toThrow("Invalid graph");
   });
 
+  test("adopts definitions written past a prematurely closed nodes or groups map", () => {
+    const header = JSON.stringify({
+      ...eagerHeader(["collect", "classify", "merge"]),
+      templates: { round: { nodes: { fetch: { type: "bash", script: "printf hi" } } } },
+    }).slice(0, -1);
+    const parser = new GraphStreamParser();
+    const updates = feedByCharacter(parser, `${header},"nodes":{"collect":{"type":"bash","script":"printf collect"}}`
+      + ',"groups":{"classify":{"kind":"foreach","items":[],"template":"round","maxItems":1}}'
+      + ',"merge":{"type":"bash","needs":["classify"],"script":"printf merge"}'
+      + ',"later":{"kind":"repeat","template":"round","initial":{},"next":{},"until":{"op":"exists","args":[1]},"maxIterations":1}}');
+
+    expect(updates.map((update) => update.kind)).toEqual(["commit", "commit", "commit", "commit"]);
+    const last = updates.at(-1)!.graph;
+    expect(Object.keys(last.nodes)).toEqual(["collect", "merge"]);
+    expect(Object.keys(last.groups ?? {})).toEqual(["classify", "later"]);
+    expect(last.returns).toEqual(["collect", "classify", "merge"]);
+    expect((last as unknown as Record<string, unknown>).merge).toBeUndefined();
+    expect(parser.finish()).toEqual(last as any);
+    expect(parser.repairs).toEqual([
+      "/merge: moved into /nodes; the nodes map was closed before this definition",
+      "/later: moved into /groups; the groups map was closed before this definition",
+    ]);
+
+    const duplicate = new GraphStreamParser();
+    duplicate.push(`${header},"nodes":{"collect":{"type":"bash","script":"printf collect"}}`);
+    expect(() => duplicate.push(',"collect":{"type":"bash","script":"printf again"}}'))
+      .toThrow('Duplicate nodes entry "collect"');
+  });
+
   test("normal previews allow forward references but eager commits reject them", () => {
     const normalGraph = {
       version: 1,

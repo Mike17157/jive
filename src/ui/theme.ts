@@ -24,6 +24,8 @@ export const palette = {
   grey: "#6b6a66",
   greyDim: "#3a3a3a",
   red: "#ff8c9a",
+  /** Jev judgements: a completed decision reads as purple, not green. */
+  purple: "#c9a2ff",
 } as const;
 
 /** Gradient stops from deep blue through baby blue to warm white; used by the orb and sweeps. */

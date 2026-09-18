@@ -3,7 +3,7 @@ import type { AgentSnapshot } from "../../core/types";
 import { palette } from "../theme";
 
 const frames = ["⠋","⠙","⠹","⠸","⠼","⠴","⠦","⠧","⠇","⠏"];
-const labels = {idle:"Working",thinking:"Thinking",responding:"Writing",building:"Building graph",executing:"Running graph"};
+const labels = {idle:"Working",thinking:"Thinking",responding:"Writing",building:"Assembling execution",executing:"Running graph"};
 export function ThinkingIndicator({snapshot}: {snapshot: AgentSnapshot}) {
   const [started] = useState(Date.now);
   const [now,setNow] = useState(Date.now);

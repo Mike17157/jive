@@ -1,4 +1,4 @@
-import { repairGraph, validateGraph } from "./schema";
+import { repairGraph, strayEntryTarget, validateGraph } from "./schema";
 import type { Graph } from "./types";
 
 export interface GraphStreamUpdate {
@@ -380,9 +380,27 @@ export class GraphStreamParser {
   }
 
   #rootKey(key: string): void {
-    if (this.#headerLocked && key !== "nodes" && key !== "groups") {
+    // A settings field really cannot be applied once work is committed. An unknown key is
+    // decided by its value in #adoptStray, because a node written past a prematurely closed
+    // nodes map is recoverable and arrives here indistinguishable from a late header.
+    if (this.#headerLocked && ROOT_HEADERS.has(key)) {
       throw new Error(`Eager graph header is frozen; late root field ${JSON.stringify(key)} is not allowed.`);
     }
+  }
+
+  /** A definition written beside the map it belongs in is moved into it rather than rejected. */
+  #adoptStray(key: string, value: unknown): boolean {
+    const target = strayEntryTarget(key, value);
+    if (!target) {
+      if (!this.#headerLocked) return false;
+      throw new Error(`Eager graph header is frozen; late root field ${JSON.stringify(key)} is not allowed.`);
+    }
+    const entries = target === "nodes" ? this.#nodes : this.#groups;
+    if (entries.has(key)) throw new Error(`Duplicate ${target} entry ${JSON.stringify(key)} at ${pathLabel([key])}.`);
+    entries.set(key, value);
+    this.#workMaps.add(target);
+    this.#repairs.add(`/${key}: moved into /${target}; the ${target} map was closed before this definition`);
+    return true;
   }
 
   #beginWorkMap(key: "nodes" | "groups", valueKind: "object" | "array" | "primitive"): void {
@@ -403,6 +421,14 @@ export class GraphStreamParser {
       const key = path[0];
       if (key !== "nodes" && key !== "groups") {
         const value = this.#parseSlice(start, end, path);
+        if (this.#adoptStray(key, value)) {
+          // Only work that arrives after the frozen header is a commitment; a stray entry
+          // written before nodes begins stays a preview until the header is complete.
+          const commit = this.#eager && this.#headerLocked;
+          const graph = commit ? this.#commitGraph() : this.#previewGraph();
+          this.#updates.push({ kind: commit ? "commit" : "preview", graph: structuredClone(graph) });
+          return;
+        }
         this.#rootValues.set(key, value);
         if (ROOT_HEADERS.has(key)) this.#completedHeaders.add(key);
         if (key === "eager") {

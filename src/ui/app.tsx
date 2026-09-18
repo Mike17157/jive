@@ -13,7 +13,7 @@ import { StatusBar } from "./components/StatusBar.tsx";
 import { EffortPicker, EFFORT_PANEL_ROWS } from "./components/EffortPicker.tsx";
 import { ThinkingIndicator } from "./components/ThinkingIndicator.tsx";
 import { attachSelectionCopy } from "./clipboard.ts";
-import { layoutGraph } from "./graph/layout.ts";
+import { foldableIds, layoutGraph, type LayoutRow } from "./graph/layout.ts";
 import { reduceGraphs, type GraphModel } from "./graph/model.ts";
 import { palette } from "./theme.ts";
 import { useAgentSnapshot } from "./useController.ts";
@@ -53,6 +53,7 @@ export function App(props: AppProps) {
 
   const [mode, setModeState, modeRef] = useStateRef<UIMode>("compose");
   const [expanded, setExpanded, expandedRef] = useStateRef<ReadonlySet<string>>(() => new Set());
+  const [folded, setFolded, foldedRef] = useStateRef<ReadonlySet<string>>(() => new Set());
   const [graphCursor, setGraphCursor, graphCursorRef] = useStateRef(0);
   const [rowCursor, setRowCursor, rowCursorRef] = useStateRef(0);
   const [notice, setNotice] = useState<string | undefined>();
@@ -62,6 +63,7 @@ export function App(props: AppProps) {
   const [composerLines, setComposerLines] = useState(1);
   const [popupCursor, setPopupCursor, popupCursorRef] = useStateRef(0);
   const [helpOpen, setHelpOpen, helpOpenRef] = useStateRef(false);
+  const [thinkingOpen, setThinkingOpen, thinkingOpenRef] = useStateRef(false);
   const [dismissedQuery, setDismissedQuery, dismissedQueryRef] = useStateRef<string | null>(null);
   const lastCtrlC = useRef(0);
   const textareaRef = useRef<TextareaRenderable | null>(null);
@@ -101,7 +103,7 @@ export function App(props: AppProps) {
   }, [graphs, snapshot.messages, snapshot.sessionId]);
 
   const focusedGraph: GraphModel | null = mode === "graph" || mode === "inspect" ? (graphs[Math.min(graphCursor, graphs.length - 1)] ?? null) : null;
-  const focusedLayout = useMemo(() => (focusedGraph ? layoutGraph(focusedGraph, { expanded }) : null), [focusedGraph, expanded]);
+  const focusedLayout = useMemo(() => (focusedGraph ? layoutGraph(focusedGraph, { expanded, folded }) : null), [focusedGraph, expanded, folded]);
   const selectedRow = focusedLayout ? focusedLayout.rows[Math.min(rowCursor, focusedLayout.rows.length - 1)] : undefined;
 
   useEffect(() => {
@@ -142,7 +144,7 @@ export function App(props: AppProps) {
         case "new":
         case "clear":
           void controller.newSession().then(()=>{
-            setMode("compose");setExpanded(new Set());setGraphCursor(0);setRowCursor(0);
+            setMode("compose");setExpanded(new Set());setFolded(new Set());setGraphCursor(0);setRowCursor(0);
             setHelpOpen(false);setDismissedQuery(null);setNotice("New session");
           }).catch(error=>setNotice(`Could not start session: ${String(error)}`));
           return;
@@ -238,14 +240,18 @@ export function App(props: AppProps) {
     scrollRef.current?.scrollTo(scrollRef.current.scrollHeight);
   },[latestUserId]);
 
-  const toggleExpand = useCallback(
-    (id: string) => {
-      setExpanded((prev) => {
+  // Groups open by default and finished iterations fold by default, so a toggle records an
+  // explicit choice in whichever set overrides the row's current state.
+  const toggleFold = useCallback(
+    (row: LayoutRow) => {
+      const without = (prev: ReadonlySet<string>) => {
         const next = new Set(prev);
-        if (next.has(id)) next.delete(id);
-        else next.add(id);
+        next.delete(row.id);
         return next;
-      });
+      };
+      const withId = (prev: ReadonlySet<string>) => new Set(prev).add(row.id);
+      setExpanded(row.expanded ? without : withId);
+      setFolded(row.expanded ? withId : without);
     },
     [],
   );
@@ -257,10 +263,11 @@ export function App(props: AppProps) {
     };
     const mode = modeRef.current;
     const expanded = expandedRef.current;
+    const folded = foldedRef.current;
     const rowCursor = rowCursorRef.current;
     const graphCursor = graphCursorRef.current;
     const currentGraph: GraphModel | null = graphs[Math.min(graphCursor, graphs.length - 1)] ?? null;
-    const currentLayout = currentGraph ? layoutGraph(currentGraph, { expanded }) : null;
+    const currentLayout = currentGraph ? layoutGraph(currentGraph, { expanded, folded }) : null;
     if (key.ctrl && key.name === "c") {
       consume();
       const now = Date.now();
@@ -289,6 +296,17 @@ export function App(props: AppProps) {
     if (key.ctrl && key.name === "p") {
       consume();
       setMode(mode === "model" ? "compose" : "model");
+      return;
+    }
+    if (key.ctrl && key.name === "o") {
+      consume();
+      const open = !thinkingOpenRef.current;
+      if (open && !snapshotRef.current.messages.some((message) => message.role === "thinking")) {
+        setNotice("no reasoning recorded yet");
+        return;
+      }
+      setThinkingOpen(open);
+      setNotice(open ? "reasoning shown · Ctrl+O to collapse" : "reasoning collapsed");
       return;
     }
     if(mode === "effort")return; // The slider owns its keys, including Escape.
@@ -378,24 +396,23 @@ export function App(props: AppProps) {
           consume();
           const row = rows[Math.min(rowCursor, rows.length - 1)];
           if (!row) return;
-          if (row.group && !expanded.has(row.id) && key.name !== "return") {
-            toggleExpand(row.id);
-          } else if (row.group && key.name === "right" && expanded.has(row.id)) {
-            setMode("inspect");
-          } else if (row.group && key.name !== "return") {
-            toggleExpand(row.id);
-          } else {
-            setMode("inspect");
-          }
+          // Enter inspects a node; Space and l toggle a group; Right opens a group, then inspects.
+          // A body row without an instance yet has nothing to inspect, so every key toggles it.
+          const inspectable = row.instance !== undefined;
+          if (!inspectable) { if (row.group) toggleFold(row); }
+          else if (key.name === "return" || !row.group) setMode("inspect");
+          else if (key.name === "right" && row.expanded) setMode("inspect");
+          else toggleFold(row);
           return;
         }
         case "left":
         case "h": {
           consume();
           const row = rows[Math.min(rowCursor, rows.length - 1)];
-          if (row?.group && expanded.has(row.id)) toggleExpand(row.id);
-          else if (row?.node.parent) {
-            const parentIdx = rows.findIndex((r) => r.id === row.node.parent);
+          if (!row) return;
+          if (row.group && row.expanded) toggleFold(row);
+          else if (row.parentId) {
+            const parentIdx = rows.findIndex((r) => r.id === row.parentId);
             if (parentIdx >= 0) setRowCursor(parentIdx);
           }
           return;
@@ -412,7 +429,14 @@ export function App(props: AppProps) {
           return;
         case "e":
           consume();
-          setExpanded(new Set(currentGraph.order.filter((id) => currentGraph.nodes[id]!.type === "foreach" || currentGraph.nodes[id]!.type === "repeat")));
+          setExpanded(new Set(foldableIds(currentGraph)));
+          setFolded(new Set());
+          return;
+        case "c":
+          consume();
+          setExpanded(new Set());
+          setFolded(new Set(foldableIds(currentGraph)));
+          setRowCursor((r) => Math.min(r, rows.length - 1));
           return;
       }
       return;
@@ -454,9 +478,11 @@ export function App(props: AppProps) {
             width={width}
             minHeight={viewportHeight}
             expanded={expanded}
+            folded={folded}
             focusedGraph={focusedGraph?.id ?? null}
             selectedRow={Math.min(rowCursor, (focusedLayout?.rows.length ?? 1) - 1)}
             streaming={snapshot.busy}
+            showThinking={thinkingOpen}
           />
         )}
       </scrollbox>
@@ -486,7 +512,7 @@ export function App(props: AppProps) {
           }}
         />
       ) : null}
-      {mode === "inspect" && focusedGraph && selectedRow ? <Inspector graph={focusedGraph} node={selectedRow.node} width={width} height={height} now={Date.now()} /> : null}
+      {mode === "inspect" && focusedGraph && selectedRow ? <Inspector graph={focusedGraph} node={selectedRow.instance ?? selectedRow.node} width={width} height={height} now={Date.now()} /> : null}
     </box>
   );
 }

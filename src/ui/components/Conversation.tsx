@@ -17,7 +17,7 @@ export interface GraphPlacement {
 /** Horizontal padding of the conversation column. */
 export const CONVERSATION_PADDING_X = 3;
 
-export function Message(props: { entry: ChatEntry; width: number; streaming?: boolean }) {
+export function Message(props: { entry: ChatEntry; width: number; streaming?: boolean; showThinking?: boolean }) {
   const { entry } = props;
   if (entry.role === "user") {
     return (
@@ -43,17 +43,25 @@ export function Message(props: { entry: ChatEntry; width: number; streaming?: bo
     );
   }
   if (entry.role === "thinking") {
-    // The planner's reasoning for a round stays collapsed: one dim row whose
-    // title follows the newest paragraph while the reasoning streams in, so
-    // tool-only turns leave a trace without the prose competing with replies.
+    // The planner's reasoning for a round stays collapsed by default: one dim row whose
+    // title follows the newest paragraph while the reasoning streams in, so tool-only turns
+    // leave a trace without the prose competing with replies. Ctrl+O opens every round.
     return (
       <box flexDirection="row" width="100%" marginTop={1}>
         <text fg={palette.greyDim} wrapMode="none">
-          {"▸ "}
+          {props.showThinking ? "▾ " : "▸ "}
         </text>
-        <text fg={palette.textFaint} wrapMode="none" attributes={TextAttributes.ITALIC}>
-          {thinkingTitle(entry.text)}
-        </text>
+        {props.showThinking ? (
+          <box flexGrow={1} minWidth={0} flexDirection="column">
+            <text fg={palette.textFaint} wrapMode="word" attributes={TextAttributes.ITALIC}>
+              {entry.text.trim() || thinkingTitle(entry.text)}
+            </text>
+          </box>
+        ) : (
+          <text fg={palette.textFaint} wrapMode="none" attributes={TextAttributes.ITALIC}>
+            {thinkingTitle(entry.text)}
+          </text>
+        )}
       </box>
     );
   }
@@ -83,21 +91,24 @@ export function Conversation(props: {
   /** Viewport height; short histories are pushed to the bottom so they grow upward. */
   minHeight: number;
   expanded: ReadonlySet<string>;
+  folded?: ReadonlySet<string>;
   focusedGraph: string | null;
   selectedRow: number;
   streaming?: boolean;
+  /** Ctrl+O: show every round's reasoning in full instead of its one-line title. */
+  showThinking?: boolean;
 }) {
   const items: ReactNode[] = [];
   const total = props.placements.length;
   const innerWidth = props.width - CONVERSATION_PADDING_X * 2;
   const renderGraph = (p: GraphPlacement) => (
     <box key={`g:${p.graph.id}`} marginTop={1} width="100%">
-      <GraphView graph={p.graph} width={innerWidth} expanded={props.expanded} selectedRow={props.selectedRow} focused={props.focusedGraph === p.graph.id} index={p.index} total={total} />
+      <GraphView graph={p.graph} width={innerWidth} expanded={props.expanded} folded={props.folded} selectedRow={props.selectedRow} focused={props.focusedGraph === p.graph.id} index={p.index} total={total} />
     </box>
   );
   props.messages.forEach((m, i) => {
     for (const p of props.placements) if (p.anchor === i) items.push(renderGraph(p));
-    items.push(<Message key={`m:${m.id}`} entry={m} width={innerWidth} streaming={props.streaming && i===props.messages.length-1 && m.role==="assistant"}/>);
+    items.push(<Message key={`m:${m.id}`} entry={m} width={innerWidth} showThinking={props.showThinking} streaming={props.streaming && i===props.messages.length-1 && m.role==="assistant"}/>);
   });
   for (const p of props.placements) if (p.anchor >= props.messages.length) items.push(renderGraph(p));
   return (

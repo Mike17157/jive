@@ -1,17 +1,17 @@
 import { Fragment, useEffect, useMemo, useState } from "react";
-import type { GraphModel } from "../graph/model.ts";
+import type { GraphModel, GraphNode } from "../graph/model.ts";
 import { countStatuses, statusTone, type StatusTone } from "../graph/model.ts";
-import { edgeCellState, formatDuration, layoutGraph, nodeDuration, revealActive, revealProgress, statusGlyph, sweepActive, type LaneCell, type LayoutRow } from "../graph/layout.ts";
+import { edgeCellState, formatDuration, groupSummary, layoutGraph, loopGlyph, nodeDuration, revealActive, revealProgress, statusGlyph, sweepActive, type LaneCell, type LayoutRow } from "../graph/layout.ts";
 import { dimHex, mixHex, palette } from "../theme.ts";
 
 const TICK_MS = 80;
 const BUILD_TICK_MS = 240;
 const BUILD_DOTS = ["   ", ".  ", ".. ", "..."];
 
-export function toneColor(tone: StatusTone): string {
+export function toneColor(tone: StatusTone, type?: GraphNode["type"]): string {
   switch (tone) {
     case "done":
-      return palette.green;
+      return type === "jev" ? palette.purple : palette.green;
     case "warn":
       return palette.yellow;
     case "blocked":
@@ -28,6 +28,11 @@ export function toneColor(tone: StatusTone): string {
 function cellColor(graph: GraphModel, cell: LaneCell, now: number, nodeColor: string): string {
   if (cell.kind === "node") return nodeColor;
   if (cell.kind === "empty") return palette.bg;
+  if (cell.kind === "loop") {
+    // The loop-back lane follows its group: lit while the loop runs, settled when it is over.
+    const group = cell.from ? graph.nodes[cell.from] : undefined;
+    return group ? dimHex(toneColor(statusTone(group.status)), 0.25) : palette.greyDim;
+  }
   const state = edgeCellState(graph, cell, now);
   if (state === "ready") return palette.green;
   if (state === "sweeping") return dimHex(palette.green, 0.65);
@@ -74,6 +79,7 @@ export interface GraphViewProps {
   graph: GraphModel;
   width: number;
   expanded: ReadonlySet<string>;
+  folded?: ReadonlySet<string>;
   /** Row index highlighted when this graph has keyboard focus, else -1. */
   selectedRow: number;
   focused: boolean;
@@ -82,8 +88,8 @@ export interface GraphViewProps {
 }
 
 export function GraphView(props: GraphViewProps) {
-  const { graph, width, expanded } = props;
-  const layout = useMemo(() => layoutGraph(graph, { expanded }), [graph, expanded]);
+  const { graph, width, expanded, folded } = props;
+  const layout = useMemo(() => layoutGraph(graph, { expanded, folded }), [graph, expanded, folded]);
   const counts = countStatuses(graph);
   const [now, setNow] = useState(() => Date.now());
   const [tick, setTick] = useState(0);
@@ -153,16 +159,11 @@ export function GraphView(props: GraphViewProps) {
       ) : null}
       {layout.rows.map((row, i) => (
         <Fragment key={row.id}>
-          {i > 0 && graph.edges.some(edge => edge.from === layout.rows[i-1]!.id && edge.to === row.id) ? (
+          {i > 0 && row.node.needs.includes(layout.rows[i-1]!.id) ? (
             <text wrapMode="none">
-              {row.cells.map((cell, column) => {
-                const previous = layout.rows[i-1]!;
-                const connector: LaneCell = column === previous.col
-                  ? {kind:"edge",ch:"│",hright:false,from:previous.id,to:row.id,dist:0.5}
-                  : cell.kind === "pass" ? {...cell,ch:"│",hright:false,dist:Math.max(0.5,cell.dist-0.5)}
-                  : {kind:"empty",ch:" ",hright:false,dist:0};
-                return <span key={column} fg={cellColor(graph,connector,now,palette.text)}>{connector.ch+" "}</span>;
-              })}
+              {row.above.map((cell, column) => (
+                <span key={column} fg={cellColor(graph,cell,now,palette.text)}>{cell.ch+" "}</span>
+              ))}
             </text>
           ) : null}
           <GraphRow graph={graph} row={row} now={now} tick={tick} selected={props.focused && props.selectedRow === i} narrow={narrow} labelBudget={labelBudget} />
@@ -176,21 +177,24 @@ export function GraphView(props: GraphViewProps) {
 function GraphRow(props: { graph: GraphModel; row: LayoutRow; now: number; tick: number; selected: boolean; narrow: boolean; labelBudget: number }) {
   const { graph, row, now, tick } = props;
   const node = row.node;
+  const bg = props.selected ? palette.surfaceRaised : undefined;
+  const indent = "  ".repeat(row.depth);
+  const caret = row.group ? (row.expanded ? "▾ " : "▸ ") : "";
+  const duration = formatDuration(nodeDuration(node, now));
+  // A body row with no instance yet is a ghost: the loop's plan, not a node that exists.
+  const ghost = !row.instance;
   const tone = statusTone(node.status);
-  const color = toneColor(tone);
+  const color = ghost ? palette.textFaint : toneColor(tone, node.type);
   const reveal = revealProgress(node, now);
   // A previewed definition fades in: dim text and a faint leading dot until fully revealed.
   const revealing = reveal < 1;
-  const glyph = revealing ? "·" : statusGlyph(node.status, tick);
-  const labelColor = tone === "blocked" ? palette.grey : tone === "building" ? palette.textDim : palette.text;
+  const glyph = ghost ? "◌" : revealing ? "·" : statusGlyph(node.status, tick);
+  const labelColor = ghost ? palette.textDim : tone === "blocked" ? palette.grey : tone === "building" ? palette.textDim : palette.text;
   const fadedLabel = revealing ? mixHex(palette.bg, labelColor, 0.35 + 0.65 * reveal) : labelColor;
-  const duration = formatDuration(nodeDuration(node, now));
-  const indent = "  ".repeat(row.depth);
-  const caret = row.group ? (row.expanded ? "▾ " : "▸ ") : "";
-  const groupInfo = row.group && row.childCount > 0 ? ` (${row.childCount})` : "";
-  const label = truncate(node.label, props.labelBudget - indent.length - caret.length);
-  const bg = props.selected ? palette.surfaceRaised : undefined;
-  const statusText = node.status === "building" ? "drafted" : node.status;
+  const mark = row.group ? loopGlyph(node.type) + " " : "";
+  const label = truncate(node.label, props.labelBudget - indent.length - caret.length - mark.length);
+  const typeText = row.group ? groupSummary(row) : node.type;
+  const statusText = ghost ? "" : node.status === "building" ? "drafted" : node.status;
   return (
     <text wrapMode="none" bg={bg}>
       {row.cells.map((cell, i) => (
@@ -200,10 +204,10 @@ function GraphRow(props: { graph: GraphModel; row: LayoutRow; now: number; tick:
       ))}
       <span fg={palette.textFaint}>{indent}</span>
       {caret ? <span fg={palette.accent}>{caret}</span> : null}
+      {mark ? <span fg={ghost ? palette.textFaint : palette.accent}>{mark}</span> : null}
       <span fg={fadedLabel}>{label}</span>
-      {groupInfo ? <span fg={palette.textDim}>{groupInfo}</span> : null}
-      {!props.narrow ? <span fg={palette.textFaint}>  {node.type}</span> : null}
-      <span fg={revealing ? mixHex(palette.bg, color, 0.35 + 0.65 * reveal) : color}>  {statusText}</span>
+      {!props.narrow ? <span fg={palette.textFaint}>  {typeText}</span> : null}
+      {statusText ? <span fg={revealing ? mixHex(palette.bg, color, 0.35 + 0.65 * reveal) : color}>  {statusText}</span> : null}
       {duration && !props.narrow ? <span fg={palette.textFaint}> {duration}</span> : null}
       {node.artifact ? <span fg={palette.textFaint}> ⎘</span> : null}
       {node.error && !props.narrow ? <span fg={dimHex(palette.yellow, 0.3)}>  {truncate(node.error.split("\n")[0] ?? "", 30)}</span> : null}

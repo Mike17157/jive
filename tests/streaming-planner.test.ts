@@ -14,7 +14,7 @@ afterEach(async () => {
 });
 const encode = (data: unknown) => new TextEncoder().encode(`data: ${typeof data==="string"?data:JSON.stringify(data)}\n\n`);
 
-async function setup(mode:"success"|"truncated"|"renamed") {
+async function setup(mode:"success"|"truncated"|"renamed"|"broken"|"stray") {
   const cwd = await mkdtemp(join(tmpdir(),"jev-stream-planner-")); dirs.push(cwd);
   let finishWriter!: () => void;
   let writerFinished = false, earlyFinished = false, executions = 0, fetches = 0;
@@ -22,7 +22,9 @@ async function setup(mode:"success"|"truncated"|"renamed") {
   const first = JSON.stringify({type:"bash",script:"echo once >> count; printf first"});
   const second = JSON.stringify({type:"bash",needs:["first"],script:"printf second"});
   const prefix = `{"eager":true,"version":1,"label":"While writing","context":{},"templates":{},"limits":{},"returns":["first","second"],"nodes":{"first":${first}`;
-  const suffix = `,"second":${second}}}`;
+  const suffix = mode==="broken" ? `,"second":${second}},"output":null}`
+    : mode==="stray" ? `},"second":${second}}`
+    : `,"second":${second}}}`;
   globalThis.fetch = (async (_input:unknown,init?:RequestInit) => {
     bodies.push(JSON.parse(String(init?.body)));
     if (++fetches > 1) return new Response(new Uint8Array([
@@ -94,4 +96,33 @@ test("changing a committed tool name cancels and drains early work before any la
   expect(agent.getSnapshot().error).toContain("committed execute_graph name");
   expect(await readFile(join(cwd,"count"),"utf8")).toBe("once\n");
   expect((agent.getSnapshot().events.find(event=>event.type==="graph.finished")?.data.report as any).status).toBe("cancelled");
+});
+
+test("arguments that stop parsing after a commitment end the call, not the turn", async () => {
+  const {agent,cwd,executions,bodies}=await setup("broken");
+  expect(executions).toBe(1);
+  // The planner got another round instead of the user having to ask it to continue.
+  expect(bodies).toHaveLength(2);
+  expect(await readFile(join(cwd,"count"),"utf8")).toBe("once\n");
+  const result=bodies[1].messages.filter((message:any)=>message.role==="tool");
+  expect(result).toHaveLength(1);
+  const content=JSON.parse(result[0].content);
+  expect(content.error).toContain("header is frozen");
+  expect(content.error).toContain("were not replayed");
+  expect(content.status).toBe("cancelled");
+  expect(content.requested.first.status).toBe("done");
+  expect(agent.getSnapshot().error).toContain("header is frozen");
+  const building=agent.getSnapshot().events.find(event=>event.type==="graph.building.finished");
+  expect(building?.data.status).toBe("failed");
+});
+
+test("a node written past a closed nodes map is committed instead of ending the call", async () => {
+  const {agent,cwd,executions,bodies}=await setup("stray");
+  expect(agent.getSnapshot().error).toBeUndefined();
+  expect(executions).toBe(1);
+  expect(await readFile(join(cwd,"count"),"utf8")).toBe("once\n");
+  const content=JSON.parse(bodies[1].messages.find((message:any)=>message.role==="tool").content);
+  expect(content.status).toBe("done");
+  expect(content.requested.second.output.stdout).toBe("second");
+  expect(content.repairs).toEqual(["/second: moved into /nodes; the nodes map was closed before this definition. Send the corrected shape next time."]);
 });

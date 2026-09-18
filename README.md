@@ -85,8 +85,10 @@ opens model selection, and `/quit` exits. Ctrl+C interrupts active work.
 
 The planner's reasoning for each round is kept in the transcript as a dim,
 italic entry beside a grey rule, so rounds that only build and run a graph still
-leave a trace instead of a gap between replies. Reasoning is recorded with the
-round, so reopening a session restores the same rows.
+leave a trace instead of a gap between replies. Ctrl+O opens every round's
+reasoning in full and closes them again; the collapsed row shows `▸` and the
+open one `▾`. Reasoning is recorded with the round, so reopening a session
+restores the same rows.
 
 Agent replies render Markdown headings, emphasis, lists, quotes, links, tables,
 and inset code blocks as selectable terminal text, in warm white and grey only —
@@ -109,9 +111,18 @@ rejected rather than silently substituted. `auto` preserves the provider's
 default. Effort settings persist with the session. Model metadata is refreshed
 when needed for this control, following [OpenRouter's reasoning metadata](https://openrouter.ai/docs/guides/best-practices/reasoning-tokens).
 
-Ctrl+G focuses the graph: arrows select nodes, Space expands groups, Enter opens
-the evidence inspector, and Esc returns to chat. Ctrl+P opens model selection;
-Page Up/Page Down scroll the conversation. Ctrl+J inserts a composer newline.
+Loops are drawn open and cyclic: a `foreach` or `repeat` row (marked `≡` or
+`↻`) shows its template body once beneath it, bracketed by a loop-back lane
+(`╭ │ ╰`), and every pass re-runs status through those same rows rather than
+appending new ones. Each body row reflects the current pass (the latest
+iteration, or the running item of a foreach); a loop that has not started yet
+shows its body as dimmed placeholders. Inspecting a body row opens the instance
+behind it. Completed Jev nodes are purple, bash nodes green. Ctrl+G focuses the
+graph: arrows select rows, Space toggles a group, Enter opens the evidence
+inspector, `e` and `c` open or fold every group, and Esc returns to chat.
+Ctrl+P opens model selection;
+Ctrl+O shows or hides the planner's reasoning; Page Up/Page Down scroll the
+conversation. Ctrl+J inserts a composer newline.
 
 ## Headless commands
 

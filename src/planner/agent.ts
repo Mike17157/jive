@@ -762,9 +762,15 @@ export class GraphAgentController implements AgentController {
       const outcome = await building.run;
       await round?.flush();
       await this.store.append("graph.finished", { callId, graphId: building.id, ...outcome });
-      if (outcome.report) await this.#appendGraphReport(callId, name, outcome.report, building.parser.repairs);
-      else await this.store.appendMessage(terminalToolResult(callId, name, toolErrorContent({error:outcome.error ?? "Graph execution failed.",graphId:building.id,replayed:false})));
+      // Arguments that stopped parsing after the first commitment end this call, not the turn:
+      // the planner reads what already ran here and resubmits only the remaining work.
+      const streamError = building.error
+        ? `The graph arguments stopped being readable after committed work had already started: ${building.error} — the effects in this report really happened and were not replayed. Resubmit a corrected graph for the remaining work only.`
+        : undefined;
+      if (outcome.report) await this.#appendGraphReport(callId, name, outcome.report, building.parser.repairs, streamError);
+      else await this.store.appendMessage(terminalToolResult(callId, name, toolErrorContent({error:streamError ?? outcome.error ?? "Graph execution failed.",graphId:building.id,replayed:false})));
       await this.store.append("graph.stream.published", { streamId: building.id, callId });
+      if (streamError) this.#update({ error: `Graph generation failed: ${building.error}` });
       return;
     }
 
@@ -826,10 +832,14 @@ export class GraphAgentController implements AgentController {
     await this.#appendGraphReport(callId, name, report, repairs);
   }
 
-  async #appendGraphReport(callId: string, name: string, report: GraphReport, repairs: string[] = []): Promise<void> {
-    const serialized = JSON.stringify(repairs.length
-      ? { ...report, repairs: repairs.map(repair => `${repair}. Send the corrected shape next time.`) }
-      : report);
+  async #appendGraphReport(callId: string, name: string, report: GraphReport, repairs: string[] = [], streamError?: string): Promise<void> {
+    // The report keeps its own status: it describes what really ran, which is what the planner
+    // has to reason about even when the arguments that produced it were malformed.
+    const serialized = JSON.stringify({
+      ...(streamError ? { error: streamError } : {}),
+      ...report,
+      ...(repairs.length ? { repairs: repairs.map(repair => `${repair}. Send the corrected shape next time.`) } : {}),
+    });
     const maxInline = Math.max(
       4_000,
       Math.min(48_000, Math.floor(this.#snapshot.contextLimit * 0.6)),

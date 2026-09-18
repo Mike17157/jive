@@ -58,9 +58,14 @@ test("parallel expansion preserves item order and enforces global leaf concurren
 
 test("bounded repetition preserves each iteration and exits using actual observations", async () => {
   const graph: Graph = {version:1,label:"repeat",nodes:{},groups:{loop:{kind:"repeat",template:"increment",initial:"0",next:{$ref:"/nodes/add/output/stdout"},until:{op:"eq",args:[{$ref:"/nodes/add/output/stdout"},"3"]},maxIterations:4}},templates:{increment:{nodes:{add:{type:"bash",env:{N:{$ref:"/state"}},script:"printf '%s' \"$((N+1))\""}},output:{$ref:"/nodes/add/output/stdout"}}},returns:["loop"]};
-  const result = await executeGraph(graph,{cwd:await cwd()});
+  const events:ExecutionEvent[]=[];
+  const result = await executeGraph(graph,{cwd:await cwd(),onEvent:event=>events.push(event)});
   expect(result.status).toBe("done");
   expect((result.requested.loop?.output as any).iterations.map((i:any)=>i.output)).toEqual(["1","2","3"]);
+  // The UI draws loops from these: the body up front, then one heading per iteration.
+  expect(events.find(e=>e.type==="graph.started")?.data.templates).toEqual(graph.templates);
+  expect(events.find(e=>e.type==="node.created"&&e.nodeId==="loop")?.data).toMatchObject({type:"repeat",template:"increment",maxIterations:4,parent:undefined,iteration:undefined});
+  expect(events.filter(e=>e.type==="node.created"&&e.nodeId?.startsWith("loop[")).map(e=>[e.nodeId,e.data.parent,e.data.iteration])).toEqual([["loop[0]/add","loop",0],["loop[1]/add","loop",1],["loop[2]/add","loop",2]]);
 });
 
 test("uncertainty yields and saves exact Jev evidence while independent work completes", async () => {

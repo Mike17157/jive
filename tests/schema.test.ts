@@ -142,6 +142,33 @@ describe("repairGraph shapes seen in sessions", () => {
     expect(rejection(value)).toContain("/nodes/onError/type must be one of");
   });
 
+  test("demotes node and group definitions written beside the map they belong in", () => {
+    const group = { kind: "foreach", items: [], template: "t", maxItems: 1 };
+    const { value, repairs } = repairGraph({
+      version: 1, label: "x", nodes: { a: bash }, groups: {},
+      templates: { t: { nodes: { b: bash } } }, returns: ["a"],
+      merge: { ...bash, needs: ["a"] }, each: group,
+    });
+    expect(value).toEqual({
+      version: 1, label: "x", nodes: { a: bash, merge: { ...bash, needs: ["a"] } },
+      groups: { each: group }, templates: { t: { nodes: { b: bash } } }, returns: ["a"],
+    });
+    expect(repairs).toEqual([
+      "/merge: moved into /nodes; the nodes map was closed before this definition",
+      "/each: moved into /groups; the groups map was closed before this definition",
+    ]);
+    expect(() => validateGraph(value)).not.toThrow();
+  });
+
+  test("leaves stray root keys alone when they are not definitions or would collide", () => {
+    const collide = repairGraph({ version: 1, label: "x", nodes: { merge: bash }, merge: bash });
+    expect(collide.repairs).toEqual([]);
+    expect(rejection(collide.value)).toContain('has unknown property "merge"');
+    expect(repairGraph({ version: 1, label: "x", nodes: {}, note: "text", count: 2 }).repairs).toEqual([]);
+    // A root field keeps its meaning even when its value happens to look like a node.
+    expect(repairGraph({ version: 1, label: "x", nodes: {}, context: bash }).repairs).toEqual([]);
+  });
+
   test("keeps a real node whose ID collides with a root field", () => {
     const { value, repairs } = repairGraph({ version: 1, label: "x", nodes: { output: bash } });
     expect(value).toEqual({ version: 1, label: "x", nodes: { output: bash } });

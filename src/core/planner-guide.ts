@@ -83,7 +83,7 @@ ${JSON.stringify(CRAWL_EXAMPLE)}
 
 export const GRAPH_GUIDE = `
 Graph execution contract v1:
-- Submit {version:1,label,nodes,groups?,templates?,context?,limits?,returns?,eager?}.
+- Submit {version:1,label,nodes,groups?,templates?,context?,limits?,returns?,eager?}. Every node lives inside the one nodes object and every group inside the one groups object; keep each map open until its last entry, because a definition written beside it is a mistake the runtime has to repair.
 - The UI previews complete node definitions while you write. For work that can start immediately, prefer eager:true: write eager,version,label,context,templates,limits,returns FIRST (all seven fields required; {} and [] are allowed), then nodes/groups in dependency order. Each fully closed node or group becomes an immutable execution commitment BEFORE your whole response finishes. Settings/templates cannot change later, duplicate keys are rejected, and a new node may depend only on already committed root nodes/groups. Each complete group can contain an entire validated bounded template workload. Put return IDs in the header even for nodes you will write later. A malformed or interrupted tail stops remaining work but cannot undo earlier effects. Use the normal mode when forward references or later settings are useful. Separate tool invocations still serialize: only the first graph in a streamed response starts early.
 - Exactly two executable node types: bash and jev. groups declare foreach/repeat structure.
 - A single bash node is valid. Use normal generative reasoning to write patches and new strategies; use Jev for focused semantic judgments over supplied evidence.

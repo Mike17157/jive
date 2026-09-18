@@ -150,6 +150,23 @@ export function formatValidationErrors(root: unknown, errors: AjvError[]): strin
 
 /** Root fields that models sometimes write inside the nodes map after closing it late. */
 const HOISTABLE_ROOT_KEYS = ["returns", "limits", "context", "templates", "groups", "eager", "output"] as const;
+/** Every field the root object defines; anything else there is a mistake, not a setting. */
+const ROOT_FIELDS: ReadonlySet<string> = new Set(Object.keys(graphSchema.properties));
+const ENTRY_ID = /^[a-zA-Z][a-zA-Z0-9_-]*$/;
+
+/**
+ * The mirror of HOISTABLE_ROOT_KEYS: models also close the nodes map early and keep writing
+ * definitions beside it. Returns the map such a stray root entry belongs in, or undefined for
+ * anything that is a real root field or does not look like a node or group definition.
+ */
+export function strayEntryTarget(key: string, value: unknown): "nodes" | "groups" | undefined {
+  if (ROOT_FIELDS.has(key) || !ENTRY_ID.test(key)) return undefined;
+  if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
+  const entry = value as Record<string, unknown>;
+  if (entry.type === "bash" || entry.type === "jev") return "nodes";
+  if (entry.kind === "foreach" || entry.kind === "repeat") return "groups";
+  return undefined;
+}
 /** Keys models use in place of $ref when a provider drops the schema descriptions. */
 const POINTER_ALIASES = new Set(["ref", "path", "pointer", "$path", "$pointer"]);
 /** A pointer into a graph namespace; a file path such as /src/index.ts never matches. */
@@ -202,6 +219,16 @@ export function repairGraph(value: unknown): { value: unknown; repairs: string[]
     graph.nodes = nodes;
   }
   for (const key of ["groups", "templates", "context"]) parseEmbedded(graph, key, `/${key}`);
+  for (const [key, entry] of Object.entries(graph)) {
+    const target = strayEntryTarget(key, entry);
+    if (!target) continue;
+    const existing = graph[target];
+    if (existing !== undefined && (typeof existing !== "object" || existing === null || Array.isArray(existing))) continue;
+    const map: Record<string, unknown> = { ...(existing as Record<string, unknown> | undefined) };
+    if (Object.hasOwn(map, key)) continue;
+    map[key] = entry; graph[target] = map; delete graph[key];
+    repairs.push(`/${key}: moved into /${target}; the ${target} map was closed before this definition`);
+  }
   if (graph.templates && typeof graph.templates === "object" && !Array.isArray(graph.templates)) {
     const templates: Record<string, unknown> = { ...(graph.templates as Record<string, unknown>) };
     for (const [name, body] of Object.entries(templates)) {
@@ -219,7 +246,7 @@ export function repairGraph(value: unknown): { value: unknown; repairs: string[]
 
 export const GRAPH_VALIDATION_PREFIX = "Invalid graph: ";
 /** Shown to the planner alongside every schema rejection so it can resubmit without guessing. */
-export const GRAPH_VALIDATION_HINT = "The graph was rejected before anything ran. Fix the listed paths and resubmit the whole graph. version is the JSON number 1 (not the string \"1\"); nodes, groups, templates and context are JSON objects (not JSON-encoded strings); returns, limits, context and templates are siblings of nodes, not entries inside it; every node has type \"bash\" or \"jev\"; a reference is an object whose only key is $ref, such as {\"$ref\": \"/nodes/ID/output/stdout\"}.";
+export const GRAPH_VALIDATION_HINT = "The graph was rejected before anything ran. Fix the listed paths and resubmit the whole graph. version is the JSON number 1 (not the string \"1\"); nodes, groups, templates and context are JSON objects (not JSON-encoded strings); returns, limits, context and templates are siblings of nodes, not entries inside it, and every node or group definition lives inside the nodes or groups map, not beside it; every node has type \"bash\" or \"jev\"; a reference is an object whose only key is $ref, such as {\"$ref\": \"/nodes/ID/output/stdout\"}.";
 export const MINIMAL_GRAPH_EXAMPLE: Graph = { version: 1, label: "List files", nodes: { list: { type: "bash", script: "ls -la" } }, returns: ["list"] };
 
 /** An interpreter reading its program from a heredoc on stdin, which displaces the node's stdin payload. */
