@@ -75,7 +75,7 @@ further up the tree, and finally the `.env` in the jive checkout — so the keys
 above keep working from any task folder, and a task folder can override them
 with its own `.env`.
 
-The UI has a looping digit-drawn dahlia that blooms on the empty screen, warm-white text, neutral dark
+The UI has a looping lit dahlia drawn in Braille dots that blooms on the empty screen, warm-white text, neutral dark
 surfaces, a bottom composer with screen margins, and a conversation that grows
 upward from the bottom. User messages are green and left aligned with padding. Type `/`
 for a searchable command selector; `/model` opens model selection. Completed nodes

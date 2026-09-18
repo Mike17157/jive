@@ -390,7 +390,7 @@ describe("orb", () => {
     expect(filled(lines[Math.floor(size.height / 3)]!)).toBeGreaterThan(filled(lines[0]!));
     expect(orbToString(renderOrb(13.5, size.width, size.height))).not.toBe(orbToString(frame));
     const colours = new Set(frame.rows.flat().map((r) => r.color));
-    expect(colours.size).toBe(3); // background plus exactly two ink colours
+    expect(colours.size).toBeGreaterThan(4); // background plus shaded brightness levels
   });
 });
 
@@ -536,7 +536,7 @@ describe("App", () => {
       expect(lines[23]).toContain("Claude Sonnet 5");
       expect(f).not.toContain("graph · bash · jev");
       expect(f).not.toContain("Describe a task");
-      expect(f).toMatch(/[0-9·:]{3,}/); // digit-drawn flower
+      expect(f).toMatch(/[\u2801-\u28ff]{3,}/); // Braille-dot flower
       expect(f).not.toMatch(/[▒▓█▌░╿┃]/); // no block glyphs
     } finally {
       setup.renderer.destroy();

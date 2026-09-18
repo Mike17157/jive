@@ -5,9 +5,9 @@ import { orbSize, renderOrb } from "../orb.ts";
 const FRAME_MS = 100;
 
 /**
- * Animated digit-drawn dahlia shown in the empty conversation: it blooms from
- * a bud, holds, dissolves and grows again on a loop. Purely visual: no
- * captions beneath the art. Sizing and drawing live in ../orb.ts.
+ * Animated lit dahlia shown in the empty conversation, drawn in Braille dots:
+ * it blooms from a bud, holds, dissolves and grows again on a loop. Purely
+ * visual: no captions beneath the art. Sizing and drawing live in ../orb.ts.
  */
 export function Orb(props: { width: number; height: number; animate?: boolean }) {
   const { width, height } = orbSize(props.width, props.height);

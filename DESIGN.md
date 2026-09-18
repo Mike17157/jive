@@ -83,7 +83,7 @@ sequential where their data dependencies require it.
 
 - Use Amp's terminal experience as inspiration while establishing an original
   visual identity.
-- The empty conversation has a large animated ASCII form: a two-colour digit-drawn dahlia that blooms from a bud on a loop (no block glyphs, which render as solid tiles in some terminals).
+- The empty conversation has a large animated form: a dahlia that blooms from a bud on a loop, lit from the upper left and drawn in Braille dots (2×4 per cell) shaded from deep blue to warm white. No stem, no block glyphs (they render as solid tiles in some terminals).
 - Colour palette and gradient transitions are important.
 - Keep the input composer anchored at the bottom while conversation content
   grows above it; give user messages a distinct presentation.
