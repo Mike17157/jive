@@ -1,12 +1,13 @@
 import { useEffect, useState } from "react";
 import { orbSize, renderOrb } from "../orb.ts";
 
-/** Frame period: slow enough to read as a breeze, not a flicker. */
-const FRAME_MS = 120;
+/** Frame period: smooth enough for the time-lapse bloom, cheap enough to loop forever. */
+const FRAME_MS = 100;
 
 /**
- * Animated procedural flower shown in the empty conversation. Purely visual:
- * no captions beneath the art. Sizing and drawing live in ../orb.ts.
+ * Animated digit-drawn dahlia shown in the empty conversation: it blooms from
+ * a bud, holds, dissolves and grows again on a loop. Purely visual: no
+ * captions beneath the art. Sizing and drawing live in ../orb.ts.
  */
 export function Orb(props: { width: number; height: number; animate?: boolean }) {
   const { width, height } = orbSize(props.width, props.height);

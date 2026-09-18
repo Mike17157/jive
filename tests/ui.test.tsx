@@ -380,17 +380,17 @@ describe("parseComposerInput", () => {
 });
 
 describe("orb", () => {
-  test("renders a round shape that fits the available space and animates", () => {
+  test("renders a flower that fits the available space and animates", () => {
     const size = orbSize(80, 20);
     expect(size.width).toBe(size.height * 2 + 1);
-    const frame = renderOrb(0, size.width, size.height);
+    const frame = renderOrb(12, size.width, size.height);
     const lines = orbToString(frame).split("\n");
     expect(lines).toHaveLength(size.height);
     const filled = (line: string) => line.replace(/ /g, "").length;
-    expect(filled(lines[Math.floor(size.height / 2)]!)).toBeGreaterThan(filled(lines[0]!));
-    expect(orbToString(renderOrb(1.5, size.width, size.height))).not.toBe(orbToString(frame));
+    expect(filled(lines[Math.floor(size.height / 3)]!)).toBeGreaterThan(filled(lines[0]!));
+    expect(orbToString(renderOrb(13.5, size.width, size.height))).not.toBe(orbToString(frame));
     const colours = new Set(frame.rows.flat().map((r) => r.color));
-    expect(colours.size).toBeGreaterThan(3);
+    expect(colours.size).toBe(3); // background plus exactly two ink colours
   });
 });
 
@@ -536,7 +536,8 @@ describe("App", () => {
       expect(lines[23]).toContain("Claude Sonnet 5");
       expect(f).not.toContain("graph · bash · jev");
       expect(f).not.toContain("Describe a task");
-      expect(f).toMatch(/[▒▓█▌░]{2,}/); // textured flower
+      expect(f).toMatch(/[0-9·:]{3,}/); // digit-drawn flower
+      expect(f).not.toMatch(/[▒▓█▌░╿┃]/); // no block glyphs
     } finally {
       setup.renderer.destroy();
     }

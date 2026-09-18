@@ -1,17 +1,18 @@
 /**
- * Procedural ASCII flower for the empty conversation.
+ * Procedural digit-drawn dahlia for the empty conversation.
  *
- * A layered, irregular petal silhouette (two rings of spiky lobes with fixed
- * per-lobe lengths and widths) filled with terminal-native texture patches:
- * vertical stripes, stippled grids and dense block cores, with a sparse
- * speckled rim. The whole plant leans slowly in a gentle wind and breathes,
- * and a slender stem with a small leaf grows from the base when there is room.
+ * Inspired by ASCII time-lapse footage: a tight bud on a thick stem unfolds
+ * ring by ring into a full dahlia, holds, dissolves into scattered glyphs and
+ * grows again, on a fixed loop. Every cell is a plain digit or punctuation
+ * mark (no block-drawing characters, which render as solid tiles in many
+ * terminals), so shading comes from glyph density and exactly two foreground
+ * colours: a blue body and warm-white highlights.
  *
  * Pure: given a time and a size it returns rows of colour runs, so it is
  * deterministic, unit-testable and renderer-independent. The historical
  * `renderOrb` / `orbSize` / `orbToString` names are kept as the public API.
  */
-import { gradientAt, palette } from "./theme.ts";
+import { palette } from "./theme.ts";
 
 export interface OrbRun {
   text: string;
@@ -27,6 +28,65 @@ export interface OrbFrame {
 export type FlowerFrame = OrbFrame;
 export type FlowerRun = OrbRun;
 
+/** The two colours the flower is drawn with. */
+export const flowerColors = { body: palette.accent, light: palette.text } as const;
+
+// ---------------------------------------------------------------------------
+// Timing
+
+/** Seconds per loop: bud, bloom, hold, dissolve, dark, grow back in. */
+export const LOOP_SECONDS = 18;
+
+const PHASES = {
+  bud: [0, 1.6],
+  bloom: [1.6, 10],
+  hold: [10, 14.4],
+  dissolve: [14.4, 16.4],
+  dark: [16.4, 17],
+  growIn: [17, 18],
+} as const;
+
+function clamp01(v: number): number {
+  return v < 0 ? 0 : v > 1 ? 1 : v;
+}
+
+function smooth(v: number): number {
+  const k = clamp01(v);
+  return k * k * (3 - 2 * k);
+}
+
+function lerp(a: number, b: number, k: number): number {
+  return a + (b - a) * k;
+}
+
+function span(t: number, [a, b]: readonly [number, number]): number {
+  return clamp01((t - a) / (b - a));
+}
+
+export interface Phase {
+  /** 0 = closed bud, 1 = fully open. */
+  bloom: number;
+  /** 0 = nothing drawn, 1 = every cell drawn. */
+  presence: number;
+}
+
+/** Bloom and presence for a time in seconds; periodic in LOOP_SECONDS. */
+export function phaseAt(t: number): Phase {
+  const u = ((t % LOOP_SECONDS) + LOOP_SECONDS) % LOOP_SECONDS;
+  const bloom = u >= PHASES.dark[0] ? 0 : smooth(span(u, PHASES.bloom));
+  let presence = 1;
+  if (u >= PHASES.growIn[0]) presence = span(u, PHASES.growIn);
+  else if (u >= PHASES.dark[0]) presence = 0;
+  else if (u >= PHASES.dissolve[0]) presence = 1 - span(u, PHASES.dissolve);
+  return { bloom, presence };
+}
+
+/** Wind lean in [-1,1]; slow, gust-like and periodic in the loop. */
+export function windLean(t: number): number {
+  const w = (2 * Math.PI) / LOOP_SECONDS;
+  return 0.7 * Math.sin(t * w + 0.4) + 0.3 * Math.sin(t * w * 3 + 1.7);
+}
+
 // ---------------------------------------------------------------------------
 // Deterministic helpers
 
@@ -36,45 +96,70 @@ function hash(x: number, y: number, seed = 0): number {
   return s - Math.floor(s);
 }
 
-/** Smooth 1-D periodic wobble built from a few incommensurate sines, in [-1,1]. */
-function wobble(t: number, phase: number): number {
-  return 0.62 * Math.sin(t * 0.42 + phase) + 0.28 * Math.sin(t * 0.97 + phase * 2.1) + 0.1 * Math.sin(t * 1.9 + phase * 0.7);
-}
+// ---------------------------------------------------------------------------
+// Geometry
 
-/** Irregular petal ring: `count` spiky lobes with fixed lengths and widths. */
+/**
+ * Petal rings, innermost first. Lengths are fractions of the head radius; the
+ * outer ring opens first and the centre last, like a dahlia time-lapse.
+ */
 interface Ring {
   count: number;
-  base: number;
-  lengths: number[];
-  widths: number[];
-  rotation: number;
+  length: number;
+  offset: number;
+  tone: number;
+  start: number;
 }
 
-const OUTER: Ring = { count: 9, base: 0.5, lengths: [1, 0.72, 0.94, 0.6, 1, 0.66, 0.88, 0.56, 0.8], widths: [2.4, 1.6, 3.2, 1.4, 2.8, 1.8, 3.6, 1.5, 2.2], rotation: 0.35 };
-const INNER: Ring = { count: 6, base: 0.6, lengths: [0.92, 0.66, 0.98, 0.62, 0.8, 0.9], widths: [1.6, 1.2, 2.4, 1.3, 2, 1.5], rotation: 1.15 };
+const RINGS: readonly Ring[] = [
+  { count: 5, length: 0.36, offset: 0.2, tone: 0.0, start: 0.62 },
+  { count: 8, length: 0.55, offset: 1.1, tone: 0.02, start: 0.46 },
+  { count: 11, length: 0.72, offset: 0.5, tone: 0.04, start: 0.3 },
+  { count: 13, length: 0.87, offset: 1.6, tone: 0.06, start: 0.15 },
+  { count: 16, length: 1.0, offset: 0.9, tone: 0.08, start: 0 },
+];
+const OPEN_SPAN = 0.4;
+const PETAL_BASE = 0.08;
 
-function ringRadius(ring: Ring, theta: number): number {
-  const a = theta - ring.rotation;
-  const k = ring.count;
-  const lobe = Math.floor(((a / (2 * Math.PI)) * k + 0.5 + k * 4) % k);
-  const len = ring.lengths[lobe]!;
-  const width = ring.widths[lobe]!;
-  const spike = Math.pow(Math.abs(Math.cos((k * a) / 2)), width);
-  return ring.base + (1 - ring.base) * len * spike;
+/** Downward petals read longer than upward ones: a three-quarter view. */
+function stretch(theta: number): number {
+  return 1 + 0.26 * Math.sin(theta) - 0.06 * Math.cos(theta * 2);
+}
+const DOWN_EXTENT = 1.26;
+const UP_EXTENT = 0.8;
+
+export function ringOpen(ring: Ring, bloom: number): number {
+  return smooth((bloom - ring.start) / OPEN_SPAN);
 }
 
-/** Silhouette radius (0..1) at polar angle theta for time t; layered rings and a little jaggedness. */
-export function petalRadius(theta: number, t: number): number {
-  const outer = ringRadius(OUTER, theta + 0.05 * wobble(t, 0.3));
-  const inner = ringRadius(INNER, theta - 0.04 * wobble(t, 2.1)) * 0.86;
-  const jag = 0.035 * Math.sin(theta * 23 + 1.3) + 0.025 * Math.sin(theta * 41 + 0.4);
-  const breath = 1 + 0.025 * Math.sin(t * 0.31);
-  return Math.max(outer, inner) * breath + jag;
+/** Petal extent (0..1 of the head radius) at polar angle theta for a bloom state. */
+export function petalRadius(theta: number, bloom: number): number {
+  let best = coreRadius(bloom);
+  for (const ring of RINGS) {
+    const open = ringOpen(ring, bloom);
+    const len = ring.length * lerp(0.44, 1, open);
+    const n = ring.count;
+    const a = local(theta, ring, open);
+    const hw = halfWidth(n, 0.5);
+    if (Math.abs(a) < hw) best = Math.max(best, len);
+  }
+  return best * stretch(theta);
 }
 
-/** Wind lean in [-1,1]: slow gusts, no fast oscillation. */
-export function windLean(t: number): number {
-  return 0.75 * Math.sin(t * 0.33) + 0.25 * Math.sin(t * 0.81 + 1.7);
+function coreRadius(bloom: number): number {
+  return lerp(0.5, 0.27, bloom);
+}
+
+function local(theta: number, ring: Ring, open: number): number {
+  const twist = 0.22 * (1 - open);
+  const period = (2 * Math.PI) / ring.count;
+  const a = theta - ring.offset - twist;
+  return ((((a + period / 2) % period) + period) % period) - period / 2;
+}
+
+function halfWidth(count: number, u: number): number {
+  const shape = Math.sqrt(Math.max(0, 1 - Math.pow(u, 2.4)));
+  return ((Math.PI / count) * 0.76) * shape;
 }
 
 // ---------------------------------------------------------------------------
@@ -82,7 +167,7 @@ export function windLean(t: number): number {
 
 /** Pick a flower size that fits, keeping a 2:1 character aspect for the head. */
 export function orbSize(availableWidth: number, availableHeight: number): { width: number; height: number } {
-  const height = Math.max(5, Math.min(18, availableHeight - 2, Math.floor((availableWidth - 4) / 2)));
+  const height = Math.max(5, Math.min(24, availableHeight - 2, Math.floor((availableWidth - 4) / 2)));
   const width = height * 2 + 1;
   return { width, height };
 }
@@ -92,7 +177,7 @@ export const flowerSize = orbSize;
 /** Rows given to the flower head; the remainder is stem. */
 export function headRows(height: number): number {
   if (height < 9) return height;
-  return Math.max(7, Math.round(height * 0.72));
+  return Math.max(7, Math.round(height * 0.7));
 }
 
 // ---------------------------------------------------------------------------
@@ -103,47 +188,66 @@ interface Cell {
   color: string;
 }
 
-const STRIPES = ["▌", "│"];
-const GRID = ["░", "▒"];
-const CORE = ["▓", "█"];
-const RIM = ["×", "·", "·", ":"];
+/** Glyph density ramps, sparse to dense, for each colour. */
+const BODY_RAMP = [" ", "·", ":", "1", "7", "3", "4", "5", "9", "0", "8"];
+const LIGHT_RAMP = ["7", "3", "5", "9", "0", "8"];
+const LIGHT_FROM = 0.78;
 
-function textureCell(nx: number, ny: number, d: number, x: number, y: number, layerInner: boolean): Cell {
-  // Coarse patches decide the texture family so regions read as stripes, grids and blocks.
-  const patch = hash(Math.floor(x / 5), Math.floor(y / 3), 7);
-  const fine = hash(x, y, 3);
-  let ch: string;
-  let tone: number;
-  if (d > 0.9) {
-    ch = RIM[Math.floor(fine * RIM.length)]!;
-    tone = 0.12;
-  } else if (d < 0.26) {
-    ch = fine > 0.3 ? CORE[1]! : CORE[0]!;
-    tone = 0.92;
-  } else if (patch < 0.42 || layerInner) {
-    ch = STRIPES[x & 1]!;
-    tone = 0.62 - d * 0.35;
-  } else if (patch < 0.8) {
-    ch = GRID[(x + y) & 1]!;
-    tone = 0.5 - d * 0.3;
-  } else {
-    ch = fine > 0.5 ? CORE[0]! : GRID[1]!;
-    tone = 0.75 - d * 0.35;
+function glyph(brightness: number): Cell {
+  const b = clamp01(brightness);
+  if (b >= LIGHT_FROM) {
+    const i = Math.min(LIGHT_RAMP.length - 1, Math.floor(((b - LIGHT_FROM) / (1 - LIGHT_FROM)) * LIGHT_RAMP.length));
+    return { ch: LIGHT_RAMP[i]!, color: flowerColors.light };
   }
-  // Light from above-left, gently.
-  tone += -0.08 * ny - 0.04 * nx;
-  return { ch, color: gradientAt(Math.max(0.05, Math.min(0.95, tone))) };
+  const i = Math.min(BODY_RAMP.length - 1, Math.floor((b / LIGHT_FROM) * BODY_RAMP.length));
+  return { ch: BODY_RAMP[i]!, color: flowerColors.body };
+}
+
+/** Brightness of the head at normalised polar coords, or -1 when outside. */
+function headBrightness(r: number, theta: number, ny: number, bloom: number, x: number, y: number): number {
+  const rr = r / stretch(theta);
+  const light = -0.1 * ny;
+  const grain = 0.12 * (hash(x, y, 5) - 0.5);
+  // Innermost ring on top: the first ring containing the cell wins. A petal
+  // seen through the gap between two petals of a ring above it is in shadow.
+  let shadow = 0;
+  for (const ring of RINGS) {
+    const open = ringOpen(ring, bloom);
+    const len = ring.length * lerp(0.44, 1, open);
+    if (rr < PETAL_BASE || rr > len) continue;
+    const u = (rr - PETAL_BASE) / (len - PETAL_BASE);
+    const a = local(theta, ring, open);
+    const hw = halfWidth(ring.count, u);
+    if (Math.abs(a) >= hw) {
+      if (u < 0.85) shadow = 0.4;
+      continue;
+    }
+    const ridge = 1 - Math.pow(Math.abs(a) / hw, 1.4);
+    const b = ring.tone + 0.72 * ridge * lerp(0.6, 1, open) + 0.16 * u * open + light;
+    return b * (1 - shadow) + grain;
+  }
+  const core = coreRadius(bloom);
+  if (rr <= core) {
+    // Tight centre: a wrapped spiral when closed, a dense dark disc when open.
+    const spiral = 0.5 + 0.5 * Math.sin(theta * 3 + rr * 14 - bloom * 2);
+    const k = rr / core;
+    return 0.14 + 0.3 * spiral * (1 - 0.5 * bloom) + 0.2 * (1 - k) * bloom + light + grain;
+  }
+  return -1;
 }
 
 export function renderOrb(t: number, width: number, height: number): OrbFrame {
+  const { bloom, presence } = phaseAt(t);
   const head = headRows(height);
   const stemRows = height - head;
   const cx = (width - 1) / 2;
-  const cy = (head - 1) / 2;
-  const ry = Math.max(1, cy);
-  const rx = Math.max(1, Math.min(cx, ry * 1.85));
+  const ryUnit = (head - 1) / (DOWN_EXTENT + UP_EXTENT);
+  const cy = UP_EXTENT * ryUnit;
+  const rxUnit = Math.min(cx, ryUnit * 2.5);
+  const scale = lerp(0.8, 1, bloom);
+  const squeeze = lerp(0.72, 1, bloom);
   const lean = windLean(t);
-  const maxShear = Math.max(1, rx * 0.24);
+  const maxShear = Math.max(1, rxUnit * 0.18);
   // Lean grows with distance from the base of the stem (bottom row).
   const shearAt = (y: number) => {
     const h = (height - 1 - y) / Math.max(1, height - 1);
@@ -157,44 +261,43 @@ export function renderOrb(t: number, width: number, height: number): OrbFrame {
     grid.push(row);
   }
 
-  // Flower head.
-  for (let y = 0; y < head; y++) {
-    const shear = shearAt(y);
-    for (let x = 0; x < width; x++) {
-      const nx = (x - cx - shear) / rx;
-      const ny = (y - cy) / ry;
-      const r = Math.hypot(nx, ny);
-      if (r > 1.05) continue;
-      const theta = Math.atan2(ny, nx);
-      const R = petalRadius(theta, t);
-      if (r > R) continue;
-      const d = r / R;
-      const innerOnly = ringRadius(OUTER, theta + 0.05 * wobble(t, 0.3)) < r && r < R;
-      grid[y]![x] = textureCell(nx, ny, d, x, y, innerOnly);
+  const visible = (x: number, y: number) => presence >= 1 || hash(x, y, 11) < presence;
+  const fade = presence >= 1 ? 0 : (1 - presence) * 0.25;
+  // A few cells at a time catch the light, like digits flickering in footage.
+  const tick = 13 + Math.floor((((t % LOOP_SECONDS) + LOOP_SECONDS) % LOOP_SECONDS) * 2);
+  const sparkle = (x: number, y: number) => (hash(x, y, tick) < 0.04 ? 0.3 : 0);
+
+  // Stem: a column of digits from the head centre to the bottom, drawn first so
+  // petals overlap it.
+  if (stemRows > 0) {
+    const stemWidth = width >= 31 ? 3 : width >= 19 ? 2 : 1;
+    for (let y = Math.floor(cy); y < height; y++) {
+      const sx = Math.round(cx + shearAt(y) - (stemWidth - 1) / 2);
+      for (let i = 0; i < stemWidth; i++) {
+        const x = sx + i;
+        if (x < 0 || x >= width || !visible(x, y)) continue;
+        const across = stemWidth === 1 ? 0.5 : i / (stemWidth - 1);
+        const b = 0.56 - 0.3 * across + 0.12 * (hash(x, y, 9) - 0.5) - fade;
+        grid[y]![x] = glyph(b);
+      }
     }
   }
 
-  // Stem and leaf, starting right under the lowest petal near the axis.
-  if (stemRows > 0) {
-    let stemStart = head;
-    for (let y = head - 1; y >= Math.floor(cy); y--) {
-      const sx = Math.round(cx + shearAt(y));
-      const filled = [sx - 1, sx, sx + 1].some((x) => x >= 0 && x < width && grid[y]![x]!.ch !== " ");
-      if (filled) {
-        stemStart = y + 1;
-        break;
-      }
-      stemStart = y;
-    }
-    const leafRow = stemStart + Math.floor((height - stemStart) / 2);
-    for (let y = stemStart; y < height; y++) {
-      const sx = Math.round(cx + shearAt(y));
-      if (sx >= 0 && sx < width) grid[y]![sx] = { ch: y === stemStart ? "╿" : "┃", color: gradientAt(0.22) };
-      if (height - stemStart >= 3 && (y === leafRow || y === leafRow - 1)) {
-        const off = y === leafRow ? 1 : 2;
-        const lx = sx + off;
-        if (lx < width) grid[y]![lx] = { ch: "╱", color: gradientAt(0.38) };
-      }
+  // Flower head.
+  const lo = Math.max(0, Math.floor(cy - UP_EXTENT * ryUnit * scale) - 1);
+  const hi = Math.min(height - 1, Math.ceil(cy + DOWN_EXTENT * ryUnit * scale) + 1);
+  for (let y = lo; y <= hi; y++) {
+    const shear = shearAt(y);
+    for (let x = 0; x < width; x++) {
+      if (!visible(x, y)) continue;
+      const nx = (x - cx - shear) / (rxUnit * scale * squeeze);
+      const ny = (y - cy) / (ryUnit * scale);
+      const r = Math.hypot(nx, ny);
+      if (r > DOWN_EXTENT + 0.05) continue;
+      const theta = Math.atan2(ny, nx);
+      const b = headBrightness(r, theta, ny, bloom, x, y);
+      if (b < 0) continue;
+      grid[y]![x] = glyph(b - fade + sparkle(x, y));
     }
   }
 
