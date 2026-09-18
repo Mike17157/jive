@@ -2,6 +2,16 @@ import { randomUUID } from "node:crypto";
 import { GRAPH_GUIDE } from "../core/planner-guide.ts";
 import { GRAPH_VALIDATION_HINT, GRAPH_VALIDATION_PREFIX, MINIMAL_GRAPH_EXAMPLE, repairGraph } from "../core/schema.ts";
 import type { ExecuteOptions } from "../core/executor.ts";
+import {
+  applyGraphEdits,
+  GRAPH_ID_PATTERN,
+  GRAPH_MOD_TOOL_NAME,
+  GRAPH_TOOL_NAME,
+  graphModToolParameters,
+  loadSavedGraph,
+  parseGraphModCall,
+  saveGraphForEditing,
+} from "../core/graph-edits.ts";
 import { GraphBuildingRound, type BuildingGraph } from "./graph-building.ts";
 
 import type {
@@ -54,8 +64,9 @@ export interface AgentOptions {
 
 export const PLANNER_SYSTEM_PROMPT = [
   "You are the planning model for a graph-driven terminal agent.",
-  "You have exactly one tool: execute_graph. It is not a command runner; it executes a program you write: parallel bash work, bounded loops over discovered items, and Jev decisions that choose the next work inside the graph.",
+  "You have two tools. execute_graph is not a command runner; it executes a program you write: parallel bash work, bounded loops over discovered items, and Jev decisions that choose the next work inside the graph.",
   "Each call is expensive for the user, so make it do as much of the task as the evidence allows: encode the loop and the per-item judgments in the graph and return only when you need a new strategy, original code, or a user decision. A round that runs a few probe commands so you can decide the obvious next command is a failure of planning.",
+  "Every submitted graph is saved under the graphId in its result, including graphs rejected by validation. execute_graph_mod reruns a saved graph after small edits (a fixed script, a changed limit, a deleted or added node) and executes immediately, so never rewrite a large graph to fix one node: name the base graphId and send only the edits. Reserve execute_graph for a genuinely new program.",
   "You may answer directly when no execution is needed.",
   "Treat graph results as observations, preserve artifact references, and never claim omitted output was complete.",
   "Separate graph invocations are executed serially. A tool result may describe interruption or partial effects; inspect it before deciding whether recovery is safe.",
@@ -67,6 +78,25 @@ const MAX_PLANNER_ROUNDS = 24;
 const EFFORT_METADATA_TIMEOUT_MS = 10_000;
 export const REASONING_EFFORTS = ["none", "minimal", "low", "medium", "high", "xhigh", "max"] as const;
 const REASONING_EFFORT_SET = new Set<string>(REASONING_EFFORTS);
+/** What "auto" sends. Provider defaults tend to be the heaviest thinking level; medium is the intended baseline. */
+export const DEFAULT_REASONING_EFFORT = "medium";
+
+/**
+ * The effort sent when the user has not chosen one: medium, or the supported level nearest to it
+ * (lower on ties). Unknown metadata still sends medium; a model with no effort control sends nothing.
+ */
+export function defaultEffortFor(option: ModelOption | undefined): string | undefined {
+  const supported = option?.reasoningEfforts;
+  if (supported === undefined) return DEFAULT_REASONING_EFFORT;
+  const candidates = supported.filter((level) => REASONING_EFFORT_SET.has(level) && !(level === "none" && option?.reasoningMandatory));
+  if (candidates.length === 0) return undefined;
+  if (candidates.includes(DEFAULT_REASONING_EFFORT)) return DEFAULT_REASONING_EFFORT;
+  const target = REASONING_EFFORTS.indexOf(DEFAULT_REASONING_EFFORT);
+  const rank = (level: string) => REASONING_EFFORTS.indexOf(level as typeof REASONING_EFFORTS[number]);
+  return candidates
+    .slice()
+    .sort((a, b) => (Math.abs(rank(a) - target) - Math.abs(rank(b) - target)) || (rank(a) - rank(b)))[0];
+}
 
 function errorMessage(error: unknown): string {
   if (error instanceof Error) return error.message;
@@ -86,15 +116,36 @@ function normalizeToolSchema(schema: Record<string, unknown>): Record<string, un
     return normalizeToolSchema(schema.function as Record<string, unknown>);
   }
   const isFunctionDefinition = typeof schema.name === "string" && "parameters" in schema;
-  if (isFunctionDefinition && schema.name !== "execute_graph") {
+  if (isFunctionDefinition && schema.name !== GRAPH_TOOL_NAME) {
     throw new Error("The planner tool schema must be named execute_graph.");
   }
   if (isFunctionDefinition) return structuredClone(schema);
   return {
-    name: "execute_graph",
+    name: GRAPH_TOOL_NAME,
     description: "Execute a declarative program of bash and Jev nodes: parallel branches, foreach expansion over discovered items, bounded repeat loops with carried state, and Jev decisions that select the next work. Submit whole task phases, not single commands.",
     parameters: structuredClone(schema),
   };
+}
+
+/** The edit-and-rerun tool is intrinsic to the loop: it reads the run directory the loop writes. */
+function graphModToolSchema(): Record<string, unknown> {
+  return {
+    name: GRAPH_MOD_TOOL_NAME,
+    description: "Rerun a saved graph after small edits, without resending it. Give the base graphId from an earlier result and a list of edits (JSON pointer path plus old/new substring replacement, or a whole new value; null deletes). The edited graph is validated, executed like execute_graph, and saved under a new graphId.",
+    parameters: structuredClone(graphModToolParameters),
+  };
+}
+
+/** A tool-call ID is provider text; only its safe characters name a run directory. */
+function provisionalGraphIdFor(callId: string): string {
+  const safe = callId.replace(/[^a-zA-Z0-9_-]/g, "");
+  const id = `planner-${safe || randomUUID()}`;
+  return GRAPH_ID_PATTERN.test(id) ? id : `planner-${randomUUID()}`;
+}
+
+/** Tells the planner how to fix this graph without resending it. */
+function rerunHint(graphId: string): string {
+  return `Saved as graphId ${graphId}; call ${GRAPH_MOD_TOOL_NAME} with base ${JSON.stringify(graphId)} to rerun it with edits.`;
 }
 
 function parsedGraph(argumentsText: string): { graph: Graph; repairs: string[] } {
@@ -153,7 +204,7 @@ export class GraphAgentController implements AgentController {
   #apiKey?: string;
   #ready: Promise<void>;
   #sideEffects: Promise<unknown> = Promise.resolve();
-  #toolSchema: Record<string, unknown>;
+  #toolSchemas: Record<string, unknown>[];
   #activeSubmission?: Promise<void>;
   #resetPromise?: Promise<void>;
   #resetPending = false;
@@ -163,7 +214,7 @@ export class GraphAgentController implements AgentController {
     this.options = options;
     this.#store = new SessionStore({ cwd: options.cwd, sessionId: options.sessionId });
     this.#apiKey = options.apiKey ?? process.env.OPENROUTER_API_KEY;
-    this.#toolSchema = normalizeToolSchema(options.toolSchema);
+    this.#toolSchemas = [normalizeToolSchema(options.toolSchema), graphModToolSchema()];
     const model = options.model ?? "";
     this.#snapshot = {
       messages: [],
@@ -621,7 +672,7 @@ export class GraphAgentController implements AgentController {
         [{ role: "system", content: `${PLANNER_SYSTEM_PROMPT}\nSession working directory: ${requestStore.cwd}` }],
         {
           contextLimit,
-          fixedTokenCost: estimateTokens(this.#toolSchema),
+          fixedTokenCost: estimateTokens(this.#toolSchemas),
         },
       );
       const prepared = await context.prepare();
@@ -648,8 +699,8 @@ export class GraphAgentController implements AgentController {
           model,
           sessionId: requestStore.sessionId,
           messages: prepared.messages,
-          toolSchema: this.#toolSchema,
-          effort: this.#snapshot.effort,
+          toolSchema: this.#toolSchemas,
+          effort: this.#snapshot.effort ?? defaultEffortFor(this.#snapshot.models.find((option) => option.id === model)),
           signal,
           onReasoning: (delta) => {
             if (this.store !== requestStore) return;
@@ -747,10 +798,14 @@ export class GraphAgentController implements AgentController {
     building?: BuildingGraph,
     round?: GraphBuildingRound,
   ): Promise<void> {
-    if (name !== "execute_graph") {
+    if (name === GRAPH_MOD_TOOL_NAME) {
+      await this.#executeGraphMod(callId, argumentsText, signal);
+      return;
+    }
+    if (name !== GRAPH_TOOL_NAME) {
       const content = JSON.stringify({
         status: "error",
-        error: `Unknown tool ${JSON.stringify(name)}. The only available tool is execute_graph.`,
+        error: `Unknown tool ${JSON.stringify(name)}. The available tools are ${GRAPH_TOOL_NAME} and ${GRAPH_MOD_TOOL_NAME}.`,
       });
       await this.store.appendMessage(terminalToolResult(callId, name, content));
       this.#update({ error: `Planner attempted unavailable tool ${name}.` });
@@ -763,15 +818,20 @@ export class GraphAgentController implements AgentController {
       await round?.flush();
       await this.store.append("graph.finished", { callId, graphId: building.id, ...outcome });
       if (outcome.report) await this.#appendGraphReport(callId, name, outcome.report, building.parser.repairs);
-      else await this.store.appendMessage(terminalToolResult(callId, name, toolErrorContent({error:outcome.error ?? "Graph execution failed.",graphId:building.id,replayed:false})));
+      else {
+        // The executor wrote graph.json when the stream committed, so the failed graph is editable.
+        await this.store.appendMessage(terminalToolResult(callId, name, toolErrorContent({
+          error: outcome.error ?? "Graph execution failed.", graphId: building.id, replayed: false, rerun: rerunHint(building.id),
+        })));
+      }
       await this.store.append("graph.stream.published", { streamId: building.id, callId });
       return;
     }
 
+    const provisionalGraphId = building?.id ?? provisionalGraphIdFor(callId);
     let graph: Graph;
     let repairs: string[];
     try {
-      if (building?.error) throw new Error(building.error);
       ({ graph, repairs } = parsedGraph(argumentsText));
     } catch (error) {
       const message = errorMessage(error);
@@ -779,12 +839,80 @@ export class GraphAgentController implements AgentController {
       this.#update({ error: message });
       return;
     }
+    if (building?.error) {
+      // The streamed arguments parsed but failed the contract. Save them so one edit can fix them.
+      const saved = await this.#saveForEditing(provisionalGraphId, graph);
+      await this.store.appendMessage(terminalToolResult(callId, name, toolErrorContent({
+        error: building.error,
+        ...(saved ? { graphId: provisionalGraphId, rerun: rerunHint(provisionalGraphId) } : {}),
+      })));
+      this.#update({ error: building.error });
+      return;
+    }
+    await this.#runGraph({ callId, name, graph, repairs, signal, provisionalGraphId, building, round });
+  }
 
-    const provisionalGraphId = building?.id ?? `planner-${callId}`;
+  /** execute_graph_mod: load the saved base, apply edits to its decoded values, then run it like any graph. */
+  async #executeGraphMod(callId: string, argumentsText: string, signal: AbortSignal): Promise<void> {
+    const name = GRAPH_MOD_TOOL_NAME;
+    const fail = async (error: string, fields: Record<string, unknown> = {}) => {
+      await this.store.appendMessage(terminalToolResult(callId, name, toolErrorContent({ error, ...fields })));
+      this.#update({ error });
+    };
+    let call: ReturnType<typeof parseGraphModCall>;
+    try {
+      call = parseGraphModCall(argumentsText);
+    } catch (error) {
+      await fail(errorMessage(error));
+      return;
+    }
+    let base: unknown;
+    try {
+      base = await loadSavedGraph(this.options.cwd, call.base);
+    } catch (error) {
+      await fail(errorMessage(error), { base: call.base });
+      return;
+    }
+    let edited: unknown;
+    let applied: string[];
+    try {
+      ({ graph: edited, applied } = applyGraphEdits(base, call.edits));
+    } catch (error) {
+      await fail(errorMessage(error), { base: call.base, hint: "No edit was applied and nothing ran. Fix the failing edit and resend the whole edits list against the same base." });
+      return;
+    }
+    if (call.label && edited && typeof edited === "object" && !Array.isArray(edited)) {
+      (edited as Record<string, unknown>).label = call.label;
+    }
+    const repaired = repairGraph(edited);
+    await this.#runGraph({
+      callId, name, graph: repaired.value as Graph, repairs: repaired.repairs, signal,
+      provisionalGraphId: provisionalGraphIdFor(callId),
+      startedFields: { base: call.base, edits: call.edits },
+      applied,
+    });
+  }
+
+  /** Shared non-streaming execution path: record intent, execute, record the outcome, answer the tool call. */
+  async #runGraph(input: {
+    callId: string;
+    name: string;
+    graph: Graph;
+    repairs: string[];
+    signal: AbortSignal;
+    provisionalGraphId: string;
+    building?: BuildingGraph;
+    round?: GraphBuildingRound;
+    /** Extra fields for the graph.started event, e.g. the base and edits of a rerun. */
+    startedFields?: Record<string, unknown>;
+    applied?: string[];
+  }): Promise<void> {
+    const { callId, name, graph, repairs, signal, provisionalGraphId, building, round } = input;
     await this.store.append("graph.started", {
       callId,
       graphId: provisionalGraphId,
       graph,
+      ...(input.startedFields ?? {}),
     });
     const pendingEvents: Promise<unknown>[] = [];
     let report: GraphReport;
@@ -795,7 +923,7 @@ export class GraphAgentController implements AgentController {
           this.#update({ events: [...this.#snapshot.events, event] });
           pendingEvents.push(this.store.append("execution.event", { callId, event }));
         }
-      }, building ? { graphId: building.id } : undefined);
+      }, building ? { graphId: building.id } : this.options.supportsStreaming ? { graphId: provisionalGraphId } : undefined);
       await Promise.all(pendingEvents);
       await round?.flush();
       await this.store.append("graph.finished", {
@@ -813,23 +941,47 @@ export class GraphAgentController implements AgentController {
         status: aborted ? "interrupted" : "error",
         error: message,
       });
+      // Validation rejects before the executor writes graph.json; save it so the planner can edit instead of resend.
+      const saved = aborted ? false : await this.#saveForEditing(provisionalGraphId, graph);
       await this.store.appendMessage(
         terminalToolResult(callId, name, aborted
           ? JSON.stringify({ status: "interrupted", graphId: provisionalGraphId, error: message, replayed: false })
-          : toolErrorContent({ graphId: provisionalGraphId, error: message, replayed: false })),
+          : toolErrorContent({
+            graphId: provisionalGraphId, error: message, replayed: false,
+            ...(saved ? { rerun: rerunHint(provisionalGraphId) } : {}),
+          })),
       );
       if (aborted) throw error;
       this.#update({ error: `Graph execution failed: ${message}` });
       return;
     }
 
-    await this.#appendGraphReport(callId, name, report, repairs);
+    await this.#appendGraphReport(callId, name, report, repairs, input.applied);
   }
 
-  async #appendGraphReport(callId: string, name: string, report: GraphReport, repairs: string[] = []): Promise<void> {
-    const serialized = JSON.stringify(repairs.length
-      ? { ...report, repairs: repairs.map(repair => `${repair}. Send the corrected shape next time.`) }
-      : report);
+  async #saveForEditing(graphId: string, graph: unknown): Promise<boolean> {
+    try {
+      await saveGraphForEditing(this.options.cwd, graphId, graph);
+      return true;
+    } catch (error) {
+      await this.#notice(`Could not save graph ${graphId} for editing: ${errorMessage(error)}`);
+      return false;
+    }
+  }
+
+  async #appendGraphReport(
+    callId: string,
+    name: string,
+    report: GraphReport,
+    repairs: string[] = [],
+    applied?: string[],
+  ): Promise<void> {
+    const serialized = JSON.stringify({
+      ...report,
+      ...(repairs.length ? { repairs: repairs.map(repair => `${repair}. Send the corrected shape next time.`) } : {}),
+      ...(applied ? { applied } : {}),
+      rerun: rerunHint(report.graphId),
+    });
     const maxInline = Math.max(
       4_000,
       Math.min(48_000, Math.floor(this.#snapshot.contextLimit * 0.6)),

@@ -23,7 +23,7 @@ test("streamed planner graph executes in the real runtime and returns recorded e
     });
     await agent.submit("Inspect the fixture");
     expect(requests).toBe(2);expect(agent.getSnapshot().error).toBeUndefined();
-    expect(sent[0].tools.map((tool:any)=>tool.function.name)).toEqual(["execute_graph"]);
+    expect(sent[0].tools.map((tool:any)=>tool.function.name)).toEqual(["execute_graph","execute_graph_mod"]);
     const tool=sent[1].messages.find((message:any)=>message.role==="tool");
     const report=JSON.parse(tool.content);
     expect(report.requested.copy.output.stdout).toBe("real execution output");

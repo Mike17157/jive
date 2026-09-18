@@ -6,8 +6,9 @@ README.md, the executable examples, and `--schema` for the runnable contract.
 
 ## Objective
 
-Build a standalone CLI agent whose main LLM has exactly one tool,
-`execute_graph`. The LLM describes a conditional program; the runtime executes
+Build a standalone CLI agent whose main LLM has one primary tool,
+`execute_graph`, plus `execute_graph_mod`, which reruns a saved graph after
+small edits. The LLM describes a conditional program; the runtime executes
 bash commands and Jev decisions against newly observed results before returning
 to the LLM. The intended gain is fewer intervening main-LLM turns while retaining
 feedback during execution.
@@ -31,7 +32,11 @@ sequential where their data dependencies require it.
 
 ### Graph interface
 
-- The only LLM-facing tool is `execute_graph`.
+- The LLM-facing tools are `execute_graph` and `execute_graph_mod`. Every
+  submitted graph is saved under `.jev/runs/<graphId>/graph.json`; the mod tool
+  edits a saved graph by JSON pointer (substring replacement inside a string, or
+  a whole value; null deletes) and executes the result at once, so a large graph
+  is fixed without being resent.
 - Input is declarative JSON with explicit references.
 - The two executable node types are `bash` and `jev`.
 - Branching, parallel execution, bounded loops, and dynamic expansion are in
@@ -177,7 +182,8 @@ each turn. Explicitly chosen IDs make experimental comparisons easier than
 silently moving users to a different model. The default is
 `anthropic/claude-sonnet-5`, overridable through the environment, CLI, or UI.
 
-The planner has one tool definition, `execute_graph`, and may also answer the
+The planner has two tool definitions, `execute_graph` and `execute_graph_mod`,
+and may also answer the
 user directly. The runtime owns concurrency within a graph. V1
 serializes separate graph invocations within one session even if
 a model emits multiple tool calls. Validate the complete graph before scheduling

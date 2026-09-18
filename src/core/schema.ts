@@ -219,7 +219,7 @@ export function repairGraph(value: unknown): { value: unknown; repairs: string[]
 
 export const GRAPH_VALIDATION_PREFIX = "Invalid graph: ";
 /** Shown to the planner alongside every schema rejection so it can resubmit without guessing. */
-export const GRAPH_VALIDATION_HINT = "The graph was rejected before anything ran. Fix the listed paths and resubmit the whole graph. version is the JSON number 1 (not the string \"1\"); nodes, groups, templates and context are JSON objects (not JSON-encoded strings); returns, limits, context and templates are siblings of nodes, not entries inside it; every node has type \"bash\" or \"jev\"; a reference is an object whose only key is $ref, such as {\"$ref\": \"/nodes/ID/output/stdout\"}.";
+export const GRAPH_VALIDATION_HINT = "The graph was rejected before anything ran. Fix the listed paths: when the result carries a graphId, call execute_graph_mod with that base and only the edits; otherwise resubmit the whole graph. version is the JSON number 1 (not the string \"1\"); nodes, groups, templates and context are JSON objects (not JSON-encoded strings); returns, limits, context and templates are siblings of nodes, not entries inside it; every node has type \"bash\" or \"jev\"; a reference is an object whose only key is $ref, such as {\"$ref\": \"/nodes/ID/output/stdout\"}.";
 export const MINIMAL_GRAPH_EXAMPLE: Graph = { version: 1, label: "List files", nodes: { list: { type: "bash", script: "ls -la" } }, returns: ["list"] };
 
 /** An interpreter reading its program from a heredoc on stdin, which displaces the node's stdin payload. */

@@ -1,6 +1,32 @@
 import type { PlannerMessage, PlannerToolCall } from "../session/types.ts";
 import { cacheConfigurationForModel } from "./models.ts";
 
+/**
+ * Explicit thinking budgets for Anthropic models, by effort level. OpenRouter turns
+ * reasoning.effort into a percentage of max_tokens for these models, and this client
+ * never sets max_tokens, so even "low" became a five-figure budget that Claude used
+ * freely. A fixed reasoning.max_tokens makes each level mean something.
+ */
+export const ANTHROPIC_REASONING_BUDGETS: Readonly<Record<string, number>> = {
+  minimal: 1024,
+  low: 2048,
+  medium: 6144,
+  high: 12288,
+  xhigh: 24576,
+  max: 32768,
+};
+
+/** The reasoning object for one request, or undefined to leave the provider default. */
+export function reasoningParameters(model: string, effort: string | undefined): Record<string, unknown> | undefined {
+  if (!effort) return undefined;
+  if (model.startsWith("anthropic/")) {
+    if (effort === "none") return { enabled: false };
+    const budget = ANTHROPIC_REASONING_BUDGETS[effort];
+    if (budget !== undefined) return { max_tokens: budget };
+  }
+  return { effort };
+}
+
 export interface OpenRouterUsage {
   promptTokens: number;
   completionTokens: number;
@@ -29,7 +55,8 @@ export interface CompleteOptions {
   model: string;
   sessionId: string;
   messages: readonly PlannerMessage[];
-  toolSchema: Record<string, unknown>;
+  /** One function definition or several; each becomes a tools[] entry. */
+  toolSchema: Record<string, unknown> | Record<string, unknown>[];
   effort?: string;
   signal?: AbortSignal;
   onContent?: (delta: string) => void;
@@ -228,12 +255,15 @@ export class OpenRouterClient {
           model: options.model,
           session_id: options.sessionId.slice(0, 256),
           messages: options.messages.map((message) => apiMessage(message, options.model)),
-          tools: [{ type: "function", function: options.toolSchema }],
+          tools: (Array.isArray(options.toolSchema) ? options.toolSchema : [options.toolSchema])
+            .map((schema) => ({ type: "function", function: schema })),
           tool_choice: "auto",
           stream: true,
           stream_options: { include_usage: true },
           provider: { allow_fallbacks: false },
-          ...(options.effort ? { reasoning: { effort: options.effort } } : {}),
+          ...(reasoningParameters(options.model, options.effort)
+            ? { reasoning: reasoningParameters(options.model, options.effort) }
+            : {}),
           ...cacheConfigurationForModel(options.model),
         }),
         signal: options.signal,

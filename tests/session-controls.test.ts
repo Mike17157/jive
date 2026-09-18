@@ -166,7 +166,7 @@ describe("session controls", () => {
     expect((await readFile(oldStore.logPath, "utf8"))).toContain("long graph");
   });
 
-  test("explicit effort is persisted, restored and sent; auto preserves provider defaults", async () => {
+  test("explicit effort is persisted, restored and sent; auto sends the supported level nearest medium", async () => {
     const root = await cwd();
     await saveModelCatalog(root, {
       fetchedAt: new Date().toISOString(),
@@ -201,7 +201,8 @@ describe("session controls", () => {
     expect(restored.getSnapshot().effort).toBe("xhigh");
     await restored.setEffort("default");
     await restored.submit("provider default");
-    expect(bodies[1]).not.toHaveProperty("reasoning");
+    // medium is not offered by this model; high is the nearest supported level.
+    expect(bodies[1]?.reasoning).toEqual({ effort: "high" });
     expect(restored.getSnapshot().effort).toBeUndefined();
   });
 

@@ -1,7 +1,8 @@
 # Jive
 
 Jive is the terminal agent built in this repository: one planner tool,
-`execute_graph`. An OpenRouter model submits a JSON graph; bash commands and Jev
+`execute_graph`, plus `execute_graph_mod` to rerun a saved graph after small
+edits. An OpenRouter model submits a JSON graph; bash commands and Jev
 decisions execute locally through branches, bounded loops, and parallel template
 expansion before returning to the planner.
 
@@ -105,8 +106,12 @@ session keeps the selected model and effort but starts with empty context.
 dimmed background: left/right adjusts, Enter applies, Esc cancels. Direct
 forms such as `/effort high`, `/effort xhigh`, and `/effort auto` also work.
 Only the selected model's supported levels are offered; unavailable levels are
-rejected rather than silently substituted. `auto` preserves the provider's
-default. Effort settings persist with the session. Model metadata is refreshed
+rejected rather than silently substituted. `auto` sends medium, or the nearest
+level the model supports, because provider defaults tend to be the heaviest
+thinking level. For Anthropic models each level is sent as an explicit thinking
+budget (`reasoning.max_tokens`) rather than an effort name, since OpenRouter
+would otherwise derive the budget from an unset `max_tokens` and every level
+would think freely. Effort settings persist with the session. Model metadata is refreshed
 when needed for this control, following [OpenRouter's reasoning metadata](https://openrouter.ai/docs/guides/best-practices/reasoning-tokens).
 
 Ctrl+G focuses the graph: arrows select nodes, Space expands groups, Enter opens
