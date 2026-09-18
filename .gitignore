@@ -1,0 +1,13 @@
+node_modules/
+.env
+.env.*
+!.env.example
+.jev/
+.context/
+coverage/
+dist/
+*.log
+
+# Upstream clones used as task fixtures (re-clone: lukeed/clsx, yuin/goldmark)
+graph-tests/clsx/
+taskground/goldmark_profiling/goldmark/

@@ -1,0 +1,42 @@
+{
+  "hubs": [
+    "Flower",
+    "Banana",
+    "Asteraceae",
+    "Brassica"
+  ],
+  "node_count": 16773,
+  "edge_count": 18148,
+  "metric_pairs": [
+    {
+      "a": "Banana flower",
+      "b": "Hops",
+      "cost": 2
+    },
+    {
+      "a": "Banana flower",
+      "b": "Nanohana",
+      "cost": 2
+    },
+    {
+      "a": "Banana flower",
+      "b": "Ray florets",
+      "cost": 3
+    },
+    {
+      "a": "Hops",
+      "b": "Nanohana",
+      "cost": 1
+    },
+    {
+      "a": "Hops",
+      "b": "Ray florets",
+      "cost": 2
+    },
+    {
+      "a": "Nanohana",
+      "b": "Ray florets",
+      "cost": 2
+    }
+  ]
+}

@@ -1,0 +1,6 @@
+work/*
+!work/baseline/
+golden/**/*.actual.html
+goldmark/coverage.out
+goldmark/cpu.pprof
+harness/harness

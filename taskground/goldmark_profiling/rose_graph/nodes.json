@@ -1,0 +1,970 @@
+[
+  {
+    "id": "Rose",
+    "title": "Rose",
+    "is_flower": true,
+    "colour": "red",
+    "confidence": 1.0,
+    "seed": true
+  },
+  {
+    "id": "ADR rose",
+    "title": "ADR rose",
+    "is_flower": true,
+    "colour": "unknown_color",
+    "confidence": 0.46,
+    "seed": false
+  },
+  {
+    "id": "Abney Park Cemetery",
+    "title": "Abney Park Cemetery",
+    "is_flower": false,
+    "colour": "not_flower",
+    "confidence": 1,
+    "seed": false
+  },
+  {
+    "id": "Achene",
+    "title": "Achene",
+    "is_flower": false,
+    "colour": "not_flower",
+    "confidence": 0.99,
+    "seed": false
+  },
+  {
+    "id": "Adonis",
+    "title": "Adonis",
+    "is_flower": false,
+    "colour": "not_flower",
+    "confidence": 0.98,
+    "seed": false
+  },
+  {
+    "id": "Aeolic Greek",
+    "title": "Aeolic Greek",
+    "is_flower": false,
+    "colour": "not_flower",
+    "confidence": 1,
+    "seed": false
+  },
+  {
+    "id": "Aerial stem modification",
+    "title": "Aerial stem modification",
+    "is_flower": false,
+    "colour": "not_flower",
+    "confidence": 1,
+    "seed": false
+  },
+  {
+    "id": "Aggregate fruit",
+    "title": "Aggregate fruit",
+    "is_flower": false,
+    "colour": "not_flower",
+    "confidence": 1,
+    "seed": false
+  },
+  {
+    "id": "Alabama",
+    "title": "Alabama",
+    "is_flower": false,
+    "colour": "not_flower",
+    "confidence": 1,
+    "seed": false
+  },
+  {
+    "id": "Alaska",
+    "title": "Alaska",
+    "is_flower": false,
+    "colour": "not_flower",
+    "confidence": 1,
+    "seed": false
+  },
+  {
+    "id": "Albrecht D\u00fcrer",
+    "title": "Albrecht D\u00fcrer",
+    "is_flower": false,
+    "colour": "not_flower",
+    "confidence": 1,
+    "seed": false
+  },
+  {
+    "id": "Alcohol (chemistry)",
+    "title": "Alcohol (chemistry)",
+    "is_flower": false,
+    "colour": "not_flower",
+    "confidence": 1,
+    "seed": false
+  },
+  {
+    "id": "Alister Clark Memorial Rose Garden",
+    "title": "Alister Clark Memorial Rose Garden",
+    "is_flower": false,
+    "colour": "not_flower",
+    "confidence": 0.78,
+    "seed": false
+  },
+  {
+    "id": "Alkane",
+    "title": "Alkane",
+    "is_flower": false,
+    "colour": "not_flower",
+    "confidence": 1,
+    "seed": false
+  },
+  {
+    "id": "All-America Rose Selections",
+    "title": "All-America Rose Selections",
+    "is_flower": false,
+    "colour": "not_flower",
+    "confidence": 0.74,
+    "seed": false
+  },
+  {
+    "id": "All-American Rose Garden",
+    "title": "All-American Rose Garden",
+    "is_flower": false,
+    "colour": "not_flower",
+    "confidence": 0.75,
+    "seed": false
+  },
+  {
+    "id": "Alternaria",
+    "title": "Alternaria",
+    "is_flower": false,
+    "colour": "not_flower",
+    "confidence": 1,
+    "seed": false
+  },
+  {
+    "id": "America (My Country, 'Tis of Thee)",
+    "title": "America (My Country, 'Tis of Thee)",
+    "is_flower": false,
+    "colour": "not_flower",
+    "confidence": 0.98,
+    "seed": false
+  },
+  {
+    "id": "America the Beautiful",
+    "title": "America the Beautiful",
+    "is_flower": false,
+    "colour": "not_flower",
+    "confidence": 1,
+    "seed": false
+  },
+  {
+    "id": "American Creed",
+    "title": "American Creed",
+    "is_flower": false,
+    "colour": "not_flower",
+    "confidence": 1,
+    "seed": false
+  },
+  {
+    "id": "American Garden Rose Selections",
+    "title": "American Garden Rose Selections",
+    "is_flower": false,
+    "colour": "not_flower",
+    "confidence": 0.67,
+    "seed": false
+  },
+  {
+    "id": "American Samoa",
+    "title": "American Samoa",
+    "is_flower": false,
+    "colour": "not_flower",
+    "confidence": 1,
+    "seed": false
+  },
+  {
+    "id": "American bison",
+    "title": "American bison",
+    "is_flower": false,
+    "colour": "not_flower",
+    "confidence": 1,
+    "seed": false
+  },
+  {
+    "id": "Anchors Aweigh",
+    "title": "Anchors Aweigh",
+    "is_flower": false,
+    "colour": "not_flower",
+    "confidence": 1,
+    "seed": false
+  },
+  {
+    "id": "Ancient Greece",
+    "title": "Ancient Greece",
+    "is_flower": false,
+    "colour": "not_flower",
+    "confidence": 1,
+    "seed": false
+  },
+  {
+    "id": "Annuit c\u0153ptis",
+    "title": "Annuit c\u0153ptis",
+    "is_flower": false,
+    "colour": "not_flower",
+    "confidence": 1,
+    "seed": false
+  },
+  {
+    "id": "Aphrodite",
+    "title": "Aphrodite",
+    "is_flower": false,
+    "colour": "not_flower",
+    "confidence": 1,
+    "seed": false
+  },
+  {
+    "id": "Apollo",
+    "title": "Apollo",
+    "is_flower": false,
+    "colour": "not_flower",
+    "confidence": 0.99,
+    "seed": false
+  },
+  {
+    "id": "Apuleius",
+    "title": "Apuleius",
+    "is_flower": false,
+    "colour": "not_flower",
+    "confidence": 1,
+    "seed": false
+  },
+  {
+    "id": "Aquilegia coerulea",
+    "title": "Aquilegia coerulea",
+    "is_flower": true,
+    "colour": "blue",
+    "confidence": 0.98,
+    "seed": false
+  },
+  {
+    "id": "Arabia",
+    "title": "Arabia",
+    "is_flower": false,
+    "colour": "not_flower",
+    "confidence": 0.98,
+    "seed": false
+  },
+  {
+    "id": "Arachnid",
+    "title": "Arachnid",
+    "is_flower": false,
+    "colour": "not_flower",
+    "confidence": 1,
+    "seed": false
+  },
+  {
+    "id": "Argyranthemum",
+    "title": "Argyranthemum",
+    "is_flower": true,
+    "colour": "white",
+    "confidence": 0.6,
+    "seed": false
+  },
+  {
+    "id": "Arizona",
+    "title": "Arizona",
+    "is_flower": false,
+    "colour": "not_flower",
+    "confidence": 1,
+    "seed": false
+  },
+  {
+    "id": "Arkansas",
+    "title": "Arkansas",
+    "is_flower": false,
+    "colour": "not_flower",
+    "confidence": 1,
+    "seed": false
+  },
+  {
+    "id": "Aromantic",
+    "title": "Aromantic",
+    "is_flower": false,
+    "colour": "not_flower",
+    "confidence": 0.98,
+    "seed": false
+  },
+  {
+    "id": "Artemis",
+    "title": "Artemis",
+    "is_flower": false,
+    "colour": "not_flower",
+    "confidence": 1,
+    "seed": false
+  },
+  {
+    "id": "Artemisia tridentata",
+    "title": "Artemisia tridentata",
+    "is_flower": false,
+    "colour": "not_flower",
+    "confidence": 0.82,
+    "seed": false
+  },
+  {
+    "id": "Asclepias",
+    "title": "Asclepias",
+    "is_flower": true,
+    "colour": "unknown_color",
+    "confidence": 0.38,
+    "seed": false
+  },
+  {
+    "id": "Australian National Botanic Gardens",
+    "title": "Australian National Botanic Gardens",
+    "is_flower": false,
+    "colour": "not_flower",
+    "confidence": 1,
+    "seed": false
+  },
+  {
+    "id": "Australian Plant Name Index",
+    "title": "Australian Plant Name Index",
+    "is_flower": false,
+    "colour": "not_flower",
+    "confidence": 1,
+    "seed": false
+  },
+  {
+    "id": "Avalokite\u015bvara as Guide of Souls",
+    "title": "Avalokite\u015bvara as Guide of Souls",
+    "is_flower": false,
+    "colour": "not_flower",
+    "confidence": 1,
+    "seed": false
+  },
+  {
+    "id": "Avestan language",
+    "title": "Avestan language",
+    "is_flower": false,
+    "colour": "not_flower",
+    "confidence": 1,
+    "seed": false
+  },
+  {
+    "id": "Azalea",
+    "title": "Azalea",
+    "is_flower": true,
+    "colour": "mixed",
+    "confidence": 0.44,
+    "seed": false
+  },
+  {
+    "id": "Ba-ra-kei: Ordeal by Roses",
+    "title": "Ba-ra-kei: Ordeal by Roses",
+    "is_flower": false,
+    "colour": "not_flower",
+    "confidence": 0.44,
+    "seed": false
+  },
+  {
+    "id": "Baklava",
+    "title": "Baklava",
+    "is_flower": false,
+    "colour": "not_flower",
+    "confidence": 1,
+    "seed": false
+  },
+  {
+    "id": "Bald eagle",
+    "title": "Bald eagle",
+    "is_flower": false,
+    "colour": "not_flower",
+    "confidence": 1,
+    "seed": false
+  },
+  {
+    "id": "Bamboo",
+    "title": "Bamboo",
+    "is_flower": false,
+    "colour": "not_flower",
+    "confidence": 0.99,
+    "seed": false
+  },
+  {
+    "id": "Bara (genre)",
+    "title": "Bara (genre)",
+    "is_flower": false,
+    "colour": "not_flower",
+    "confidence": 0.99,
+    "seed": false
+  },
+  {
+    "id": "Barazoku",
+    "title": "Barazoku",
+    "is_flower": false,
+    "colour": "not_flower",
+    "confidence": 0.97,
+    "seed": false
+  },
+  {
+    "id": "Barcode of Life Data System",
+    "title": "Barcode of Life Data System",
+    "is_flower": false,
+    "colour": "not_flower",
+    "confidence": 1,
+    "seed": false
+  },
+  {
+    "id": "Barfi",
+    "title": "Barfi",
+    "is_flower": false,
+    "colour": "not_flower",
+    "confidence": 0.99,
+    "seed": false
+  },
+  {
+    "id": "Barth\u00e9lemy Charles Joseph Dumortier",
+    "title": "Barth\u00e9lemy Charles Joseph Dumortier",
+    "is_flower": false,
+    "colour": "not_flower",
+    "confidence": 1,
+    "seed": false
+  },
+  {
+    "id": "Battle Cry of Freedom",
+    "title": "Battle Cry of Freedom",
+    "is_flower": false,
+    "colour": "not_flower",
+    "confidence": 1,
+    "seed": false
+  },
+  {
+    "id": "Battle Hymn of the Republic",
+    "title": "Battle Hymn of the Republic",
+    "is_flower": false,
+    "colour": "not_flower",
+    "confidence": 1,
+    "seed": false
+  },
+  {
+    "id": "Beirut Rose",
+    "title": "Beirut Rose",
+    "is_flower": true,
+    "colour": "pink",
+    "confidence": 1,
+    "seed": false
+  },
+  {
+    "id": "Berkeley Rose Garden",
+    "title": "Berkeley Rose Garden",
+    "is_flower": false,
+    "colour": "not_flower",
+    "confidence": 0.97,
+    "seed": false
+  },
+  {
+    "id": "Bibcode (identifier)",
+    "title": "Bibcode (identifier)",
+    "is_flower": false,
+    "colour": "not_flower",
+    "confidence": 0.99,
+    "seed": false
+  },
+  {
+    "id": "Biological type",
+    "title": "Biological type",
+    "is_flower": false,
+    "colour": "not_flower",
+    "confidence": 0.9,
+    "seed": false
+  },
+  {
+    "id": "Bitterroot",
+    "title": "Bitterroot",
+    "is_flower": true,
+    "colour": "pink",
+    "confidence": 0.35,
+    "seed": false
+  },
+  {
+    "id": "Black rose symbolism",
+    "title": "Black rose symbolism",
+    "is_flower": true,
+    "colour": "unknown_color",
+    "confidence": 0.69,
+    "seed": false
+  },
+  {
+    "id": "Blue rose",
+    "title": "Blue rose",
+    "is_flower": true,
+    "colour": "blue",
+    "confidence": 0.98,
+    "seed": false
+  },
+  {
+    "id": "Bluebonnet (plant)",
+    "title": "Bluebonnet (plant)",
+    "is_flower": true,
+    "colour": "blue",
+    "confidence": 0.96,
+    "seed": false
+  },
+  {
+    "id": "Bougainvillea spectabilis",
+    "title": "Bougainvillea spectabilis",
+    "is_flower": true,
+    "colour": "unknown_color",
+    "confidence": 0.27,
+    "seed": false
+  },
+  {
+    "id": "Bradford Angier",
+    "title": "Bradford Angier",
+    "is_flower": false,
+    "colour": "not_flower",
+    "confidence": 1,
+    "seed": false
+  },
+  {
+    "id": "Browsing (herbivory)",
+    "title": "Browsing (herbivory)",
+    "is_flower": false,
+    "colour": "not_flower",
+    "confidence": 1,
+    "seed": false
+  },
+  {
+    "id": "California",
+    "title": "California",
+    "is_flower": false,
+    "colour": "not_flower",
+    "confidence": 1,
+    "seed": false
+  },
+  {
+    "id": "Calochortus nuttallii",
+    "title": "Calochortus nuttallii",
+    "is_flower": true,
+    "colour": "white",
+    "confidence": 0.36,
+    "seed": false
+  },
+  {
+    "id": "Cambrian",
+    "title": "Cambrian",
+    "is_flower": false,
+    "colour": "not_flower",
+    "confidence": 1,
+    "seed": false
+  },
+  {
+    "id": "Camellia japonica",
+    "title": "Camellia japonica",
+    "is_flower": true,
+    "colour": "mixed",
+    "confidence": 0.64,
+    "seed": false
+  },
+  {
+    "id": "Carboniferous",
+    "title": "Carboniferous",
+    "is_flower": false,
+    "colour": "not_flower",
+    "confidence": 1,
+    "seed": false
+  },
+  {
+    "id": "Carl Linnaeus",
+    "title": "Carl Linnaeus",
+    "is_flower": false,
+    "colour": "not_flower",
+    "confidence": 1,
+    "seed": false
+  },
+  {
+    "id": "Carthusians",
+    "title": "Carthusians",
+    "is_flower": false,
+    "colour": "not_flower",
+    "confidence": 1,
+    "seed": false
+  },
+  {
+    "id": "Castilleja linariifolia",
+    "title": "Castilleja linariifolia",
+    "is_flower": true,
+    "colour": "red",
+    "confidence": 0.42,
+    "seed": false
+  },
+  {
+    "id": "Catalogue of Life",
+    "title": "Catalogue of Life",
+    "is_flower": false,
+    "colour": "not_flower",
+    "confidence": 1,
+    "seed": false
+  },
+  {
+    "id": "Christianization of the Roman empire",
+    "title": "Christianization of the Roman empire",
+    "is_flower": false,
+    "colour": "not_flower",
+    "confidence": 1,
+    "seed": false
+  },
+  {
+    "id": "Ch\u00e2teau de Bagatelle",
+    "title": "Ch\u00e2teau de Bagatelle",
+    "is_flower": false,
+    "colour": "not_flower",
+    "confidence": 1,
+    "seed": false
+  },
+  {
+    "id": "Ch\u00e2teau de Malmaison",
+    "title": "Ch\u00e2teau de Malmaison",
+    "is_flower": false,
+    "colour": "not_flower",
+    "confidence": 0.99,
+    "seed": false
+  },
+  {
+    "id": "Citronellol",
+    "title": "Citronellol",
+    "is_flower": false,
+    "colour": "not_flower",
+    "confidence": 1,
+    "seed": false
+  },
+  {
+    "id": "Claude Monet",
+    "title": "Claude Monet",
+    "is_flower": false,
+    "colour": "not_flower",
+    "confidence": 1,
+    "seed": false
+  },
+  {
+    "id": "Coast",
+    "title": "Coast",
+    "is_flower": false,
+    "colour": "not_flower",
+    "confidence": 1,
+    "seed": false
+  },
+  {
+    "id": "Coat of arms of Saint Lucia",
+    "title": "Coat of arms of Saint Lucia",
+    "is_flower": false,
+    "colour": "not_flower",
+    "confidence": 1,
+    "seed": false
+  },
+  {
+    "id": "Codex Manesse",
+    "title": "Codex Manesse",
+    "is_flower": false,
+    "colour": "not_flower",
+    "confidence": 1,
+    "seed": false
+  },
+  {
+    "id": "Cold Spring Harbor Laboratory",
+    "title": "Cold Spring Harbor Laboratory",
+    "is_flower": false,
+    "colour": "not_flower",
+    "confidence": 1,
+    "seed": false
+  },
+  {
+    "id": "Colorado",
+    "title": "Colorado",
+    "is_flower": false,
+    "colour": "not_flower",
+    "confidence": 1,
+    "seed": false
+  },
+  {
+    "id": "Columbia (personification)",
+    "title": "Columbia (personification)",
+    "is_flower": false,
+    "colour": "not_flower",
+    "confidence": 1,
+    "seed": false
+  },
+  {
+    "id": "Columbia, the Gem of the Ocean",
+    "title": "Columbia, the Gem of the Ocean",
+    "is_flower": false,
+    "colour": "not_flower",
+    "confidence": 1,
+    "seed": false
+  },
+  {
+    "id": "Common sunflower",
+    "title": "Common sunflower",
+    "is_flower": true,
+    "colour": "yellow",
+    "confidence": 0.99,
+    "seed": false
+  },
+  {
+    "id": "Compound leaves",
+    "title": "Compound leaves",
+    "is_flower": false,
+    "colour": "not_flower",
+    "confidence": 1,
+    "seed": false
+  },
+  {
+    "id": "Concours international de roses nouvelles de Bagatelle",
+    "title": "Concours international de roses nouvelles de Bagatelle",
+    "is_flower": false,
+    "colour": "not_flower",
+    "confidence": 0.8,
+    "seed": false
+  },
+  {
+    "id": "Connecticut",
+    "title": "Connecticut",
+    "is_flower": false,
+    "colour": "not_flower",
+    "confidence": 1,
+    "seed": false
+  },
+  {
+    "id": "Conquista rose",
+    "title": "Conquista rose",
+    "is_flower": true,
+    "colour": "pink",
+    "confidence": 1,
+    "seed": false
+  },
+  {
+    "id": "Coreopsis",
+    "title": "Coreopsis",
+    "is_flower": true,
+    "colour": "yellow",
+    "confidence": 0.87,
+    "seed": false
+  },
+  {
+    "id": "Cornus florida",
+    "title": "Cornus florida",
+    "is_flower": true,
+    "colour": "white",
+    "confidence": 0.6,
+    "seed": false
+  },
+  {
+    "id": "Crataegus",
+    "title": "Crataegus",
+    "is_flower": false,
+    "colour": "not_flower",
+    "confidence": 0.6,
+    "seed": false
+  },
+  {
+    "id": "Crescentia cujete",
+    "title": "Crescentia cujete",
+    "is_flower": false,
+    "colour": "not_flower",
+    "confidence": 0.73,
+    "seed": false
+  },
+  {
+    "id": "Cretaceous",
+    "title": "Cretaceous",
+    "is_flower": false,
+    "colour": "not_flower",
+    "confidence": 1,
+    "seed": false
+  },
+  {
+    "id": "Cultivar",
+    "title": "Cultivar",
+    "is_flower": false,
+    "colour": "not_flower",
+    "confidence": 0.8,
+    "seed": false
+  },
+  {
+    "id": "Cut flowers",
+    "title": "Cut flowers",
+    "is_flower": false,
+    "colour": "not_flower",
+    "confidence": 0.44,
+    "seed": false
+  },
+  {
+    "id": "Cutting (plant)",
+    "title": "Cutting (plant)",
+    "is_flower": false,
+    "colour": "not_flower",
+    "confidence": 1,
+    "seed": false
+  },
+  {
+    "id": "Cypripedium acaule",
+    "title": "Cypripedium acaule",
+    "is_flower": true,
+    "colour": "pink",
+    "confidence": 0.98,
+    "seed": false
+  },
+  {
+    "id": "Cypripedium reginae",
+    "title": "Cypripedium reginae",
+    "is_flower": true,
+    "colour": "pink",
+    "confidence": 0.93,
+    "seed": false
+  },
+  {
+    "id": "DNA repair",
+    "title": "DNA repair",
+    "is_flower": false,
+    "colour": "not_flower",
+    "confidence": 1,
+    "seed": false
+  },
+  {
+    "id": "Damascenone",
+    "title": "Damascenone",
+    "is_flower": false,
+    "colour": "not_flower",
+    "confidence": 0.99,
+    "seed": false
+  },
+  {
+    "id": "Deciduous",
+    "title": "Deciduous",
+    "is_flower": false,
+    "colour": "not_flower",
+    "confidence": 1,
+    "seed": false
+  },
+  {
+    "id": "Deer",
+    "title": "Deer",
+    "is_flower": false,
+    "colour": "not_flower",
+    "confidence": 1,
+    "seed": false
+  },
+  {
+    "id": "Delaware",
+    "title": "Delaware",
+    "is_flower": false,
+    "colour": "not_flower",
+    "confidence": 1,
+    "seed": false
+  },
+  {
+    "id": "Devonian",
+    "title": "Devonian",
+    "is_flower": false,
+    "colour": "not_flower",
+    "confidence": 1,
+    "seed": false
+  },
+  {
+    "id": "Dianthus caryophyllus",
+    "title": "Dianthus caryophyllus",
+    "is_flower": true,
+    "colour": "mixed",
+    "confidence": 0.51,
+    "seed": false
+  },
+  {
+    "id": "Diarrhodon",
+    "title": "Diarrhodon",
+    "is_flower": false,
+    "colour": "not_flower",
+    "confidence": 0.98,
+    "seed": false
+  },
+  {
+    "id": "Dictionary of Greek and Roman Biography and Mythology",
+    "title": "Dictionary of Greek and Roman Biography and Mythology",
+    "is_flower": false,
+    "colour": "not_flower",
+    "confidence": 1,
+    "seed": false
+  },
+  {
+    "id": "Diplocarpon rosae",
+    "title": "Diplocarpon rosae",
+    "is_flower": false,
+    "colour": "not_flower",
+    "confidence": 1,
+    "seed": false
+  },
+  {
+    "id": "Dixie (song)",
+    "title": "Dixie (song)",
+    "is_flower": false,
+    "colour": "not_flower",
+    "confidence": 1,
+    "seed": false
+  },
+  {
+    "id": "Dog rose",
+    "title": "Dog rose",
+    "is_flower": true,
+    "colour": "pink",
+    "confidence": 0.91,
+    "seed": false
+  },
+  {
+    "id": "Doi (identifier)",
+    "title": "Doi (identifier)",
+    "is_flower": false,
+    "colour": "not_flower",
+    "confidence": 0.99,
+    "seed": false
+  },
+  {
+    "id": "Double-flowered",
+    "title": "Double-flowered",
+    "is_flower": true,
+    "colour": "unknown_color",
+    "confidence": 0.95,
+    "seed": false
+  },
+  {
+    "id": "Dune",
+    "title": "Dune",
+    "is_flower": false,
+    "colour": "not_flower",
+    "confidence": 1,
+    "seed": false
+  },
+  {
+    "id": "E pluribus unum",
+    "title": "E pluribus unum",
+    "is_flower": false,
+    "colour": "not_flower",
+    "confidence": 1,
+    "seed": false
+  },
+  {
+    "id": "EPPO Code",
+    "title": "EPPO Code",
+    "is_flower": false,
+    "colour": "not_flower",
+    "confidence": 1,
+    "seed": false
+  },
+  {
+    "id": "Echinacea tennesseensis",
+    "title": "Echinacea tennesseensis",
+    "is_flower": true,
+    "colour": "purple",
+    "confidence": 0.99,
+    "seed": false
+  },
+  {
+    "id": "Eikoh Hosoe",
+    "title": "Eikoh Hosoe",
+    "is_flower": false,
+    "colour": "not_flower",
+    "confidence": 1,
+    "seed": false
+  }
+]

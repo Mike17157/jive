@@ -1,0 +1,10 @@
+{
+  "version": 1,
+  "label": "Parallel repository overview (bash only)",
+  "nodes": {
+    "files": { "type": "bash", "label": "List source files", "script": "rg --files -g '!node_modules' -g '!.jev' | head -n 40" },
+    "manifest": { "type": "bash", "label": "Read package manifest", "script": "cat package.json" },
+    "summary": { "type": "bash", "label": "Collect file count", "needs": ["files", "manifest"], "script": "printf 'Source files listed: '; printf '%s\\n' \"$FILES\" | wc -l", "env": { "FILES": { "$ref": "/nodes/files/output/stdout" } } }
+  },
+  "returns": ["files", "manifest", "summary"]
+}

@@ -1,0 +1,73 @@
+{
+  "head": {
+    "vars": [
+      "item",
+      "itemLabel",
+      "article"
+    ]
+  },
+  "results": {
+    "bindings": [
+      {
+        "item": {
+          "type": "uri",
+          "value": "http://www.wikidata.org/entity/Q16730268"
+        },
+        "itemLabel": {
+          "xml:lang": "en",
+          "type": "literal",
+          "value": "Nanohana"
+        },
+        "article": {
+          "type": "uri",
+          "value": "https://en.wikipedia.org/wiki/Nanohana"
+        }
+      },
+      {
+        "item": {
+          "type": "uri",
+          "value": "http://www.wikidata.org/entity/Q31830399"
+        },
+        "itemLabel": {
+          "xml:lang": "en",
+          "type": "literal",
+          "value": "banana flower"
+        },
+        "article": {
+          "type": "uri",
+          "value": "https://en.wikipedia.org/wiki/Banana_flower"
+        }
+      },
+      {
+        "item": {
+          "type": "uri",
+          "value": "http://www.wikidata.org/entity/Q3214940"
+        },
+        "itemLabel": {
+          "xml:lang": "en",
+          "type": "literal",
+          "value": "hops"
+        },
+        "article": {
+          "type": "uri",
+          "value": "https://en.wikipedia.org/wiki/Hops"
+        }
+      },
+      {
+        "item": {
+          "type": "uri",
+          "value": "http://www.wikidata.org/entity/Q4536561"
+        },
+        "itemLabel": {
+          "xml:lang": "en",
+          "type": "literal",
+          "value": "Zungenbl\u00fcte"
+        },
+        "article": {
+          "type": "uri",
+          "value": "https://en.wikipedia.org/wiki/Ray_florets"
+        }
+      }
+    ]
+  }
+}

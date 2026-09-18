@@ -1,0 +1,31 @@
+{
+  "definition": "P31/P279* Q506 (flower), with English Wikipedia sitelink",
+  "query": "SELECT DISTINCT ?item ?itemLabel ?article WHERE {\n ?item wdt:P31/wdt:P279* wd:Q506 .\n ?article schema:about ?item; schema:isPartOf <https://en.wikipedia.org/> .\n SERVICE wikibase:label { bd:serviceParam wikibase:language \"en\". }\n} ORDER BY ?item",
+  "retrieved_utc": "2026-09-18T01:17:30Z",
+  "terminals": [
+    {
+      "id": "Q16730268",
+      "label": "Nanohana",
+      "title": "Nanohana",
+      "url": "https://en.wikipedia.org/wiki/Nanohana"
+    },
+    {
+      "id": "Q31830399",
+      "label": "banana flower",
+      "title": "Banana flower",
+      "url": "https://en.wikipedia.org/wiki/Banana_flower"
+    },
+    {
+      "id": "Q3214940",
+      "label": "hops",
+      "title": "Hops",
+      "url": "https://en.wikipedia.org/wiki/Hops"
+    },
+    {
+      "id": "Q4536561",
+      "label": "Zungenbl\u00fcte",
+      "title": "Ray florets",
+      "url": "https://en.wikipedia.org/wiki/Ray_florets"
+    }
+  ]
+}

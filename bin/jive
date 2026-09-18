@@ -1,0 +1,29 @@
+#!/bin/sh
+# `jive` — launch the Jive agent in the current working directory.
+#
+# Resolves this script through any symlinks (so it can be linked onto PATH), finds
+# a bun to run with, and executes the checkout's TypeScript sources directly. There
+# is no build artifact to go stale: every run compiles the current sources.
+set -e
+
+script=$0
+while [ -L "$script" ]; do
+  script_dir=$(cd -P "$(dirname "$script")" && pwd)
+  script=$(readlink "$script")
+  case $script in
+    /*) ;;
+    *) script=$script_dir/$script ;;
+  esac
+done
+repo=$(cd -P "$(dirname "$script")/.." && pwd)
+
+if [ -x "$repo/node_modules/.bin/bun" ]; then
+  bun=$repo/node_modules/.bin/bun
+elif command -v bun >/dev/null 2>&1; then
+  bun=bun
+else
+  echo "jive: no bun runtime found. Run 'npm install' in $repo, or install bun." >&2
+  exit 1
+fi
+
+exec "$bun" "$repo/bin/jive.ts" "$@"

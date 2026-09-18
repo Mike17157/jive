@@ -1,0 +1,99 @@
+[
+  {
+    "terminals": [
+      "Nanohana",
+      "Banana flower"
+    ],
+    "count": 0,
+    "sample": []
+  },
+  {
+    "terminals": [
+      "Nanohana",
+      "Hops"
+    ],
+    "count": 2,
+    "sample": [
+      "ISBN (identifier)",
+      "ISSN (identifier)"
+    ]
+  },
+  {
+    "terminals": [
+      "Nanohana",
+      "Ray florets"
+    ],
+    "count": 0,
+    "sample": []
+  },
+  {
+    "terminals": [
+      "Banana flower",
+      "Hops"
+    ],
+    "count": 0,
+    "sample": []
+  },
+  {
+    "terminals": [
+      "Banana flower",
+      "Ray florets"
+    ],
+    "count": 0,
+    "sample": []
+  },
+  {
+    "terminals": [
+      "Hops",
+      "Ray florets"
+    ],
+    "count": 0,
+    "sample": []
+  },
+  {
+    "terminals": [
+      "Nanohana",
+      "Banana flower",
+      "Hops"
+    ],
+    "count": 0,
+    "sample": []
+  },
+  {
+    "terminals": [
+      "Nanohana",
+      "Banana flower",
+      "Ray florets"
+    ],
+    "count": 0,
+    "sample": []
+  },
+  {
+    "terminals": [
+      "Nanohana",
+      "Hops",
+      "Ray florets"
+    ],
+    "count": 0,
+    "sample": []
+  },
+  {
+    "terminals": [
+      "Banana flower",
+      "Hops",
+      "Ray florets"
+    ],
+    "count": 0,
+    "sample": []
+  },
+  {
+    "terminals": [
+      "Nanohana",
+      "Banana flower",
+      "Hops",
+      "Ray florets"
+    ],
+    "count": 0,
+    "sample": []
+  }
+]

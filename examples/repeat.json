@@ -1,0 +1,12 @@
+{
+  "version": 1,
+  "label": "Bounded loop with explicit carried state",
+  "nodes": {},
+  "groups": {
+    "count": { "kind": "repeat", "template": "increment", "initial": "0", "next": { "$ref": "/nodes/add/output/stdout" }, "until": { "op": "eq", "args": [{ "$ref": "/nodes/add/output/stdout" }, "3"] }, "maxIterations": 4 }
+  },
+  "templates": {
+    "increment": { "nodes": { "add": { "type": "bash", "script": "printf '%s' \"$((N+1))\"", "env": { "N": { "$ref": "/state" } } } }, "output": { "$ref": "/nodes/add/output/stdout" } }
+  },
+  "returns": ["count"]
+}

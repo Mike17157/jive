@@ -1,0 +1,18 @@
+{
+  "version": 1,
+  "label": "Find the graph execution implementation with Jev",
+  "context": { "goal": "Locate the function that executes a submitted graph" },
+  "nodes": {
+    "search": { "type": "bash", "script": "rg --json -n 'export.*function.*[Gg]raph' src", "acceptedExitCodes": [0, 1] },
+    "choose": {
+      "type": "jev",
+      "prepare": [{ "use": "rg-matches", "as": "matches", "input": { "$ref": "/nodes/search/output/stdout" } }],
+      "state": { "goal": { "$ref": "/context/goal" }, "candidates": { "$ref": "/prepared/matches/records" } },
+      "questions": { "file": { "type": "choice", "instructions": "Select the candidate implementing execution of a submitted graph. Choose none if the evidence does not support a candidate.", "criteria": { "$ref": "/prepared/matches/options" } } },
+      "accept": { "op": "and", "args": [{ "op": "gte", "args": [{ "$ref": "/answers/file/confidence" }, 0.7] }, { "op": "ne", "args": [{ "$ref": "/answers/file/choice" }, "none"] }] },
+      "select": { "file": { "from": { "$ref": "/prepared/matches/records" }, "key": { "$ref": "/answers/file/choice" } } }
+    },
+    "read": { "type": "bash", "script": "head -n 160 \"$FILE\"", "env": { "FILE": { "$ref": "/nodes/choose/output/selected/file/path" } } }
+  },
+  "returns": ["choose", "read"]
+}

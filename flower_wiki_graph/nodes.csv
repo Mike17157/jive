@@ -1,0 +1,8 @@
+id,label,type,terminal,cost,wikidata_id,url
+Asteraceae,Asteraceae,connector,False,1,,https://en.wikipedia.org/wiki/Asteraceae
+Banana,Banana,connector,False,1,,https://en.wikipedia.org/wiki/Banana
+Banana flower,Banana flower,flower,True,0,Q31830399,https://en.wikipedia.org/wiki/Banana_flower
+Hops,Hops,flower,True,0,Q3214940,https://en.wikipedia.org/wiki/Hops
+ISBN (identifier),ISBN (identifier),connector,False,1,,https://en.wikipedia.org/wiki/ISBN_(identifier)
+Nanohana,Nanohana,flower,True,0,Q16730268,https://en.wikipedia.org/wiki/Nanohana
+Ray florets,Ray florets,flower,True,0,Q4536561,https://en.wikipedia.org/wiki/Ray_florets

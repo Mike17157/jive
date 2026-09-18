@@ -1,0 +1,33 @@
+{
+  "name": "jive",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "bin": {
+    "jive": "./bin/jive"
+  },
+  "scripts": {
+    "start": "bun src/cli.tsx",
+    "demo": "bun src/cli.tsx --demo",
+    "test": "bun test",
+    "typecheck": "tsc --noEmit",
+    "jive": "./bin/jive",
+    "install-cli": "./bin/install.sh"
+  },
+  "dependencies": {
+    "@opentui/core": "0.5.11",
+    "@opentui/react": "0.5.11",
+    "ajv": "8.20.0",
+    "marked": "17.0.1",
+    "react": "19.3.0"
+  },
+  "devDependencies": {
+    "bun": "1.4.2",
+    "@types/bun": "1.4.2",
+    "@types/react": "19.3.0",
+    "typescript": "5.9.3"
+  },
+  "engines": {
+    "bun": ">=1.4.2"
+  }
+}

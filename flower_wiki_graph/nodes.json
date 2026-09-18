@@ -1,0 +1,65 @@
+[
+  {
+    "id": "Asteraceae",
+    "label": "Asteraceae",
+    "type": "connector",
+    "terminal": false,
+    "cost": 1,
+    "wikidata_id": "",
+    "url": "https://en.wikipedia.org/wiki/Asteraceae"
+  },
+  {
+    "id": "Banana",
+    "label": "Banana",
+    "type": "connector",
+    "terminal": false,
+    "cost": 1,
+    "wikidata_id": "",
+    "url": "https://en.wikipedia.org/wiki/Banana"
+  },
+  {
+    "id": "Banana flower",
+    "label": "Banana flower",
+    "type": "flower",
+    "terminal": true,
+    "cost": 0,
+    "wikidata_id": "Q31830399",
+    "url": "https://en.wikipedia.org/wiki/Banana_flower"
+  },
+  {
+    "id": "Hops",
+    "label": "Hops",
+    "type": "flower",
+    "terminal": true,
+    "cost": 0,
+    "wikidata_id": "Q3214940",
+    "url": "https://en.wikipedia.org/wiki/Hops"
+  },
+  {
+    "id": "ISBN (identifier)",
+    "label": "ISBN (identifier)",
+    "type": "connector",
+    "terminal": false,
+    "cost": 1,
+    "wikidata_id": "",
+    "url": "https://en.wikipedia.org/wiki/ISBN_(identifier)"
+  },
+  {
+    "id": "Nanohana",
+    "label": "Nanohana",
+    "type": "flower",
+    "terminal": true,
+    "cost": 0,
+    "wikidata_id": "Q16730268",
+    "url": "https://en.wikipedia.org/wiki/Nanohana"
+  },
+  {
+    "id": "Ray florets",
+    "label": "Ray florets",
+    "type": "flower",
+    "terminal": true,
+    "cost": 0,
+    "wikidata_id": "Q4536561",
+    "url": "https://en.wikipedia.org/wiki/Ray_florets"
+  }
+]
