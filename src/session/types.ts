@@ -29,6 +29,7 @@ export type SessionEventType =
   | "pin.added"
   | "model.selected"
   | "effort.selected"
+  | "project.instructions"
   | "plugin.catalog"
   | "context.compacted"
   | "graph.started"
@@ -66,6 +67,11 @@ export interface MessageEventData {
 
 export interface PinEventData {
   text: string;
+}
+
+export interface ProjectInstructionsEventData {
+  path: string;
+  text: string | null;
 }
 
 export interface CompactionEventData {

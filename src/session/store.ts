@@ -8,6 +8,7 @@ import type {
   ArchiveMatch,
   MessageEventData,
   PlannerMessage,
+  ProjectInstructionsEventData,
   SessionArtifact,
   SessionEvent,
   SessionEventType,
@@ -191,6 +192,15 @@ export class SessionStore {
     return selected && typeof selected.data.effort === "string"
       ? selected.data.effort
       : undefined;
+  }
+
+  projectInstructions(): ProjectInstructionsEventData | undefined {
+    const event = this.#events.find((entry) => entry.type === "project.instructions");
+    if (!event || typeof event.data.path !== "string") return undefined;
+    return {
+      path: event.data.path,
+      text: typeof event.data.text === "string" ? event.data.text : null,
+    };
   }
 
   latestPluginCatalog(): string | undefined {

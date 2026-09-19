@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { GRAPH_GUIDE } from "../core/planner-guide.ts";
+import { loadProjectInstructions, type ProjectInstructionsSnapshot } from "../core/project-instructions.ts";
 import { GRAPH_VALIDATION_HINT, GRAPH_VALIDATION_PREFIX, MINIMAL_GRAPH_EXAMPLE, repairGraph } from "../core/schema.ts";
 import type { ExecuteOptions } from "../core/executor.ts";
 import {
@@ -75,6 +76,20 @@ export const PLANNER_SYSTEM_PROMPT = [
   "Separate graph invocations are executed serially. A tool result may describe interruption or partial effects; inspect it before deciding whether recovery is safe.",
   GRAPH_GUIDE,
 ].join("\n");
+
+export function plannerSystemPrompt(
+  cwd: string,
+  instructions?: ProjectInstructionsSnapshot,
+): string {
+  const prompt = [PLANNER_SYSTEM_PROMPT, `Session working directory: ${cwd}`];
+  if (instructions?.text !== null && instructions?.text !== undefined) {
+    prompt.push([
+      `Project instructions from ${instructions.path} (snapshotted when this session was created):`,
+      instructions.text,
+    ].join("\n"));
+  }
+  return prompt.join("\n\n");
+}
 
 const DEFAULT_CONTEXT_LIMIT = 128_000;
 const MAX_PLANNER_ROUNDS = 24;
@@ -212,6 +227,7 @@ export class GraphAgentController implements AgentController {
   #resetPromise?: Promise<void>;
   #resetPending = false;
   #controlRevision = 0;
+  #projectInstructions?: ProjectInstructionsSnapshot;
 
   constructor(options: AgentOptions) {
     this.options = options;
@@ -359,11 +375,13 @@ export class GraphAgentController implements AgentController {
       const effort = this.#snapshot.effort;
       const replacement = new SessionStore({ cwd: this.options.cwd });
       await replacement.initialize();
+      const projectInstructions = await this.#loadSessionProjectInstructions(replacement);
       if (model) await replacement.append("model.selected", { model });
       await replacement.append("effort.selected", { effort: effort ?? null });
       await replacement.flush();
 
       this.#store = replacement;
+      this.#projectInstructions = projectInstructions;
       this.#sideEffects = Promise.resolve();
       this.#snapshot = {
         ...this.#snapshot,
@@ -542,6 +560,7 @@ export class GraphAgentController implements AgentController {
   async #initialize(): Promise<void> {
     await this.store.initialize();
     const fresh = this.store.events.every((event) => event.type === "session.created");
+    this.#projectInstructions = await this.#loadSessionProjectInstructions(this.store);
     const recovered = await this.store.recoverInterruptedToolCalls();
     const cachedCatalog = await loadCachedModelCatalog(this.options.cwd);
     const storedModel = this.store.latestModel();
@@ -639,6 +658,14 @@ export class GraphAgentController implements AgentController {
     this.#emit();
   }
 
+  async #loadSessionProjectInstructions(store: SessionStore): Promise<ProjectInstructionsSnapshot> {
+    const persisted = store.projectInstructions();
+    if (persisted) return persisted;
+    const snapshot = await loadProjectInstructions(store.cwd);
+    await store.append("project.instructions", { path: snapshot.path, text: snapshot.text });
+    return snapshot;
+  }
+
   async #refreshPluginCatalog(publish = true): Promise<string | undefined> {
     let catalog: string;
     try {
@@ -672,7 +699,7 @@ export class GraphAgentController implements AgentController {
       const contextLimit = this.#contextLimit(model, this.#snapshot.models);
       const context = new DeterministicContext(
         requestStore,
-        [{ role: "system", content: `${PLANNER_SYSTEM_PROMPT}\nSession working directory: ${requestStore.cwd}` }],
+        [{ role: "system", content: plannerSystemPrompt(requestStore.cwd, this.#projectInstructions) }],
         {
           contextLimit,
           fixedTokenCost: estimateTokens(this.#toolSchemas),

@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { mkdtemp, rm, readFile } from "node:fs/promises";
+import { mkdtemp, rm, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -138,6 +138,51 @@ const toolSchema = {
 };
 
 describe("OpenRouter planner", () => {
+  test("snapshots AGENTS.md in the system prompt for the lifetime of a session", async () => {
+    const cwd = await makeCwd();
+    const agentsPath = join(cwd, "AGENTS.md");
+    await writeFile(agentsPath, "Use the original session instructions.\n");
+    const requestBodies: Array<Record<string, any>> = [];
+    globalThis.fetch = (async (_input: RequestInfo | URL, init?: RequestInit) => {
+      requestBodies.push(JSON.parse(String(init?.body)));
+      return answerResponse();
+    }) as unknown as typeof fetch;
+    const options = {
+      cwd,
+      model: "test/model",
+      sessionId: "agents-snapshot-test",
+      apiKey: "test-key",
+      toolSchema,
+      getPluginCatalog: async () => "",
+      execute: async () => { throw new Error("no graph expected"); },
+    };
+    const controller = new GraphAgentController(options);
+    await controller.ready();
+
+    await writeFile(agentsPath, "Use replacement instructions.\n");
+    await controller.submit("first turn");
+    await controller.submit("second turn");
+
+    const firstSystemPrompt = requestBodies[0]!.messages[0].content as string;
+    expect(firstSystemPrompt).toContain(`Project instructions from ${agentsPath}`);
+    expect(firstSystemPrompt).toContain("Use the original session instructions.");
+    expect(firstSystemPrompt).not.toContain("Use replacement instructions.");
+    expect(requestBodies[1]!.messages[0].content).toBe(firstSystemPrompt);
+    expect(controller.store.events.filter((event) => event.type === "project.instructions")).toHaveLength(1);
+
+    const resumed = new GraphAgentController(options);
+    await resumed.ready();
+    await resumed.submit("resumed turn");
+    expect(requestBodies[2]!.messages[0].content).toBe(firstSystemPrompt);
+    expect(resumed.store.events.filter((event) => event.type === "project.instructions")).toHaveLength(1);
+
+    await resumed.newSession();
+    await resumed.submit("new session turn");
+    const newSessionPrompt = requestBodies[3]!.messages[0].content as string;
+    expect(newSessionPrompt).toContain("Use replacement instructions.");
+    expect(newSessionPrompt).not.toContain("Use the original session instructions.");
+  });
+
   test("parses split SSE and fragmented tool arguments", async () => {
     const client = new OpenRouterClient({
       apiKey: "test-key",

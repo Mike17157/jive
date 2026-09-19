@@ -66,6 +66,10 @@ jive
 The working directory is that folder: `AGENTS.md`, `.jev/extractors`,
 `.jev/sessions` and the model cache are read and written there, so each task
 folder keeps its own sessions and records. `--cwd DIR` still overrides it.
+At session creation, Jive snapshots that folder's `AGENTS.md` into the leading
+system prompt and persists the snapshot with the session. Changes to the file
+take effect in a new session (`/new`), without changing the prompt prefix of an
+existing session.
 
 There is no build step to keep in sync. The command runs this checkout's
 TypeScript sources through Bun, so it always reflects the latest changes; it
