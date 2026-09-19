@@ -8,7 +8,7 @@ import { COMMANDS, filterCommands, parseComposerInput, slashQuery } from "../src
 import { EDGE_SWEEP_MS_PER_CELL, edgeCellState, foldableIds, groupSummary, gutterText, layoutGraph, layoutToText, sweepActive, visibleRows } from "../src/ui/graph/layout.ts";
 import { countStatuses, edgeReady, reduceGraphs, statusTone, type UIExecutionEvent } from "../src/ui/graph/model.ts";
 import { orbSize, orbToString, renderOrb } from "../src/ui/orb.ts";
-import { toneColor } from "../src/ui/components/GraphView.tsx";
+import { changeBadge, changeList, GraphView, toneColor } from "../src/ui/components/GraphView.tsx";
 import { palette } from "../src/ui/theme.ts";
 
 // ---------------------------------------------------------------------------
@@ -295,6 +295,103 @@ describe("construction previews", () => {
     expect(failed.phase).toBe("failed");
     expect(failed.buildError).toBe("invalid reference /nodes/nope");
     expect(statusTone("building")).toBe("building");
+  });
+});
+
+describe("graph presentation", () => {
+  const view = async (events: ExecutionEvent[], width = 90) => {
+    const graph = reduceGraphs(events)[0]!;
+    const setup = await testRender(
+      <GraphView graph={graph} width={width} expanded={new Set()} folded={new Set()} selectedRow={-1} focused={false} index={0} total={1} />,
+      { width, height: 12 },
+    );
+    (globalThis as Record<string, unknown>).IS_REACT_ACT_ENVIRONMENT = false;
+    try {
+      await setup.flush();
+      return setup.captureCharFrame().split("\n").map((line) => line.trimEnd()).filter(Boolean);
+    } finally {
+      setup.renderer.destroy();
+    }
+  };
+  const single = (finish: Record<string, unknown> = { status: "done" }) => {
+    const ev = eventFactory("solo");
+    return [
+      ev("graph.started", undefined, { label: "Inspect the manifest" }),
+      ev("node.created", "read", { label: "read", type: "bash", needs: [] }),
+      ev("node.finished", "read", { result: { id: "read", label: "read", type: "bash", status: "done" } }),
+      ev("graph.finished", undefined, finish),
+    ];
+  };
+
+  test("a graph of one node is drawn as that node, carrying the graph's title", async () => {
+    const lines = await view(single());
+    expect(lines).toHaveLength(1);
+    expect(lines[0]).toContain("Inspect the manifest");
+    expect(lines[0]).toContain("done");
+    // The node's own key would be a second, emptier title for the same call.
+    expect(lines[0]).not.toContain("read");
+  });
+
+  test("a graph still being assembled keeps its title, however few nodes it has so far", async () => {
+    const ev = eventFactory("draft");
+    const lines = await view([
+      ev("graph.building" as ExecutionEvent["type"], undefined, { label: "Inspect the manifest" }),
+      ev("graph.preview" as ExecutionEvent["type"], undefined, { graph: { label: "Inspect the manifest", nodes: { read: { type: "bash", label: "read" } } } }),
+    ]);
+    expect(lines.length).toBeGreaterThan(1);
+    expect(lines[0]).toContain("assembling");
+  });
+
+  test("several nodes keep the title line above them", async () => {
+    const [g] = reduceGraphs(sampleEvents());
+    const lines = await view(sampleEvents());
+    expect(lines[0]).toContain("investigate expiry");
+    expect(lines.length).toBeGreaterThan(Object.keys(g!.nodes).length);
+  });
+
+  test("changed files are summarised in the title and named on one line", async () => {
+    const changes = {
+      total: 3, added: 42, removed: 7,
+      files: [
+        { path: "src/core/graph-stream.ts", kind: "modified", added: 31, removed: 5 },
+        { path: "notes.md", kind: "added", added: 11, removed: 0 },
+        { path: "old.txt", kind: "deleted" },
+      ],
+    };
+    const ev = eventFactory("changed");
+    const lines = await view([
+      ev("graph.started", undefined, { label: "Rewrite the parser" }),
+      ev("node.created", "one", { label: "first", type: "bash", needs: [] }),
+      ev("node.created", "two", { label: "second", type: "bash", needs: ["one"] }),
+      ev("graph.finished", undefined, { status: "done", changes }),
+    ]);
+    expect(lines[0]).toContain("✎ 3 files +42 −7");
+    expect(lines[1]).toContain("src/core/graph-stream.ts +31 −5");
+    expect(lines[1]).toContain("notes.md +11");
+    expect(lines[1]).toContain("old.txt deleted");
+
+    // A single-node call carries the same badge on its one row.
+    const solo = await view(single({ status: "done", changes }));
+    expect(solo[0]).toContain("✎ 3 files +42 −7");
+  });
+
+  test("the named files are capped by the width, and the count says how many were left out", () => {
+    const changes = {
+      total: 9, added: 12, removed: 3,
+      files: [
+        { path: "a/very/long/path/to/a/file.ts", kind: "modified" as const, added: 8, removed: 1 },
+        { path: "another/long/path/second.ts", kind: "modified" as const, added: 4, removed: 2 },
+        { path: "third.ts", kind: "added" as const, added: 0, removed: 0 },
+      ],
+    };
+    expect(changeBadge(changes)).toBe("✎ 9 files +12 −3");
+    expect(changeBadge(undefined)).toBeNull();
+    const wide = changeList(changes, 120);
+    expect(wide).toContain("third.ts");
+    expect(wide.endsWith("+6 more")).toBe(true);
+    const narrow = changeList(changes, 44);
+    expect(narrow.length).toBeLessThanOrEqual(44);
+    expect(narrow).toContain("more");
   });
 });
 

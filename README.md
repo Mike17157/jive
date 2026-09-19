@@ -116,6 +116,16 @@ would otherwise derive the budget from an unset `max_tokens` and every level
 would think freely. Effort settings persist with the session. Model metadata is refreshed
 when needed for this control, following [OpenRouter's reasoning metadata](https://openrouter.ai/docs/guides/best-practices/reasoning-tokens).
 
+Transient transport failures — an upstream rate limit, a 5xx, a dropped
+connection, a stream that ends early — are retried automatically: four attempts
+with exponential backoff and jitter, honouring any `Retry-After` the provider
+asks for. The activity line names the reason and counts down to the next
+attempt. A retry replays the whole request, so it happens only while nothing of
+the attempt has reached the transcript; once reasoning, an answer, or a tool
+call has streamed — and a streamed tool call may already have committed a graph
+to execution — the failure is reported as before and the planner decides what to
+do with the evidence.
+
 Loops are drawn open and cyclic: a `foreach` or `repeat` row (marked `≡` or
 `↻`) shows its template body once beneath it, bracketed by a loop-back lane
 (`╭ │ ╰`), and every pass re-runs status through those same rows rather than
@@ -128,6 +138,19 @@ inspector, `e` and `c` open or fold every group, and Esc returns to chat.
 Ctrl+P opens model selection;
 Ctrl+O shows or hides the planner's reasoning; Page Up/Page Down scroll the
 conversation. Ctrl+J inserts a composer newline.
+
+A call that ends up as a single node is drawn as that node, carrying the graph's
+title: a title line above one row would only say the same thing twice, and the
+row's own status replaces the "1/1 done" a header would add. A call still being
+assembled keeps its title, however few nodes it has so far.
+
+When a run changes files in the working tree its title line ends with
+`✎ 3 files +42 −7`, and the files are named on one dim line beneath it, largest
+first, closing with how many were left out. Git decides the file set: a status
+taken before the run and another after it, so ignored paths and the run's own
+`.jev` artifacts never appear. Line counts are measured against the state the
+run started from rather than against HEAD, so edits already in the tree are not
+billed to the graph. Outside a repository, or without git, nothing is shown.
 
 ## Headless commands
 

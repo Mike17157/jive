@@ -13,6 +13,10 @@ export const palette = {
   text: "#fcfcfb",
   textDim: "#a8a7a3",
   textFaint: "#6b6a66",
+  /** Reply body copy: a step below the warm white so prose sits back from the chrome. */
+  prose: "#cfcdc8",
+  /** Emphasis inside prose (bold, links): the accent laid over `prose` as a wash, never the full baby blue. */
+  proseAccent: "#a1c8e6",
   accent: "#7cc4ff",
   accentSoft: "#4f9be0",
   accentDeep: "#2f6fb0",

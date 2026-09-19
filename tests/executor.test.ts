@@ -150,3 +150,24 @@ test("a rejected Jev answer is logged with its payload before the node fails",as
   const logged=events.find(e=>e.type==="jev.response");
   expect(logged?.data.rejected).toContain("Invalid probability for ok");expect((logged?.data.answers as any).ok.noul).toBe(1.5);
 });
+
+test("a report carries failure evidence inline, names each blocker, and reports the root cause", async () => {
+  const graph: Graph = { version: 1, label: "cascade", nodes: {
+    // Registered before the failure, so a naive scan would report this node's error as the reason.
+    blocked: { type: "bash", needs: ["probe"], script: "echo should-not-run" },
+    downstream: { type: "bash", needs: ["blocked", "probe"], script: "echo should-not-run" },
+    probe: { type: "bash", script: "echo 'ModuleNotFoundError: no such module' >&2; exit 1" },
+    ordered: { type: "bash", needs: ["probe"], allowFailedDependencies: true, script: "echo runs-anyway" },
+    independent: { type: "bash", script: "echo independent" },
+  } };
+  const result = await executeGraph(graph, { cwd: await cwd() });
+  const preview = (id: string) => result.previews.find(p => p.id === id)!;
+  // The exit code alone never explains a failure; the stderr tail has to travel with it.
+  expect(preview("probe").preview).toContain("Command exited with 1");
+  expect(preview("probe").preview).toContain("ModuleNotFoundError: no such module");
+  expect(preview("blocked").preview).toBe("Blocked by probe (failed)");
+  expect(preview("downstream").preview).toBe("Blocked by blocked (blocked), probe (failed)");
+  expect(result.reason).toContain("Command exited with 1");
+  expect(preview("ordered").status).toBe("done");
+  expect(preview("independent").status).toBe("done");
+});

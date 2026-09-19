@@ -115,6 +115,8 @@ export interface AgentSnapshot {
   effort?: string;
   phase?: AgentPhase;
   activityStartedAt?: number;
+  /** Set while a transient transport failure is waiting to be retried. */
+  retry?: { attempt: number; attempts: number; resumesAt: number; reason: string };
   error?: string;
 }
 export interface AgentController {

@@ -15,20 +15,22 @@ function decode(text:string):string {
 
 /**
  * Markdown becomes native styled, selectable terminal text immediately.
- * Replies stay in the warm-white/grey range: the blue accent is reserved for
- * the chrome (orb, focus borders, graph state) so prose reads as one voice.
+ * Body copy sits at `prose`, a step below the warm white of the chrome, and
+ * emphasis (bold, links) picks up `proseAccent` — the baby blue washed over
+ * that grey, so it reads as a tint rather than competing with the orb and
+ * focus borders, which keep the full accent.
  */
-export function inlineMarkdown(tokens:Token[],attributes=0,color=colors.text):StyledText {
+export function inlineMarkdown(tokens:Token[],attributes=0,color=colors.prose):StyledText {
   const chunks:TextChunk[]=[];
   const walk=(parts:Token[],attrs:number,fg:RGBA,link?:{url:string})=>{
     const push=(text:string,extra:Partial<TextChunk>={})=>chunks.push({__isChunk:true,text,fg,attributes:attrs,...(link?{link}:{}),...extra});
     for(const token of parts){
       if(token.type==="strong"||token.type==="em"||token.type==="del"){
-        walk(token.tokens??Lexer.lexInline(token.text),attrs|(token.type==="strong"?TextAttributes.BOLD:token.type==="em"?TextAttributes.ITALIC:TextAttributes.STRIKETHROUGH),fg,link);
+        walk(token.tokens??Lexer.lexInline(token.text),attrs|(token.type==="strong"?TextAttributes.BOLD:token.type==="em"?TextAttributes.ITALIC:TextAttributes.STRIKETHROUGH),token.type==="strong"?colors.proseAccent!:fg,link);
       }else if(token.type==="codespan")push(token.text,{fg:colors.text,bg:colors.surface});
       else if(token.type==="link"){
         const destination=/^(https?:|mailto:|file:)/i.test(token.href)?{url:token.href}:undefined;
-        walk(token.tokens??Lexer.lexInline(token.text),attrs|TextAttributes.UNDERLINE,colors.text,destination);
+        walk(token.tokens??Lexer.lexInline(token.text),attrs|TextAttributes.UNDERLINE,colors.proseAccent!,destination);
         if(token.text!==token.href)push(` (${token.href})`,{fg:colors.textDim});
       }else if(token.type==="image")push(`${token.text||"image"} (${token.href})`,{fg:colors.textDim});
       else if(token.type==="br")push("\n");
@@ -43,7 +45,7 @@ function Blocks({tokens,compact=false,depth=0}:{tokens:Token[];compact?:boolean;
   return <box width="100%" flexDirection="column" flexShrink={0}>
     {tokens.filter(token=>token.type!=="space").map((token,index)=>{
       const margin=index===0||compact?0:1;
-      if(depth>24)return <text key={index} wrapMode="word" fg={palette.text}>{token.raw}</text>;
+      if(depth>24)return <text key={index} wrapMode="word" fg={palette.prose}>{token.raw}</text>;
       if(token.type==="heading")return <text key={index} marginTop={margin} content={inlineMarkdown(token.tokens??Lexer.lexInline(token.text),TextAttributes.BOLD,colors.text)} wrapMode="word"/>;
       if(token.type==="code")return <box key={index} marginTop={margin} width="100%" flexDirection="column" border={["left"]} borderColor={palette.borderSoft} backgroundColor={palette.surface} paddingX={1} paddingY={1}>
         {token.lang?<text fg={palette.textDim} marginBottom={1}>{token.lang}</text>:null}
@@ -59,7 +61,7 @@ function Blocks({tokens,compact=false,depth=0}:{tokens:Token[];compact?:boolean;
       if(token.type==="table")return <box key={index} marginTop={margin} width="100%" flexDirection="column" border borderColor={palette.borderSoft}>
         {[token.header,...token.rows].map((row:Tokens.TableCell[],rowIndex:number)=><box key={rowIndex} width="100%" flexDirection="row">
           {row.map((cell,column)=><box key={column} width={`${100/row.length}%`} flexDirection="column" paddingX={1} border={column?["left"]:false} borderColor={palette.borderSoft}>
-            <text content={inlineMarkdown(cell.tokens,rowIndex===0?TextAttributes.BOLD:0,colors.text)} wrapMode="word"/>
+            <text content={inlineMarkdown(cell.tokens,rowIndex===0?TextAttributes.BOLD:0,rowIndex===0?colors.proseAccent:colors.prose)} wrapMode="word"/>
           </box>)}
         </box>)}
       </box>;

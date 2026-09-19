@@ -25,9 +25,9 @@ const condition = {
 
 const common = {
   label: { type: "string", description: "Optional short human-readable label (max 200 chars)." },
-  needs: { type: "array", items: { type: "string" }, description: "IDs of nodes/groups that must finish first without a value dependency." },
+  needs: { type: "array", items: { type: "string" }, description: "IDs of nodes/groups that must SUCCEED first, without passing a value. A listed entry that fails, is skipped or is itself blocked blocks this one too, so do not chain work that is merely sequential; for ordering alone add allowFailedDependencies:true." },
   when: { ...condition, description: `Optional gate. ${condition.description} A false result skips this entry.` },
-  allowFailedDependencies: { type: "boolean", description: "Run even when a dependency failed or was skipped; pair with a status/error condition for explicit recovery." },
+  allowFailedDependencies: { type: "boolean", description: "Still wait for every dependency, but run whatever their outcome. This is the ordering-only dependency: use it when two entries touch the same files but neither needs the other to have succeeded, or with a status/error condition for explicit recovery." },
   onError: { type: "string", enum: ["continue", "stop"], description: "stop requests global cancellation when this entry fails. Default continue." },
 };
 

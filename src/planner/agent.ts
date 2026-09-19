@@ -42,6 +42,7 @@ import {
   OpenRouterError,
   type OpenRouterCompletion,
   type OpenRouterUsage,
+  type RetryPolicy,
 } from "./openrouter.ts";
 
 export interface AgentOptions {
@@ -60,6 +61,8 @@ export interface AgentOptions {
   demo?: boolean;
   /** Enable only when execute() supports the streaming options argument. */
   supportsStreaming?: boolean;
+  /** Transient-failure retries for planner requests; see DEFAULT_RETRY_POLICY. */
+  retry?: Partial<RetryPolicy>;
 }
 
 export const PLANNER_SYSTEM_PROMPT = [
@@ -228,7 +231,7 @@ export class GraphAgentController implements AgentController {
       cachedTokens: 0,
       phase: "idle",
     };
-    if (this.#apiKey) this.#client = new OpenRouterClient({ apiKey: this.#apiKey });
+    if (this.#apiKey) this.#client = new OpenRouterClient({ apiKey: this.#apiKey, ...(this.options.retry ? { retry: this.options.retry } : {}) });
     this.#ready = this.#initialize().catch((error) => {
       this.#update({ error: `Could not restore session: ${errorMessage(error)}` });
     });
@@ -319,7 +322,7 @@ export class GraphAgentController implements AgentController {
     } finally {
       this.#abort = undefined;
       this.#setPhase("idle");
-      this.#update({ busy: false });
+      this.#update({ busy: false, retry: undefined });
       await this.store.flush();
     }
   }
@@ -702,6 +705,16 @@ export class GraphAgentController implements AgentController {
           toolSchema: this.#toolSchemas,
           effort: this.#snapshot.effort ?? defaultEffortFor(this.#snapshot.models.find((option) => option.id === model)),
           signal,
+          onRetry: (notice) => {
+            if (this.store !== requestStore) return;
+            // Nothing of this attempt reached the transcript, so the round simply pauses.
+            this.#update({ retry: { attempt: notice.attempt, attempts: notice.attempts, resumesAt: Date.now() + notice.delayMs, reason: notice.reason } });
+            this.#enqueue(() => requestStore.append("transport.retry", {
+              attempt: notice.attempt, attempts: notice.attempts, delayMs: notice.delayMs,
+              reason: notice.reason, message: notice.error.message,
+              ...(notice.error.status ? { status: notice.error.status } : {}),
+            }));
+          },
           onReasoning: (delta) => {
             if (this.store !== requestStore) return;
             if (this.#snapshot.phase !== "executing") this.#setPhase("thinking");
@@ -742,6 +755,7 @@ export class GraphAgentController implements AgentController {
           },
         });
         await building.finish(completion.message.tool_calls ?? []);
+        if (this.#snapshot.retry) this.#update({ retry: undefined });
       } catch (error) {
         await building.interrupt(errorMessage(error));
         if (streamed) {

@@ -5,7 +5,8 @@ import { join, resolve as pathResolve } from "node:path";
 import { isDeepStrictEqual } from "node:util";
 import { dependencies, validateGraph } from "./schema";
 import { resolve, evaluate } from "./expressions";
-import { runCommand } from "./process";
+import { runCommand, type CommandResult } from "./process";
+import { changesSince, snapshotWorkingTree } from "./file-changes";
 import { ExtractorRegistry } from "../plugins/registry";
 import { JevAnswerError, JevClient, validateAnswer, validateQuestions } from "../jev/client";
 import type { ExecutionEvent, Graph, GraphBody, GraphReport, Group, JevAdapter, JevResponse, Limits, Node, NodeResult } from "./types";
@@ -39,6 +40,8 @@ export interface ExecuteOptions {
   plugins?: ExtractorRegistry;
   signal?: AbortSignal;
   onEvent?: (event: ExecutionEvent) => void;
+  /** Report the working-tree files the run changed on graph.finished. On by default. */
+  trackFileChanges?: boolean;
 }
 interface ScopeResult { nodes: Record<string, NodeResult>; groups: Record<string, NodeResult>; output?: unknown; status: NodeResult["status"] }
 async function nextWithSignal<T>(iterator: AsyncIterator<T>, signal: AbortSignal): Promise<IteratorResult<T>> {
@@ -118,8 +121,14 @@ export async function executeGraph(input: unknown, options: ExecuteOptions): Pro
         try {
           if (signal.aborted) { result.status = "cancelled"; result.error = String(signal.reason ?? "Interrupted"); return; }
           const dependencyResults = deps.map(dep => nodes[dep] ?? groups[dep]!);
-          if (!def.allowFailedDependencies && dependencyResults.some(r => r.status !== "done")) {
-            result.status = "blocked"; result.error = "A required dependency did not complete"; return;
+          const unmet = dependencyResults.filter(r => r.status !== "done");
+          if (!def.allowFailedDependencies && unmet.length) {
+            // Name the culprit: a cascade of identical "a dependency failed" lines tells the
+            // planner nothing about which node to fix.
+            const named = unmet.slice(0, 3).map(r => `${r.id} (${r.status})`).join(", ");
+            result.status = "blocked";
+            result.error = `Blocked by ${named}${unmet.length > 3 ? ` and ${unmet.length - 3} more` : ""}`;
+            return;
           }
           if (def.when && !evaluate(def.when, scope)) { result.status = "skipped"; return; }
           if ("type" in def) await leaf(def, result, scope);
@@ -280,10 +289,32 @@ export async function executeGraph(input: unknown, options: ExecuteOptions): Pro
     }
   }
   emit("graph.started", { label: graph.label, limits, templates: graph.templates });
+  // Taken after the start event and before the first node, so the comparison covers
+  // exactly this run. Without git, or outside a repository, it stays null.
+  const treeBefore = options.trackFileChanges === false ? null : await snapshotWorkingTree(options.cwd, signal);
   let outcome: ScopeResult | undefined;
   try { outcome = await scopeRun(graph, "", {}, options.updates); }
   catch (error) { stoppingReason ??= error instanceof Error ? error.message : String(error); }
   finally { clearTimeout(timer); }
+  /**
+   * A failed node's error is only ever the exit code; the reason it failed is in its stderr,
+   * which otherwise reaches the planner solely through the artifact or a returns entry. Carry
+   * a tail of it inline — a traceback's last lines are the informative ones.
+   */
+  const preview = (r: NodeResult): string => {
+    const headline = r.error ?? JSON.stringify(r.output) ?? "";
+    if (!r.error) return headline.slice(0, 300);
+    const output = r.output as Partial<CommandResult> | undefined;
+    const diagnostic = [output?.stderr, output?.stdout].find(text => typeof text === "string" && text.trim());
+    if (typeof diagnostic !== "string") return headline.slice(0, 300);
+    return `${headline.slice(0, 160)}: ${diagnostic.trim().slice(-300)}`;
+  };
+  /** Prefer a node that actually failed over one merely blocked or cancelled behind it. */
+  const rootCause = (records: NodeResult[]): string | undefined => {
+    const derived = new Set<NodeResult["status"]>(["blocked", "cancelled"]);
+    const carries = records.filter(r => r.error);
+    return (carries.find(r => !derived.has(r.status)) ?? carries[0])?.error;
+  };
   const list = [...records.values()];
   for (const record of list) if (record.status === "pending" || record.status === "running") { record.status = "cancelled"; record.error = stoppingReason ?? "Graph interrupted"; await save(record); }
   const requested = Object.fromEntries((graph.returns ?? []).map(id => [id, records.get(id)!]).filter(([, result]) => result));
@@ -291,11 +322,14 @@ export async function executeGraph(input: unknown, options: ExecuteOptions): Pro
   const report: GraphReport = {
     graphId, label: graph.label, status,
     // Tolerated item failures leave errors in the records of a graph that still completed.
-    reason: stoppingReason ?? (signal.aborted ? String(signal.reason) : status === "done" ? undefined : list.find(r => r.error)?.error),
-    previews: list.map(r => ({ id: r.id, type: r.type, status: r.status, preview: (r.error ?? JSON.stringify(r.output) ?? "").slice(0, 300), artifact: r.artifact })),
+    // A blocked node's error names a symptom, so report the failure that started the cascade.
+    reason: stoppingReason ?? (signal.aborted ? String(signal.reason) : status === "done" ? undefined : rootCause(list)),
+    previews: list.map(r => ({ id: r.id, type: r.type, status: r.status, preview: preview(r), artifact: r.artifact })),
     requested, recordPath: directory,
   };
   await writeFile(join(directory, "report.json"), JSON.stringify(report, null, 2));
-  emit("graph.finished", { report });
+  // An interrupted run still changed whatever it changed, so the comparison ignores the signal.
+  const changes = await changesSince(treeBefore, options.cwd);
+  emit("graph.finished", { report, status, ...(report.reason ? { reason: report.reason } : {}), ...(changes ? { changes } : {}) });
   return report;
 }

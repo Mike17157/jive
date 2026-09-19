@@ -1,4 +1,5 @@
-import { Fragment, useEffect, useMemo, useState } from "react";
+import { Fragment, useEffect, useMemo, useState, type ReactNode } from "react";
+import type { FileChangeSummary } from "../../core/file-changes.ts";
 import type { GraphModel, GraphNode } from "../graph/model.ts";
 import { countStatuses, statusTone, type StatusTone } from "../graph/model.ts";
 import { edgeCellState, formatDuration, groupSummary, layoutGraph, loopGlyph, nodeDuration, revealActive, revealProgress, statusGlyph, sweepActive, type LaneCell, type LayoutRow } from "../graph/layout.ts";
@@ -75,6 +76,52 @@ export function phaseCaption(graph: GraphModel, tick: number): { text: string; c
   }
 }
 
+/** Header badge: how many files the run changed and by how much, e.g. "✎ 3 files +42 −7". */
+export function changeBadge(changes: FileChangeSummary | undefined, withCounts = true): string | null {
+  if (!changes || changes.total === 0) return null;
+  const counts = withCounts
+    ? [changes.added ? `+${changes.added}` : "", changes.removed ? `−${changes.removed}` : ""].filter(Boolean).join(" ")
+    : "";
+  return `✎ ${changes.total} file${changes.total === 1 ? "" : "s"}${counts ? ` ${counts}` : ""}`;
+}
+
+/** The badge in whatever form fits the room left on a title line, or nothing. */
+export function fittedBadge(changes: FileChangeSummary | undefined, room: number): string | null {
+  const full = changeBadge(changes);
+  if (!full) return null;
+  if (full.length <= room) return full;
+  const short = changeBadge(changes, false)!;
+  return short.length <= room ? short : null;
+}
+
+function changeEntry(file: FileChangeSummary["files"][number]): string {
+  const counts = [file.added ? `+${file.added}` : "", file.removed ? `−${file.removed}` : ""].filter(Boolean).join(" ");
+  if (counts) return `${file.path} ${counts}`;
+  return file.kind === "deleted" ? `${file.path} deleted` : file.path;
+}
+
+/**
+ * The named files, as many as fit, closing with how many were left out. The badge
+ * already carries the total, so a truncated list still tells the whole count.
+ */
+export function changeList(changes: FileChangeSummary, width: number): string {
+  const shown: string[] = [];
+  let used = 0;
+  for (const [index, file] of changes.files.entries()) {
+    const entry = changeEntry(file);
+    const cost = (shown.length ? 3 : 0) + entry.length;
+    const remaining = changes.total - (index + 1);
+    const reserve = remaining > 0 ? 3 + `+${remaining} more`.length : 0;
+    if (shown.length && used + cost + reserve > width) break;
+    shown.push(entry);
+    used += cost;
+  }
+  const rest = changes.total - shown.length;
+  // The count of what is missing survives a narrow terminal; a path may lose its tail.
+  const suffix = rest > 0 ? `${shown.length ? " · " : ""}+${rest} more` : "";
+  return truncate(shown.join(" · "), Math.max(1, width - suffix.length)) + suffix;
+}
+
 export interface GraphViewProps {
   graph: GraphModel;
   width: number;
@@ -125,12 +172,57 @@ export function GraphView(props: GraphViewProps) {
     .filter(Boolean)
     .join(" · ");
   const graphDuration = graph.startedAt !== undefined ? formatDuration((graph.finishedAt ?? now) - graph.startedAt) : "";
+  const marker = props.total > 1 ? ` ${props.index + 1}/${props.total}` : "";
+  const title = truncate(graph.label, Math.max(8, width - 40));
+  // Everything the title line carries after the title, measured so the badge can be the
+  // first thing to go when the line is full: the files are named on the line below anyway.
+  const tail = [
+    marker,
+    caption ? ` · ${caption.text}` : "",
+    summary ? ` · ${summary}` : "",
+    graph.status ? ` · ${graph.status}` : "",
+    graphDuration && !narrow ? ` · ${graphDuration}` : "",
+  ].join("");
+  const badge = fittedBadge(graph.changes, width - 7 - title.length - tail.length);
+  // A call that turned into one node needs no title above it: the row carries the title,
+  // and the counts a header would add ("1/1 done") only repeat the row's own status.
+  const only = layout.rows.length === 1 && !layout.rows[0]!.group && !caption ? layout.rows[0]! : null;
+  // The same measurement for that row, which carries the title itself and ends with the
+  // node's own columns instead of the header's.
+  const soloTitle = only ? truncate(graph.label || only.node.label, labelBudget) : "";
+  const soloTail = only
+    ? `${narrow ? "" : `  ${only.node.type}`}  ${only.node.status}${narrow ? "" : ` ${formatDuration(nodeDuration(only.node, now))}`}${marker ? ` ·${marker}` : ""}`
+    : "";
+  const soloBadge = only ? fittedBadge(graph.changes, width - 7 - soloTitle.length - soloTail.length) : null;
 
   return (
     <box flexDirection="column" width="100%" paddingLeft={1} border={["left"]} borderStyle="single" borderColor={props.focused ? palette.accent : palette.borderSoft}>
+      {only ? (
+        <GraphRow
+          graph={graph}
+          row={only}
+          now={now}
+          tick={tick}
+          selected={props.focused && props.selectedRow === 0}
+          narrow={narrow}
+          labelBudget={labelBudget}
+          title={soloTitle}
+          trailing={
+            <>
+              {soloBadge ? (
+                <>
+                  <span fg={palette.textFaint}> · </span>
+                  <span fg={palette.textDim}>{soloBadge}</span>
+                </>
+              ) : null}
+              {marker ? <span fg={palette.textFaint}> ·{marker}</span> : null}
+            </>
+          }
+        />
+      ) : (
       <text wrapMode="none">
         <span fg={props.focused ? palette.accent : building ? palette.textDim : palette.text}>{props.focused ? "◆ " : building ? "◌ " : "◇ "}</span>
-        <span fg={palette.text}>{truncate(graph.label, Math.max(8, width - 40))}</span>
+        <span fg={palette.text}>{title}</span>
         {props.total > 1 ? <span fg={palette.textFaint}> {props.index + 1}/{props.total}</span> : null}
         {caption ? (
           <>
@@ -151,13 +243,25 @@ export function GraphView(props: GraphViewProps) {
           </>
         ) : null}
         {graphDuration && !narrow ? <span fg={palette.textFaint}> · {graphDuration}</span> : null}
+        {badge ? (
+          <>
+            <span fg={palette.textFaint}> · </span>
+            <span fg={palette.textDim}>{badge}</span>
+          </>
+        ) : null}
       </text>
+      )}
       {graph.reason ? (
         <text fg={palette.yellow} wrapMode="word">
           {"  " + graph.reason}
         </text>
       ) : null}
-      {layout.rows.map((row, i) => (
+      {graph.changes ? (
+        <text fg={palette.textFaint} wrapMode="none">
+          {"  ✎ " + changeList(graph.changes, Math.max(12, width - 5))}
+        </text>
+      ) : null}
+      {only ? null : layout.rows.map((row, i) => (
         <Fragment key={row.id}>
           {i > 0 && row.node.needs.includes(layout.rows[i-1]!.id) ? (
             <text wrapMode="none">
@@ -174,7 +278,12 @@ export function GraphView(props: GraphViewProps) {
   );
 }
 
-function GraphRow(props: { graph: GraphModel; row: LayoutRow; now: number; tick: number; selected: boolean; narrow: boolean; labelBudget: number }) {
+function GraphRow(props: {
+  graph: GraphModel; row: LayoutRow; now: number; tick: number; selected: boolean; narrow: boolean; labelBudget: number;
+  /** Shown instead of the node's own label when the row stands in for the whole graph. */
+  title?: string;
+  trailing?: ReactNode;
+}) {
   const { graph, row, now, tick } = props;
   const node = row.node;
   const bg = props.selected ? palette.surfaceRaised : undefined;
@@ -192,7 +301,7 @@ function GraphRow(props: { graph: GraphModel; row: LayoutRow; now: number; tick:
   const labelColor = ghost ? palette.textDim : tone === "blocked" ? palette.grey : tone === "building" ? palette.textDim : palette.text;
   const fadedLabel = revealing ? mixHex(palette.bg, labelColor, 0.35 + 0.65 * reveal) : labelColor;
   const mark = row.group ? loopGlyph(node.type) + " " : "";
-  const label = truncate(node.label, props.labelBudget - indent.length - caret.length - mark.length);
+  const label = truncate(props.title ?? node.label, props.labelBudget - indent.length - caret.length - mark.length);
   const typeText = row.group ? groupSummary(row) : node.type;
   const statusText = ghost ? "" : node.status === "building" ? "drafted" : node.status;
   return (
@@ -211,6 +320,7 @@ function GraphRow(props: { graph: GraphModel; row: LayoutRow; now: number; tick:
       {duration && !props.narrow ? <span fg={palette.textFaint}> {duration}</span> : null}
       {node.artifact ? <span fg={palette.textFaint}> ⎘</span> : null}
       {node.error && !props.narrow ? <span fg={dimHex(palette.yellow, 0.3)}>  {truncate(node.error.split("\n")[0] ?? "", 30)}</span> : null}
+      {props.trailing}
     </text>
   );
 }

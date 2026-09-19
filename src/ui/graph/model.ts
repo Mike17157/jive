@@ -11,7 +11,7 @@
  *   jev.request     nodeId, data: { state, questions, model? }
  *   jev.response    nodeId, data: { answers, model?, usage? }
  *   plugin.activity nodeId, data: { message?|activity?|name?, ... }
- *   graph.finished  data: { status?, reason?, report? }
+ *   graph.finished  data: { status?, reason?, report?, changes?: FileChangeSummary }
  *
  * Streaming construction previews (UI-only extension of the core union, same
  * graphId as the later graph.started):
@@ -24,6 +24,7 @@
  * The reducer is defensive: unknown shapes are kept verbatim so the inspector
  * can still show exactly what the runtime emitted.
  */
+import type { FileChange, FileChangeSummary } from "../../core/file-changes.ts";
 import type { ExecutionEvent, NodeResult, NodeStatus } from "../../core/types.ts";
 import { references } from "../../core/expressions.ts";
 
@@ -105,6 +106,8 @@ export interface GraphModel {
   edges: GraphEdge[];
   /** Template bodies by name, from construction previews or graph.started. */
   templates: Record<string, TemplateEntry[]>;
+  /** Working-tree files the run changed, when the executor could measure them. */
+  changes?: FileChangeSummary;
   lastSequence: number;
 }
 
@@ -119,6 +122,22 @@ function strArray(v: unknown): string[] {
 function num(v: unknown): number | undefined {
   return typeof v === "number" && Number.isFinite(v) ? v : undefined;
 }
+/** Read a graph.finished change summary, tolerating records written by other versions. */
+function fileChanges(value: unknown): FileChangeSummary | undefined {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
+  const record = value as Record<string, unknown>;
+  const files: FileChange[] = (Array.isArray(record.files) ? record.files : []).flatMap((entry) => {
+    const file = (entry ?? {}) as Record<string, unknown>;
+    const path = str(file.path);
+    if (!path) return [];
+    const kind = file.kind === "added" || file.kind === "deleted" ? file.kind : "modified";
+    return [{ path, kind, ...(num(file.added) !== undefined ? { added: num(file.added) } : {}), ...(num(file.removed) !== undefined ? { removed: num(file.removed) } : {}) }];
+  });
+  const total = num(record.total) ?? files.length;
+  if (total <= 0) return undefined;
+  return { files, total, added: num(record.added) ?? 0, removed: num(record.removed) ?? 0 };
+}
+
 function nodeType(v: unknown): GraphNodeType {
   return v === "bash" || v === "jev" || v === "foreach" || v === "repeat" ? v : "unknown";
 }
@@ -400,8 +419,10 @@ export function reduceGraphs(events: readonly (ExecutionEvent | UIExecutionEvent
       case "graph.finished": {
         g.finishedAt = ev.time;
         g.phase = "finished";
-        g.status = str(data.status) ?? "done";
-        g.reason = str(data.reason);
+        const report = data.report && typeof data.report === "object" ? (data.report as Record<string, unknown>) : undefined;
+        g.status = str(data.status) ?? str(report?.status) ?? "done";
+        g.reason = str(data.reason) ?? str(report?.reason);
+        g.changes = fileChanges(data.changes);
         break;
       }
     }

@@ -41,6 +41,7 @@ export type SessionEventType =
   | "execution.event"
   | "artifact.saved"
   | "transport.error"
+  | "transport.retry"
   | "notice";
 
 export interface SessionEvent<T = any> {

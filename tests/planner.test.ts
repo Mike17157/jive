@@ -278,6 +278,8 @@ describe("OpenRouter planner", () => {
       sessionId: "no-retry-test",
       apiKey: "test-key",
       toolSchema,
+      // The transport itself retries; the graph behind the first call must not run again.
+      retry: { attempts: 3, baseDelayMs: 1, maxDelayMs: 2 },
       getPluginCatalog: async () => "",
       execute: async () => {
         executions += 1;
@@ -295,7 +297,7 @@ describe("OpenRouter planner", () => {
     await controller.submit("execute once");
 
     expect(executions).toBe(1);
-    expect(fetches).toBe(2);
+    expect(fetches).toBe(4);
     expect(controller.getSnapshot().error).toContain("Could not reach OpenRouter");
     const raw = await readFile(join(cwd, ".jev", "sessions", "no-retry-test", "session.jsonl"), "utf8");
     const records = raw.trim().split("\n").map(line=>JSON.parse(line));

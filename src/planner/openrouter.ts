@@ -49,6 +49,7 @@ export interface OpenRouterClientOptions {
   endpoint?: string;
   appUrl?: string;
   appName?: string;
+  retry?: Partial<RetryPolicy>;
 }
 
 export interface CompleteOptions {
@@ -63,6 +64,9 @@ export interface CompleteOptions {
   /** Called with each reasoning delta, or with no text when only opaque details arrived. */
   onReasoning?: (delta?: string) => void;
   onToolCall?: (delta: ToolCallDelta) => void | Promise<void>;
+  /** Called before each retry of a transient failure; nothing has reached the callbacks above. */
+  onRetry?: (notice: RetryNotice) => void;
+  retry?: Partial<RetryPolicy>;
 }
 
 export interface ToolCallDelta {
@@ -81,13 +85,88 @@ export interface ServerSentEvent {
 export class OpenRouterError extends Error {
   readonly status?: number;
   readonly details?: unknown;
+  /** Set when the same request could plausibly succeed on a second attempt. */
+  readonly retryable: boolean;
+  /** A delay the provider asked for, in milliseconds. */
+  readonly retryAfterMs?: number;
 
-  constructor(message: string, options: { status?: number; details?: unknown; cause?: unknown } = {}) {
+  constructor(message: string, options: { status?: number; details?: unknown; cause?: unknown; retryable?: boolean; retryAfterMs?: number } = {}) {
     super(message, options.cause === undefined ? undefined : { cause: options.cause });
     this.name = "OpenRouterError";
     this.status = options.status;
     this.details = options.details;
+    this.retryable = options.retryable ?? false;
+    this.retryAfterMs = options.retryAfterMs;
   }
+}
+
+/** Statuses that describe congestion or a provider hiccup rather than a bad request. */
+const TRANSIENT_STATUS = new Set([408, 409, 425, 429, 500, 502, 503, 504, 520, 521, 522, 523, 524, 529]);
+/** Wording providers use for the same conditions when they arrive inside the stream. */
+const TRANSIENT_TEXT = /rate.?limit|temporarily|overloaded|capacity|timed? ?out|timeout|try again|unavailable|upstream|internal server error|connection (?:reset|closed)|socket hang up|network|fetch failed/i;
+const MAX_HONOURED_RETRY_AFTER_MS = 30_000;
+
+export interface RetryPolicy {
+  /** Total attempts including the first; 1 disables retrying. */
+  attempts: number;
+  baseDelayMs: number;
+  maxDelayMs: number;
+}
+
+export const DEFAULT_RETRY_POLICY: RetryPolicy = { attempts: 4, baseDelayMs: 800, maxDelayMs: 8000 };
+
+export interface RetryNotice {
+  attempt: number;
+  attempts: number;
+  delayMs: number;
+  /** Two or three words for a status line, e.g. "rate limited". */
+  reason: string;
+  error: OpenRouterError;
+}
+
+/** A mid-stream error payload: the provider's own code decides, and its wording otherwise. */
+function transientPayload(payload: unknown, message: string): boolean {
+  const code = payload && typeof payload === "object" ? (payload as Record<string, unknown>).code : undefined;
+  const numeric = typeof code === "number" ? code : typeof code === "string" && /^\d+$/.test(code) ? Number(code) : undefined;
+  if (numeric !== undefined) return TRANSIENT_STATUS.has(numeric);
+  return TRANSIENT_TEXT.test(message);
+}
+
+/** `Retry-After` in seconds or as an HTTP date. */
+export function parseRetryAfter(header: string | null): number | undefined {
+  if (!header) return undefined;
+  const seconds = Number(header.trim());
+  if (Number.isFinite(seconds) && seconds >= 0) return Math.round(seconds * 1000);
+  const date = Date.parse(header);
+  return Number.isFinite(date) ? Math.max(0, date - Date.now()) : undefined;
+}
+
+export function retryReason(error: OpenRouterError): string {
+  if (error.status === 429 || /rate.?limit/i.test(error.message)) return "rate limited";
+  if (error.status !== undefined && error.status >= 500) return `provider error ${error.status}`;
+  if (/Could not reach OpenRouter/.test(error.message)) return "network error";
+  if (/stream/i.test(error.message)) return "stream interrupted";
+  return "transient error";
+}
+
+/** How long to wait before attempt `attempt + 1`, or undefined when the error must stand. */
+export function retryDelay(error: unknown, attempt: number, policy: RetryPolicy): number | undefined {
+  if (!(error instanceof OpenRouterError) || !error.retryable) return undefined;
+  if (attempt >= policy.attempts) return undefined;
+  const backoff = Math.min(policy.maxDelayMs, policy.baseDelayMs * 2 ** (attempt - 1));
+  // Jitter keeps several sessions from returning to a busy provider in lockstep.
+  const jittered = Math.round(backoff * (0.7 + Math.random() * 0.6));
+  const asked = Math.min(error.retryAfterMs ?? 0, MAX_HONOURED_RETRY_AFTER_MS);
+  return Math.max(asked, jittered);
+}
+
+function wait(ms: number, signal?: AbortSignal): Promise<void> {
+  return new Promise((done, reject) => {
+    if (signal?.aborted) { reject(signal.reason); return; }
+    const timer = setTimeout(() => { signal?.removeEventListener("abort", abort); done(); }, ms);
+    const abort = () => { clearTimeout(timer); reject(signal?.reason); };
+    signal?.addEventListener("abort", abort, { once: true });
+  });
 }
 
 function normalizeUsage(value: unknown): OpenRouterUsage {
@@ -230,6 +309,7 @@ export class OpenRouterClient {
   readonly fetch: typeof globalThis.fetch;
   readonly appUrl?: string;
   readonly appName?: string;
+  readonly retry: RetryPolicy;
 
   constructor(options: OpenRouterClientOptions) {
     this.apiKey = options.apiKey;
@@ -237,9 +317,35 @@ export class OpenRouterClient {
     this.fetch = options.fetch ?? globalThis.fetch;
     this.appUrl = options.appUrl;
     this.appName = options.appName;
+    this.retry = { ...DEFAULT_RETRY_POLICY, ...options.retry };
   }
 
+  /**
+   * One completion, retrying transient failures.
+   *
+   * A retry replays the whole request, so it is only safe while nothing has reached the
+   * caller: a reasoning or content delta is already on screen, and a tool-call delta may
+   * already have committed a graph to execution. Once any of them has been handed over,
+   * the failure is the turn's, and the planner decides what to do with the evidence.
+   */
   async complete(options: CompleteOptions): Promise<OpenRouterCompletion> {
+    const policy: RetryPolicy = { ...this.retry, ...options.retry };
+    for (let attempt = 1; ; attempt += 1) {
+      let handedOver = false;
+      try {
+        return await this.#attempt(options, () => { handedOver = true; });
+      } catch (error) {
+        options.signal?.throwIfAborted();
+        const delay = handedOver ? undefined : retryDelay(error, attempt, policy);
+        if (delay === undefined) throw error;
+        const failure = error as OpenRouterError;
+        options.onRetry?.({ attempt, attempts: policy.attempts, delayMs: delay, reason: retryReason(failure), error: failure });
+        await wait(delay, options.signal);
+      }
+    }
+  }
+
+  async #attempt(options: CompleteOptions, handOver: () => void): Promise<OpenRouterCompletion> {
     let response: Response;
     try {
       response = await this.fetch(this.endpoint, {
@@ -272,7 +378,7 @@ export class OpenRouterClient {
       if (options.signal?.aborted) throw options.signal.reason ?? error;
       throw new OpenRouterError(
         `Could not reach OpenRouter: ${error instanceof Error ? error.message : String(error)}`,
-        { cause: error },
+        { cause: error, retryable: true },
       );
     }
 
@@ -285,7 +391,12 @@ export class OpenRouterClient {
         : raw.slice(0, 500);
       throw new OpenRouterError(
         `OpenRouter request failed (${response.status}${response.statusText ? ` ${response.statusText}` : ""}): ${remoteMessage || "empty response"}`,
-        { status: response.status, details },
+        {
+          status: response.status,
+          details,
+          retryable: TRANSIENT_STATUS.has(response.status),
+          retryAfterMs: parseRetryAfter(response.headers.get("retry-after")),
+        },
       );
     }
     if (!response.body) throw new OpenRouterError("OpenRouter returned an empty streaming response.");
@@ -313,13 +424,17 @@ export class OpenRouterClient {
           throw new OpenRouterError("OpenRouter sent malformed SSE JSON.", {
             details: event.data.slice(0, 1_000),
             cause: error,
+            retryable: true,
           });
         }
         if (chunk.error || event.event === "error") {
-          throw new OpenRouterError(
-            `OpenRouter stream failed: ${typeof chunk.error?.message === "string" ? chunk.error.message : JSON.stringify(chunk.error ?? chunk)}`,
-            { details: chunk.error ?? chunk },
-          );
+          const reported = typeof chunk.error?.message === "string" ? chunk.error.message : JSON.stringify(chunk.error ?? chunk);
+          const code = typeof chunk.error?.code === "number" ? chunk.error.code : undefined;
+          throw new OpenRouterError(`OpenRouter stream failed: ${reported}`, {
+            details: chunk.error ?? chunk,
+            ...(code !== undefined ? { status: code } : {}),
+            retryable: transientPayload(chunk.error, reported),
+          });
         }
         if (typeof chunk.model === "string") returnedModel = chunk.model;
         if (typeof chunk.provider === "string") provider = chunk.provider;
@@ -330,12 +445,14 @@ export class OpenRouterClient {
           const delta = choice.delta && typeof choice.delta === "object" ? choice.delta : {};
           if (typeof delta.content === "string") {
             content += delta.content;
+            if (delta.content) handOver();
             options.onContent?.(delta.content);
           }
           let reasoningActivity = false;
           if (typeof delta.reasoning === "string") {
             reasoning += delta.reasoning;
             reasoningActivity = true;
+            if (delta.reasoning) handOver();
             options.onReasoning?.(delta.reasoning);
           }
           if (delta.reasoning_details !== undefined) {
@@ -358,6 +475,7 @@ export class OpenRouterClient {
             accumulator.name = appendFragment(accumulator.name, fragment.function?.name);
             accumulator.arguments = appendFragment(accumulator.arguments, fragment.function?.arguments);
             calls.set(index, accumulator);
+            handOver();
             await options.onToolCall?.({
               index, id: accumulator.id, name: accumulator.name,
               arguments: accumulator.arguments,
@@ -371,13 +489,13 @@ export class OpenRouterClient {
       if (error instanceof OpenRouterError) throw error;
       throw new OpenRouterError(
         `OpenRouter stream was interrupted: ${error instanceof Error ? error.message : String(error)}`,
-        { cause: error },
+        { cause: error, retryable: true },
       );
     }
 
     if (!done && options.signal?.aborted) throw options.signal.reason ?? new DOMException("Aborted", "AbortError");
     if (!done && !finishReason) {
-      throw new OpenRouterError("OpenRouter stream ended before a completion marker.");
+      throw new OpenRouterError("OpenRouter stream ended before a completion marker.", { retryable: true });
     }
     if (finishReason === "length" || finishReason === "content_filter" || finishReason === "error") {
       throw new OpenRouterError(`OpenRouter completion ended with ${finishReason} before the full tool call was accepted.`);
@@ -386,7 +504,7 @@ export class OpenRouterClient {
       throw new OpenRouterError("OpenRouter did not confirm completion of the tool calls.");
     }
     if (calls.size === 0 && !content.trim()) {
-      throw new OpenRouterError("OpenRouter returned no answer or tool call.");
+      throw new OpenRouterError("OpenRouter returned no answer or tool call.", { retryable: true });
     }
     const toolCalls: PlannerToolCall[] = [...calls.values()]
       .sort((left, right) => left.index - right.index)
