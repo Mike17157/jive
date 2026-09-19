@@ -1,6 +1,7 @@
 import { expect, test } from "bun:test";
 import { testRender } from "@opentui/react/test-utils";
 import { TextAttributes, type Selection } from "@opentui/core";
+import { setRendererCapabilities } from "@opentui/core/testing";
 import { Lexer } from "marked";
 import { attachSelectionCopy } from "../src/ui/clipboard";
 import { inlineMarkdown, MarkdownMessage } from "../src/ui/components/MarkdownMessage";
@@ -19,6 +20,21 @@ test("Markdown renders headings, lists, links, tables and code immediately", asy
     const styled=inlineMarkdown(Lexer.lexInline("**bold** and [link](https://example.com)"));
     expect(styled.chunks.find(chunk=>chunk.text==="bold")!.attributes! & TextAttributes.BOLD).not.toBe(0);
     expect(styled.chunks.find(chunk=>chunk.text==="link")?.link?.url).toBe("https://example.com");
+  }finally{setup.renderer.destroy();}
+});
+
+test("a link drops its address once the terminal reports hyperlink support", async()=>{
+  const setup=await testRender(<MarkdownMessage content={"Read the [Docs](https://example.com) first."}/>,{width:60,height:10});
+  (globalThis as any).IS_REACT_ACT_ENVIRONMENT=false;
+  try{
+    await setup.flush();
+    expect(setup.captureCharFrame()).toContain("(https://example.com)");
+    // Capabilities can land after the first frame, so the reply has to re-render.
+    setup.renderer.emit("capabilities",setRendererCapabilities(setup.renderer,{hyperlinks:true}));
+    await setup.flush();
+    const frame=setup.captureCharFrame();
+    expect(frame).toContain("Read the Docs first.");
+    expect(frame).not.toContain("example.com");
   }finally{setup.renderer.destroy();}
 });
 
