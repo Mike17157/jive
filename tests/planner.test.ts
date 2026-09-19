@@ -1,10 +1,12 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { mkdtemp, rm, readFile, writeFile } from "node:fs/promises";
+import { mkdtemp, rm, readFile, writeFile, realpath } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import type { GraphReport } from "../src/core/types.ts";
 import { saveGraphForEditing } from "../src/core/graph-edits.ts";
+import { executeGraph } from "../src/core/executor.ts";
+import { runtimeContext } from "../src/planner/runtime-context.ts";
 import { validateGraph } from "../src/core/schema.ts";
 import { defaultEffortFor, GraphAgentController } from "../src/planner/agent.ts";
 import { mergeModelOptions } from "../src/planner/models.ts";
@@ -138,6 +140,40 @@ const toolSchema = {
 };
 
 describe("OpenRouter planner", () => {
+  test("records the actual prompt and capabilities without credentials, refreshes facts on resume", async () => {
+    const cwd = await makeCwd();
+    const bodies: any[] = [];
+    globalThis.fetch = (async (_input: RequestInfo | URL, init?: RequestInit) => {
+      bodies.push(JSON.parse(String(init?.body)));
+      return answerResponse();
+    }) as unknown as typeof fetch;
+    const env = { JEV_API_TOKEN: "never-log-this", JEV_MODEL: "custom-judge", UNRELATED_SECRET: "also-private" };
+    const options = {
+      cwd, model: "test/model", sessionId: "context-provenance", apiKey: "planner-secret", toolSchema,
+      getRuntimeContext: () => runtimeContext(cwd, false, env), getPluginCatalog: async () => "catalog v1",
+      execute: async () => { throw new Error("no graph expected"); },
+    };
+    const controller = new GraphAgentController(options);
+    await controller.ready();
+    await controller.submit("first");
+    await controller.submit("second");
+    const snapshots = controller.store.events.filter(e => e.type === "planner.context");
+    expect(snapshots).toHaveLength(1);
+    expect(snapshots[0]!.data.messages).toEqual(bodies[0].messages.slice(0, 2));
+    expect(snapshots[0]!.data.toolSchemas).toEqual(bodies[0].tools.map((t: any) => t.function));
+    expect(snapshots[0]!.data.runtime.jev).toMatchObject({ credentialsConfigured: true, model: "custom-judge" });
+    expect(controller.store.events.filter(e => e.type === "planner.request").map(e => e.data.contextSequence)).toEqual([snapshots[0]!.sequence, snapshots[0]!.sequence]);
+    const log = await readFile(controller.store.logPath, "utf8");
+    for (const secret of ["never-log-this", "also-private", "planner-secret"]) expect(log).not.toContain(secret);
+    env.JEV_API_TOKEN = "";
+    const resumed = new GraphAgentController(options);
+    await resumed.ready();
+    await resumed.submit("third");
+    const updated = resumed.store.events.filter(e => e.type === "planner.context");
+    expect(updated).toHaveLength(2);
+    expect(updated[1]!.data.runtime.jev.credentialsConfigured).toBe(false);
+    expect(bodies[2].messages[1].content).toContain('"credentialsConfigured":false');
+  });
   test("snapshots AGENTS.md in the system prompt for the lifetime of a session", async () => {
     const cwd = await makeCwd();
     const agentsPath = join(cwd, "AGENTS.md");
@@ -636,10 +672,38 @@ describe("OpenRouter planner", () => {
     expect(controller.getSnapshot().error).toBeUndefined();
   });
 
+  test("file and unchanged ID replay execute real graphs in session cwd and preserve sources", async () => {
+    const cwd = await makeCwd();
+    const graph = { version: 1, label: "replay", nodes: { a: { type: "bash", script: "pwd > location.txt; printf ok", } }, returns: ["a"] };
+    const file = await saveGraphForEditing(cwd, "original", graph);
+    const { controller, toolResults } = await runRounds(cwd, [
+      [{ id: "from-file", name: "execute_graph_mod", arguments: { file: ".jev/runs/original/graph.json" } }],
+      [{ id: "unchanged", name: "execute_graph_mod", arguments: (previous: ToolResults) => ({ base: previous[0]!.result.graphId }) }],
+      [{ id: "edited", name: "execute_graph_mod", arguments: { file, edits: [{ path: "/nodes/a/script", new: "printf edited" }] } }],
+    ], graph => executeGraph(graph, { cwd, trackFileChanges: false }));
+    expect(toolResults.map(r => r.result.status)).toEqual(["done", "done", "done"]);
+    expect(toolResults.map(r => r.result.requested.a.output.stdout)).toEqual(["ok", "ok", "edited"]);
+    expect(new Set(toolResults.map(r => r.result.graphId)).size).toBe(3);
+    expect(JSON.parse(await readFile(file, "utf8"))).toEqual(graph);
+    expect((await readFile(join(cwd, "location.txt"), "utf8")).trim()).toBe(await realpath(cwd));
+    expect(controller.store.events.filter(e => e.type === "graph.started")[0]!.data.file).toBe(".jev/runs/original/graph.json");
+  });
+
+  test("invalid file graphs fail validation before effects and remain editable", async () => {
+    const cwd = await makeCwd();
+    await writeFile(join(cwd, "bad.json"), JSON.stringify({ version: 1, label: "bad", nodes: { a: { type: "shell", script: "touch must-not-exist" } } }));
+    const { toolResults } = await runRounds(cwd, [[{ id: "invalid", name: "execute_graph_mod", arguments: { file: "bad.json" } }]],
+      graph => executeGraph(graph, { cwd, trackFileChanges: false }));
+    expect(toolResults[0]!.result.status).toBe("error");
+    expect(toolResults[0]!.result.error).toContain("/nodes/a/type");
+    expect(toolResults[0]!.result.graphId).toBeDefined();
+    await expect(readFile(join(cwd, "must-not-exist"))).rejects.toThrow();
+  });
+
   test("a schema-rejected graph is saved under the returned graphId so one edit can fix it", async () => {
     const cwd = await makeCwd();
     const executed: any[] = [];
-    const { toolResults } = await runRounds(cwd, [
+    const { controller, toolResults } = await runRounds(cwd, [
       [{ id: "call-1", name: "execute_graph", arguments: { version: 1, label: "big", nodes: { a: { type: "shell", script: "ls" }, b: { type: "bash", script: "pwd" } } } }],
       [{ id: "call-2", name: "execute_graph_mod", arguments: (previous: ToolResults) => ({ base: previous[0]!.result.graphId, edits: [{ path: "/nodes/a/type", new: "bash" }] }) }],
     ], async (graph) => {
@@ -648,6 +712,7 @@ describe("OpenRouter planner", () => {
       return { graphId: "g-fixed", label: graph.label, status: "done", previews: [], requested: {}, recordPath: "/dev/null" };
     });
     expect(toolResults.map((entry: any) => entry.result.status), JSON.stringify(toolResults)).toEqual(["error", "done"]);
+    expect(controller.getSnapshot().error).toBeUndefined();
     expect(toolResults[0].result.error).toContain("/nodes/a/type must be one of");
     const rejectedId = toolResults[0].result.graphId;
     expect(rejectedId).toMatch(/^[a-zA-Z0-9_-]+$/);
@@ -669,8 +734,8 @@ describe("OpenRouter planner", () => {
     expect(toolResults[0].result.error).toBe('No saved graph with graphId "nope". Use the graphId from an earlier execute_graph result; saved graphs live under .jev/runs/.');
     expect(toolResults[0].result.base).toBe("nope");
     expect(toolResults[1].result.error).toContain("old was not found. Current value:\nls");
-    expect(toolResults[1].result.hint).toContain("No edit was applied");
-    expect(toolResults[2].result.error).toBe("edits must be a non-empty array of {path, old?, new?} objects.");
+    expect(toolResults[1].result.hint).toContain("nothing ran");
+    expect(toolResults[2].result.error).toContain("edits must be an array");
     expect(controller.store.events.some((event) => event.type === "graph.started")).toBe(false);
   });
 });

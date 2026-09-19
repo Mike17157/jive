@@ -2,6 +2,7 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { appendFile, mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { runtimeContext, runtimeContextMessage } from "../src/planner/runtime-context.ts";
 
 import {
   DeterministicContext,
@@ -25,6 +26,23 @@ afterEach(async () => {
 });
 
 describe("append-only session context", () => {
+  test("compaction preserves the authoritative runtime prefix and latest extractor contracts", async () => {
+    const store = await temporaryStore("runtime-compaction");
+    const prefix: PlannerMessage[] = [
+      { role: "system", content: "stable operating policy" },
+      { role: "system", content: runtimeContextMessage(runtimeContext(store.cwd, false, {})) },
+    ];
+    await store.appendMessage({ role: "system", content: "Extractor plugin catalog update (append-only):\nold catalog" });
+    await store.appendMessage({ role: "user", content: "original task" });
+    for (let i = 0; i < 20; i++) await store.appendMessage({ role: "assistant", content: "old evidence ".repeat(100) });
+    await store.appendMessage({ role: "system", content: "Extractor plugin catalog update (append-only):\ncurrent catalog" });
+    await store.appendMessage({ role: "assistant", content: "latest result" });
+    const prepared = await new DeterministicContext(store, prefix, { contextLimit: 3000, outputReserve: 200, toolResultReserve: 200, retentionRatio: 0.1 }).prepare();
+    expect(prepared.compacted).toBe(true);
+    expect(prepared.messages.slice(0, 2)).toEqual(prefix);
+    expect(prepared.messages.some(m => m.content?.includes("current catalog"))).toBe(true);
+    expect(prepared.messages.some(m => m.content?.includes("old catalog"))).toBe(false);
+  });
   test("keeps the exact request prefix stable as turns append", async () => {
     const store = await temporaryStore();
     const prefix: PlannerMessage[] = [{ role: "system", content: "stable instructions" }];

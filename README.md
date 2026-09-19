@@ -1,8 +1,8 @@
 # Jive
 
 Jive is the terminal agent built in this repository: one planner tool,
-`execute_graph`, plus `execute_graph_mod` to rerun a saved graph after small
-edits. An OpenRouter model submits a JSON graph; bash commands and Jev
+`execute_graph`, plus `execute_graph_mod` to run a saved graph by ID or file,
+with optional edits. An OpenRouter model submits a JSON graph; bash commands and Jev
 decisions execute locally through branches, bounded loops, and parallel template
 expansion before returning to the planner.
 
@@ -70,6 +70,14 @@ At session creation, Jive snapshots that folder's `AGENTS.md` into the leading
 system prompt and persists the snapshot with the session. Changes to the file
 take effect in a new session (`/new`), without changing the prompt prefix of an
 existing session.
+
+Every planning request also receives runtime facts: the session cwd, runtime and
+contract versions, configured Jev model and credential availability (never credential
+values), execution limits, and graph replay support. Configuration is not a health
+check; useful task calls establish service availability. The latest extractor catalog
+is retained through compaction. `planner.context` records the exact system prefix and
+tool definitions once per change; `planner.request` records the context snapshot,
+history boundary, compaction epoch, model and effort used for each request.
 
 There is no build step to keep in sync. The command runs this checkout's
 TypeScript sources through Bun, so it always reflects the latest changes; it
@@ -282,15 +290,35 @@ See [the examples](examples/) and `--schema` for the implemented interface.
 
 ## Planner guidance
 
-The system prompt frames `execute_graph` as a program, not a command runner.
-The guide in `src/core/planner-guide.ts` tells the model to encode loops,
-per-item Jev judgments, and branching inside one graph, to persist progress to
-files inside groups, and to return to its own reasoning only for a new
-strategy, original code, or a user decision. It carries two reference
-examples: a two-node manifest inspection and a crawl loop (a `repeat` group
-over a frontier whose body is a `foreach` fetch with a Jev choice per item and
-a bash merge). Both examples are validated against the schema, and the crawl
-loop is executed end to end with a stubbed Jev, in `tests/planner-guide.test.ts`.
+The planning policy appears before the detailed graph contract. It directs the
+agent to batch known independent work into one graph, encode predictable
+continuations, use code for deterministic decisions and Jev for bounded semantic
+decisions, and return for new strategy or original code/rubric generation.
+Small executable examples cover parallel reads, deterministic and semantic
+branches, and batch judgment with per-item evidence and aggregation. Tests run
+these examples through the real executor with fixture Jev answers. Taskground
+READMEs describe the task without teaching the execution system.
+
+`execute_graph_mod` accepts exactly one of `base` (a returned graphId) or `file`
+(a graph JSON path relative to session cwd, or absolute). Edits are optional:
+
+```json
+{"base":"earlier-graph-id"}
+{"file":"work/graph.json"}
+{"file":"work/graph.json","edits":[{"path":"/limits/concurrency","new":8}]}
+```
+
+Each call validates and executes in the active session, records its events, and
+saves a new graphId without changing the source graph. All nodes run again; there
+is no automatic resume or result cache. Reuse saved evidence when recovering
+from an aggregation failure. File replay keeps session cwd semantics. Standalone
+replay remains `jive --cwd DIR --run FILE --json`.
+
+Run `bun run eval:planner --model MODEL` for the opt-in live behavior suite.
+It uses task-only prompts in fresh temporary workspaces and records correctness,
+tool rounds, parallel structure, semantic decisions and capability probes.
+See [the evaluation guide](evals/planner/README.md). Regular `bun test` uses
+fixtures and makes no model calls.
 
 ## Extractor plugins
 

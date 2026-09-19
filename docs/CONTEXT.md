@@ -14,6 +14,20 @@ Avoid a regenerated session summary, current timestamp, reordered tool schema,
 or re-rendered catalog near the beginning of every request. The semantic graph
 tool definition can remain stable while plugin contracts change through events.
 
+The stable operating policy precedes the graph contract and executable examples.
+A separate system message supplies runtime capability facts: cwd, runtime and
+contract versions, default limits, configured Jev model and credential presence,
+and saved-graph replay semantics. This message is stable while configuration is
+unchanged, refreshed when configuration changes, and supplied again after resume
+or compaction. It never includes credential values. Credential presence does not
+assert service availability; useful task calls establish that.
+
+`planner.context` events store the exact system prefix and tool definitions,
+capability data, and a SHA-256 hash, once per change. `planner.request` links each
+request to that snapshot and records the history boundary, compaction epoch,
+model, and effort. Combined with the append-only message records this preserves
+the request's context provenance without copying all history every round.
+
 Maintain a complete local event log and artifacts. Materialize the planner's
 graph-result message once; live stdout and animation events can remain in the
 execution/UI event stream. Preserve the distinction between original records and

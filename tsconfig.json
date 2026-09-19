@@ -21,6 +21,7 @@
     "src",
     "tests",
     "examples",
+    "evals",
     "bin"
   ]
 }

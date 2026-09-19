@@ -1,4 +1,5 @@
 import type { JevAdapter, JevRequest, JevResponse } from "../core/types";
+import { DEFAULT_JEV_MODEL } from "../core/runtime-contract.ts";
 
 export function validateQuestions(questions: Record<string, any>): void {
   if (!questions || Array.isArray(questions) || typeof questions !== "object" || !Object.keys(questions).length) throw new Error("Jev requires a nonempty question map");
@@ -50,7 +51,7 @@ export class JevClient implements JevAdapter {
     validateQuestions(request.questions);
     const apiKey = this.options.apiKey ?? process.env.JEV_API_TOKEN ?? process.env.TYPESAFE_API_KEY;
     if (!apiKey) throw new Error("Set JEV_API_TOKEN in .env to execute Jev nodes");
-    const model = request.model ?? this.options.model ?? process.env.JEV_MODEL ?? "jev-1.13.0";
+    const model = request.model ?? this.options.model ?? process.env.JEV_MODEL ?? DEFAULT_JEV_MODEL;
     // Jev samples: a malformed answer or an upstream 5xx usually clears on the next attempt.
     const attempts = 1 + (this.options.retries ?? 1);
     for (let attempt = 1; ; attempt++) {

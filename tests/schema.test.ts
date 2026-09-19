@@ -35,8 +35,8 @@ describe("validation messages", () => {
   test("reports only the chosen node branch instead of both oneOf alternatives", () => {
     expect(rejection({ version: 1, label: "x", nodes: { a: { type: "bash" } } }))
       .toBe('Invalid graph: /nodes/a is missing required property "script"');
-    expect(rejection({ version: 1, label: "x", nodes: { a: { type: "jev", state: {}, questions: {} } } }))
-      .toBe('Invalid graph: /nodes/a is missing required property "accept"');
+    expect(rejection({ version: 1, label: "x", nodes: { a: { type: "jev", state: {} } } }))
+      .toBe('Invalid graph: /nodes/a is missing required property "questions"');
   });
 
   test("names the discriminator options when a node type is unknown", () => {

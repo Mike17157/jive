@@ -9,9 +9,9 @@ import { runCommand, type CommandResult } from "./process";
 import { changesSince, snapshotWorkingTree } from "./file-changes";
 import { ExtractorRegistry } from "../plugins/registry";
 import { JevAnswerError, JevClient, validateAnswer, validateQuestions } from "../jev/client";
+import { DEFAULT_GRAPH_LIMITS } from "./runtime-contract.ts";
 import type { ExecutionEvent, Graph, GraphBody, GraphReport, Group, JevAdapter, JevResponse, Limits, Node, NodeResult } from "./types";
 
-const defaults: Limits = { maxNodes: 300, concurrency: 6, timeoutMs: 300000, maxJevCalls: 100 };
 class Semaphore {
   private used = 0;
   private queue: Array<() => void> = [];
@@ -62,7 +62,7 @@ export async function executeGraph(input: unknown, options: ExecuteOptions): Pro
   const directory = join(options.artifactRoot ?? join(options.cwd, ".jev", "runs"), graphId);
   await mkdir(directory, { recursive: true });
   await writeFile(join(directory, "graph.json"), JSON.stringify(graph, null, 2));
-  const limits = { ...defaults, ...graph.limits };
+  const limits: Limits = { ...DEFAULT_GRAPH_LIMITS, ...graph.limits };
   const controller = new AbortController();
   const signal = options.signal ? AbortSignal.any([controller.signal, options.signal]) : controller.signal;
   const timer = setTimeout(() => controller.abort(new Error("Graph time budget exhausted")), limits.timeoutMs);
