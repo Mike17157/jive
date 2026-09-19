@@ -252,6 +252,28 @@ describe("OpenRouter planner", () => {
     expect(requestBodies[0]!.provider).toEqual({ allow_fallbacks: false });
   });
 
+  test("a turn can continue beyond the former 24 tool-round ceiling", async () => {
+    const cwd = await makeCwd();
+    let fetches = 0;
+    globalThis.fetch = (async () => ++fetches <= 25 ? toolResponse() : answerResponse()) as unknown as typeof fetch;
+    let executions = 0;
+    const controller = new GraphAgentController({
+      cwd, model: "test/model", sessionId: "long-turn-test", apiKey: "test-key", toolSchema,
+      getPluginCatalog: async () => "",
+      execute: async () => ({
+        graphId: `graph-${++executions}`, label: "streamed", status: "done", previews: [], requested: {},
+        recordPath: join(cwd, `graph-${executions}.json`),
+      }),
+    });
+    await controller.ready();
+    await controller.submit("keep going until the work is complete");
+
+    expect(executions).toBe(25);
+    expect(fetches).toBe(26);
+    expect(controller.getSnapshot().messages.at(-1)?.text).toBe("All done.");
+    expect(controller.getSnapshot().error).toBeUndefined();
+  });
+
   test("a tool round's reasoning becomes a transcript entry and survives a resume", async () => {
     const cwd = await makeCwd();
     let fetches = 0;

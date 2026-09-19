@@ -331,9 +331,40 @@ describe("graph presentation", () => {
     const lines = await view(single());
     expect(lines).toHaveLength(1);
     expect(lines[0]).toContain("Inspect the manifest");
-    expect(lines[0]).toContain("done");
+    expect(lines[0]).not.toContain("bash");
+    expect(lines[0]).not.toContain("done");
     // The node's own key would be a second, emptier title for the same call.
     expect(lines[0]).not.toContain("read");
+  });
+
+  test("a failed call shows one inline error and a clickable copy control", async () => {
+    const ev = eventFactory("failed-call");
+    const events = [
+      ev("graph.started", undefined, { label: "Run checks" }),
+      ev("node.created", "check", { label: "check", type: "bash", needs: [] }),
+      ev("node.finished", "check", { result: { id: "check", label: "check", type: "bash", status: "failed", error: "Command exited with 1", output: { stderr: "tests broke", exitCode: 1 } } }),
+      ev("graph.finished", undefined, { status: "partial", reason: "Command exited with 1" }),
+    ];
+    const copied: string[] = [];
+    const setup = await testRender(
+      <GraphView graph={reduceGraphs(events)[0]!} width={70} expanded={new Set()} folded={new Set()} selectedRow={-1} focused={false} index={0} total={1} onCopyFailure={(text) => copied.push(text)} />,
+      { width: 70, height: 8, useMouse: true },
+    );
+    (globalThis as Record<string, unknown>).IS_REACT_ACT_ENVIRONMENT = false;
+    try {
+      await setup.flush();
+      const frame = setup.captureCharFrame();
+      expect(frame.split("Command exited with 1")).toHaveLength(2);
+      expect(frame).toContain("[⧉]");
+      expect(frame).not.toMatch(/Run checks\s+bash|Run checks\s+failed|\d+\.\d+s/);
+      const lines = frame.split("\n");
+      const y = lines.findIndex((line) => line.includes("[⧉]"));
+      const x = lines[y]!.indexOf("⧉");
+      await setup.mockMouse.click(x, y);
+      expect(copied).toEqual([`Command exited with 1\n\n${JSON.stringify({ stderr: "tests broke", exitCode: 1 }, null, 2)}`]);
+    } finally {
+      setup.renderer.destroy();
+    }
   });
 
   test("a graph still being assembled keeps its title, however few nodes it has so far", async () => {
@@ -645,6 +676,16 @@ describe("orb", () => {
 // Rendered UI
 
 describe("App", () => {
+  test("does not repeat controller errors above the composer", async () => {
+    const c=makeController({error:"Planner request failed",messages:[{id:"n1",role:"notice",text:"Planner request failed"}]});
+    const {setup,frame}=await mount(c,80,18);
+    try{
+      const f=await frame();
+      expect(f.split("Planner request failed")).toHaveLength(2);
+      expect(f).not.toContain("⚠");
+    }finally{setup.renderer.destroy();}
+  });
+
   test("effort slider and shorthand commands apply exact levels", async () => {
     const c=makeController({models:[{id:"anthropic/claude-sonnet-5",name:"Test model",reasoningEfforts:["low","medium","high","xhigh"]}]});
     const {setup,type,enter,frame,press,escape}=await mount(c);
@@ -881,14 +922,19 @@ describe("App", () => {
       expect(lines.find((l) => l.includes("Find where sessions expire"))).toMatch(/^ {3}│ {2}Find where sessions expire/);
       expect(f).toContain("◆ Scanning the repository first.");
       expect(f).toContain("investigate expiry");
-      expect(f).toMatch(/scan repo\s+bash\s+done/);
-      expect(f).toMatch(/✖\s+grep tests\s+bash\s+failed/);
-      expect(f).toMatch(/├─○\s+pick file\s+jev\s+blocked/);
+      const scanLine = lines.find((line) => line.includes("scan repo"))!;
+      const failedLine = lines.find((line) => line.includes("grep tests"))!;
+      const pickLine = lines.find((line) => line.includes("pick file"))!;
+      expect(scanLine).not.toMatch(/bash|done|\d+\.\d+s/);
+      expect(failedLine).toMatch(/✖\s+grep tests.*exit 2: no matches.*\[⧉\]/);
+      expect(failedLine).not.toMatch(/bash|failed|\d+\.\d+s/);
+      expect(pickLine).toMatch(/├─○\s+pick file/);
+      expect(pickLine).not.toMatch(/jev|blocked|\d+\.\d+s/);
       // Loops open by default: the group row names the loop and its body shows the latest item.
-      expect(f).toMatch(/▾ ≡ per file\s+foreach · 2 items\s+pending/);
-      expect(f).toMatch(/↻─○\s+read b\.ts\s+bash\s+pending/);
+      expect(f).toMatch(/▾ ≡ per file\s+foreach · 2 items/);
+      expect(f).toMatch(/↻─○\s+read b\.ts/);
       expect(f).not.toContain("read a.ts");
-      expect(f).toMatch(/╯\s+verify\s+bash\s+pending/);
+      expect(f).toMatch(/╯\s+verify/);
       expect(f).not.toContain("folded");
       expect(f).toContain("working… Ctrl+C interrupts");
       expect(f).toContain("⎘"); // artifact marker
@@ -1014,8 +1060,9 @@ describe("App", () => {
       expect(lines.every((l) => l.length <= 44)).toBe(true);
       expect(f).toContain("scan repo");
       expect(f).toContain("done");
-      expect(f).toContain("failed");
-      expect(f).not.toMatch(/scan repo\s+bash/); // type column hidden when narrow
+      expect(f).toContain("exit 2: no m…");
+      expect(f).toContain("[⧉]");
+      expect(f).not.toMatch(/scan repo\s+(bash|done)|grep tests.*\b(failed|bash)\b/);
       expect(lines.slice(-6).some((l) => l.includes("❯"))).toBe(true);
     } finally {
       setup.renderer.destroy();
@@ -1138,9 +1185,9 @@ describe("App", () => {
       expect(f).toContain("draft plan");
       expect(f).toMatch(/assembling\.{0,3}/);
       expect(f).toContain("3 nodes");
-      expect(f).toMatch(/scan repo\s+bash\s+drafted/);
-      expect(f).toMatch(/pick file\s+jev\s+drafted/);
-      expect(f).toMatch(/▾ ≡ per file\s+foreach · ≤3 items\s+drafted/);
+      expect(f).toMatch(/· scan repo/);
+      expect(f).toMatch(/· pick file/);
+      expect(f).toMatch(/· ▾ ≡ per file\s+foreach · ≤3 items/);
       expect(f).not.toContain("running");
       await sleep(350);
       f = await frame();
@@ -1152,8 +1199,9 @@ describe("App", () => {
       expect(f.split("scan repo").length - 1).toBe(1);
       expect(f.split("pick file").length - 1).toBe(1);
       expect(f.split("per file").length - 1).toBe(1);
-      expect(f).toMatch(/scan repo\s+bash\s+running/);
-      expect(f).toMatch(/pick file\s+jev\s+pending/);
+      const runtimeLines = f.split("\n");
+      expect(runtimeLines.find((line) => line.includes("scan repo"))).not.toMatch(/bash|running/);
+      expect(runtimeLines.find((line) => line.includes("pick file"))).not.toMatch(/jev|pending/);
       expect(f).toContain("1 running");
       // A failed assembly reports its error instead of pretending to execute.
       const failed: UIExecutionEvent = { sequence: 60, time: base + 900, graphId: "g3", type: "graph.building.finished", data: { status: "failed", error: "cycle detected" } };

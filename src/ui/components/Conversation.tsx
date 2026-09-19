@@ -97,13 +97,15 @@ export function Conversation(props: {
   streaming?: boolean;
   /** Ctrl+O: show every round's reasoning in full instead of its one-line title. */
   showThinking?: boolean;
+  /** Copies the complete diagnostic attached to a failed tool call. */
+  onCopyFailure?: (text: string) => void;
 }) {
   const items: ReactNode[] = [];
   const total = props.placements.length;
   const innerWidth = props.width - CONVERSATION_PADDING_X * 2;
   const renderGraph = (p: GraphPlacement) => (
     <box key={`g:${p.graph.id}`} marginTop={1} width="100%">
-      <GraphView graph={p.graph} width={innerWidth} expanded={props.expanded} folded={props.folded} selectedRow={props.selectedRow} focused={props.focusedGraph === p.graph.id} index={p.index} total={total} />
+      <GraphView graph={p.graph} width={innerWidth} expanded={props.expanded} folded={props.folded} selectedRow={props.selectedRow} focused={props.focusedGraph === p.graph.id} index={p.index} total={total} onCopyFailure={props.onCopyFailure} />
     </box>
   );
   props.messages.forEach((m, i) => {

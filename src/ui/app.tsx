@@ -13,7 +13,7 @@ import { Orb } from "./components/Orb.tsx";
 import { StatusBar } from "./components/StatusBar.tsx";
 import { EffortPicker, EFFORT_PANEL_ROWS } from "./components/EffortPicker.tsx";
 import { ThinkingIndicator } from "./components/ThinkingIndicator.tsx";
-import { attachSelectionCopy } from "./clipboard.ts";
+import { attachSelectionCopy, copyText } from "./clipboard.ts";
 import { foldableIds, layoutGraph, type LayoutRow } from "./graph/layout.ts";
 import { reduceGraphs, type GraphModel } from "./graph/model.ts";
 import { palette } from "./theme.ts";
@@ -84,6 +84,9 @@ export function App(props: AppProps) {
   const anchorSession = useRef(snapshot.sessionId);
 
   useEffect(()=>attachSelectionCopy(renderer,setNotice),[renderer]);
+  const copyFailure = useCallback((text: string) => {
+    void copyText(renderer, text, setNotice);
+  }, [renderer]);
 
   // Place each graph relative to the conversation the first time it appears.
   const placements = useMemo<GraphPlacement[]>(() => {
@@ -526,6 +529,7 @@ export function App(props: AppProps) {
             selectedRow={Math.min(rowCursor, (focusedLayout?.rows.length ?? 1) - 1)}
             streaming={snapshot.busy}
             showThinking={thinkingOpen}
+            onCopyFailure={copyFailure}
           />
         )}
       </scrollbox>

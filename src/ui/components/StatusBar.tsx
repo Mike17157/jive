@@ -24,7 +24,6 @@ export function StatusBar(props: { snapshot: AgentSnapshot; width: number; mode:
         {snapshot.effort&&!narrow?<span fg={palette.accent}> · {snapshot.effort}</span>:null}
         {!narrow ? <span fg={palette.textFaint}> · {snapshot.sessionId.slice(0, 8)}</span> : null}
         {props.notice ? <span fg={palette.yellow}>  {props.notice}</span> : null}
-        {snapshot.error ? <span fg={palette.red}>  ⚠ {snapshot.error}</span> : null}
       </text>
       <text wrapMode="none">
         {bar ? <span fg={gradientAt(used)}>{bar} </span> : null}

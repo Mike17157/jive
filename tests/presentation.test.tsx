@@ -3,7 +3,7 @@ import { testRender } from "@opentui/react/test-utils";
 import { TextAttributes, type Selection } from "@opentui/core";
 import { setRendererCapabilities } from "@opentui/core/testing";
 import { Lexer } from "marked";
-import { attachSelectionCopy } from "../src/ui/clipboard";
+import { attachSelectionCopy, copyText } from "../src/ui/clipboard";
 import { inlineMarkdown, MarkdownMessage } from "../src/ui/components/MarkdownMessage";
 
 test("Markdown renders headings, lists, links, tables and code immediately", async () => {
@@ -70,4 +70,19 @@ test("completed mouse selections copy automatically without writing to the real 
     await Bun.sleep(5);expect(copied.at(-1)).toBe("  exact whitespace  ");
   }finally{detach();setup.renderer.destroy();}
   expect(disposed).toBe(true);
+});
+
+test("an explicit copy control writes the exact failure details",async()=>{
+  const setup=await testRender(<text>copy</text>,{width:20,height:4,useMouse:true});
+  (globalThis as any).IS_REACT_ACT_ENVIRONMENT=false;
+  const copied:string[]=[],notices:string[]=[];let disposed=false;
+  try{
+    await copyText(setup.renderer,"Command exited with 1\n\nstderr",text=>notices.push(text),()=>({
+      async writeText(text){copied.push(text);return {host:{status:"written"},terminal:{status:"not-attempted",capability:"unknown"}};},
+      async dispose(){disposed=true;},
+    }));
+    expect(copied).toEqual(["Command exited with 1\n\nstderr"]);
+    expect(notices).toEqual(["Copied failure details"]);
+    expect(disposed).toBe(true);
+  }finally{setup.renderer.destroy();}
 });

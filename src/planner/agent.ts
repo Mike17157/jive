@@ -103,7 +103,6 @@ export function plannerSystemPrompt(
 }
 
 const DEFAULT_CONTEXT_LIMIT = 128_000;
-const MAX_PLANNER_ROUNDS = 24;
 const EFFORT_METADATA_TIMEOUT_MS = 10_000;
 export const REASONING_EFFORTS = ["none", "minimal", "low", "medium", "high", "xhigh", "max"] as const;
 const REASONING_EFFORT_SET = new Set<string>(REASONING_EFFORTS);
@@ -787,7 +786,9 @@ export class GraphAgentController implements AgentController {
   }
 
   async #plannerLoop(signal: AbortSignal): Promise<void> {
-    for (let round = 0; round < MAX_PLANNER_ROUNDS; round += 1) {
+    // A turn ends when the model answers or the user interrupts it. Long tasks may
+    // legitimately need many tool rounds, so there is no artificial round ceiling.
+    while (true) {
       if (signal.aborted) throw signal.reason;
       const requestStore = this.store;
       this.#setPhase("thinking");
@@ -924,7 +925,6 @@ export class GraphAgentController implements AgentController {
         await this.#publishPluginCatalog(unpublishedCatalog);
       }
     }
-    throw new Error(`Planner exceeded ${MAX_PLANNER_ROUNDS} consecutive tool rounds.`);
   }
 
   async #executeToolCall(

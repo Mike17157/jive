@@ -2,7 +2,7 @@ import { Fragment, useEffect, useMemo, useState, type ReactNode } from "react";
 import type { FileChangeSummary } from "../../core/file-changes.ts";
 import type { GraphModel, GraphNode } from "../graph/model.ts";
 import { countStatuses, statusTone, type StatusTone } from "../graph/model.ts";
-import { edgeCellState, formatDuration, groupSummary, layoutGraph, loopGlyph, nodeDuration, revealActive, revealProgress, statusGlyph, sweepActive, type LaneCell, type LayoutRow } from "../graph/layout.ts";
+import { edgeCellState, formatDuration, groupSummary, layoutGraph, loopGlyph, revealActive, revealProgress, statusGlyph, sweepActive, type LaneCell, type LayoutRow } from "../graph/layout.ts";
 import { dimHex, mixHex, palette } from "../theme.ts";
 
 const TICK_MS = 80;
@@ -132,6 +132,26 @@ export interface GraphViewProps {
   focused: boolean;
   index: number;
   total: number;
+  onCopyFailure?: (text: string) => void;
+}
+
+function printable(value: unknown): string {
+  if (typeof value === "string") return value;
+  try {
+    return JSON.stringify(value, null, 2) ?? String(value);
+  } catch {
+    return String(value);
+  }
+}
+
+/** Full text copied by the failed-call button: the error plus any recorded response. */
+export function failureCopyText(node: GraphNode): string {
+  const response = node.result?.output !== undefined
+    ? printable(node.result.output)
+    : node.jevResponses.length > 0
+      ? printable(node.jevResponses[node.jevResponses.length - 1]!.data)
+      : node.output.trim();
+  return [node.error, response].filter((part): part is string => Boolean(part)).join("\n\n");
 }
 
 export function GraphView(props: GraphViewProps) {
@@ -187,13 +207,11 @@ export function GraphView(props: GraphViewProps) {
   // A call that turned into one node needs no title above it: the row carries the title,
   // and the counts a header would add ("1/1 done") only repeat the row's own status.
   const only = layout.rows.length === 1 && !layout.rows[0]!.group && !caption ? layout.rows[0]! : null;
-  // The same measurement for that row, which carries the title itself and ends with the
-  // node's own columns instead of the header's.
+  // The same measurement for that row, which carries the title itself.
   const soloTitle = only ? truncate(graph.label || only.node.label, labelBudget) : "";
-  const soloTail = only
-    ? `${narrow ? "" : `  ${only.node.type}`}  ${only.node.status}${narrow ? "" : ` ${formatDuration(nodeDuration(only.node, now))}`}${marker ? ` ·${marker}` : ""}`
-    : "";
+  const soloTail = only && marker ? ` ·${marker}` : "";
   const soloBadge = only ? fittedBadge(graph.changes, width - 7 - soloTitle.length - soloTail.length) : null;
+  const reasonShownOnNode = graph.reason !== undefined && Object.values(graph.nodes).some((node) => node.error === graph.reason);
 
   return (
     <box flexDirection="column" width="100%" paddingLeft={1} border={["left"]} borderStyle="single" borderColor={props.focused ? palette.accent : palette.borderSoft}>
@@ -206,6 +224,8 @@ export function GraphView(props: GraphViewProps) {
           selected={props.focused && props.selectedRow === 0}
           narrow={narrow}
           labelBudget={labelBudget}
+          width={width - 2}
+          onCopyFailure={props.onCopyFailure}
           title={soloTitle}
           trailing={
             <>
@@ -251,7 +271,7 @@ export function GraphView(props: GraphViewProps) {
         ) : null}
       </text>
       )}
-      {graph.reason ? (
+      {graph.reason && !reasonShownOnNode ? (
         <text fg={palette.yellow} wrapMode="word">
           {"  " + graph.reason}
         </text>
@@ -270,7 +290,7 @@ export function GraphView(props: GraphViewProps) {
               ))}
             </text>
           ) : null}
-          <GraphRow graph={graph} row={row} now={now} tick={tick} selected={props.focused && props.selectedRow === i} narrow={narrow} labelBudget={labelBudget} />
+          <GraphRow graph={graph} row={row} now={now} tick={tick} selected={props.focused && props.selectedRow === i} narrow={narrow} labelBudget={labelBudget} width={width - 2} onCopyFailure={props.onCopyFailure} />
         </Fragment>
       ))}
       {layout.rows.length === 0 ? <text fg={palette.textFaint}>{building ? "  waiting for the first node…" : "  waiting for nodes…"}</text> : null}
@@ -280,6 +300,8 @@ export function GraphView(props: GraphViewProps) {
 
 function GraphRow(props: {
   graph: GraphModel; row: LayoutRow; now: number; tick: number; selected: boolean; narrow: boolean; labelBudget: number;
+  width: number;
+  onCopyFailure?: (text: string) => void;
   /** Shown instead of the node's own label when the row stands in for the whole graph. */
   title?: string;
   trailing?: ReactNode;
@@ -289,7 +311,6 @@ function GraphRow(props: {
   const bg = props.selected ? palette.surfaceRaised : undefined;
   const indent = "  ".repeat(row.depth);
   const caret = row.group ? (row.expanded ? "▾ " : "▸ ") : "";
-  const duration = formatDuration(nodeDuration(node, now));
   // A body row with no instance yet is a ghost: the loop's plan, not a node that exists.
   const ghost = !row.instance;
   const tone = statusTone(node.status);
@@ -302,25 +323,43 @@ function GraphRow(props: {
   const fadedLabel = revealing ? mixHex(palette.bg, labelColor, 0.35 + 0.65 * reveal) : labelColor;
   const mark = row.group ? loopGlyph(node.type) + " " : "";
   const label = truncate(props.title ?? node.label, props.labelBudget - indent.length - caret.length - mark.length);
-  const typeText = row.group ? groupSummary(row) : node.type;
-  const statusText = ghost ? "" : node.status === "building" ? "drafted" : node.status;
+  const copied = node.status === "failed" ? failureCopyText(node) : "";
+  const errorWidth = Math.min(30, Math.max(8, Math.floor(props.width * 0.38)));
   return (
-    <text wrapMode="none" bg={bg}>
-      {row.cells.map((cell, i) => (
-        <span key={i} fg={cell.kind === "node" && revealing ? mixHex(palette.bg, color, 0.35 + 0.65 * reveal) : cellColor(graph, cell, now, color)}>
-          {(cell.kind === "node" ? glyph : cell.ch) + (cell.hright ? "─" : " ")}
-        </span>
-      ))}
-      <span fg={palette.textFaint}>{indent}</span>
-      {caret ? <span fg={palette.accent}>{caret}</span> : null}
-      {mark ? <span fg={ghost ? palette.textFaint : palette.accent}>{mark}</span> : null}
-      <span fg={fadedLabel}>{label}</span>
-      {!props.narrow ? <span fg={palette.textFaint}>  {typeText}</span> : null}
-      {statusText ? <span fg={revealing ? mixHex(palette.bg, color, 0.35 + 0.65 * reveal) : color}>  {statusText}</span> : null}
-      {duration && !props.narrow ? <span fg={palette.textFaint}> {duration}</span> : null}
-      {node.artifact ? <span fg={palette.textFaint}> ⎘</span> : null}
-      {node.error && !props.narrow ? <span fg={dimHex(palette.yellow, 0.3)}>  {truncate(node.error.split("\n")[0] ?? "", 30)}</span> : null}
-      {props.trailing}
-    </text>
+    <box flexDirection="row" width="100%" minWidth={0} backgroundColor={bg}>
+      <text wrapMode="none" flexGrow={1} minWidth={0} bg={bg}>
+        {row.cells.map((cell, i) => (
+          <span key={i} fg={cell.kind === "node" && revealing ? mixHex(palette.bg, color, 0.35 + 0.65 * reveal) : cellColor(graph, cell, now, color)}>
+            {(cell.kind === "node" ? glyph : cell.ch) + (cell.hright ? "─" : " ")}
+          </span>
+        ))}
+        <span fg={palette.textFaint}>{indent}</span>
+        {caret ? <span fg={palette.accent}>{caret}</span> : null}
+        {mark ? <span fg={ghost ? palette.textFaint : palette.accent}>{mark}</span> : null}
+        <span fg={fadedLabel}>{label}</span>
+        {row.group && !props.narrow ? <span fg={palette.textFaint}>  {groupSummary(row)}</span> : null}
+        {node.artifact ? <span fg={palette.textFaint}> ⎘</span> : null}
+        {props.trailing}
+      </text>
+      {node.error ? (
+        <text wrapMode="none" maxWidth={errorWidth} fg={dimHex(palette.yellow, 0.3)} bg={bg}>
+          {truncate(node.error.split("\n")[0] ?? "", errorWidth)}
+        </text>
+      ) : null}
+      {copied && props.onCopyFailure ? (
+        <text
+          wrapMode="none"
+          fg={palette.yellow}
+          bg={props.selected ? palette.surface : palette.surfaceRaised}
+          onMouseUp={(event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            props.onCopyFailure?.(copied);
+          }}
+        >
+          {" [⧉]"}
+        </text>
+      ) : null}
+    </box>
   );
 }
