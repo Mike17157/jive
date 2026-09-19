@@ -180,7 +180,7 @@ This is a candidate menu, not a measured quality ranking for this agent. Preserv
 the requested model ID and returned model/provider metadata where available for
 each turn. Explicitly chosen IDs make experimental comparisons easier than
 silently moving users to a different model. The default is
-`anthropic/claude-sonnet-5`, overridable through the environment, CLI, or UI.
+`google/gemini-3.8-flash`, overridable through the environment, CLI, or UI.
 
 The planner has two tool definitions, `execute_graph` and `execute_graph_mod`,
 and may also answer the

@@ -43,7 +43,7 @@ JEV_API_TOKEN=your-typesafe-key
 
 Then run `bun start` or `npm start`. `JEV_MODEL` and `OPENROUTER_MODEL` optionally
 override the defaults. The current defaults are `jev-1.13.0` and
-`anthropic/claude-sonnet-5`. Model IDs can be selected in the UI or with `--model`.
+`google/gemini-3.8-flash`. Model IDs can be selected in the UI or with `--model`.
 Changing models is explicit; there is no automatic model fallback.
 
 ### The `jive` command

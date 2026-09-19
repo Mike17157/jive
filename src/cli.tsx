@@ -64,7 +64,7 @@ directory (searched upward) or the jive checkout. Install: bin/install.sh.
   if(values.demo)controller=createDemoController(cwd);
   else{
     const {createAgent}=await import("./planner/agent");
-    controller=await createAgent({cwd,model:values.model??(values.resume?undefined:process.env.OPENROUTER_MODEL??"anthropic/claude-sonnet-5"),sessionId:values.resume,toolSchema:graphToolParameters,
+    controller=await createAgent({cwd,model:values.model??(values.resume?undefined:process.env.OPENROUTER_MODEL??"google/gemini-3.8-flash"),sessionId:values.resume,toolSchema:graphToolParameters,
       supportsStreaming:true,
       execute:async(graph,signal,onEvent,streaming)=>executeGraph(graph,{cwd,signal,onEvent,...streaming,plugins:await ExtractorRegistry.load(cwd)}),
       getPluginCatalog:async()=>runtimeCatalog(cwd),
