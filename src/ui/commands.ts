@@ -2,7 +2,7 @@
  * Slash commands: registry, filtering for the composer popup, and parsing.
  * Pure and renderer-independent.
  */
-export type CommandName = "model" | "graph" | "pin" | "help" | "quit" | "new" | "clear" | "effort";
+export type CommandName = "model" | "graph" | "pin" | "help" | "quit" | "new" | "clear" | "effort" | "resume" | "sessions" | "name" | "rename";
 
 export interface CommandSpec {
   name: CommandName;
@@ -18,6 +18,10 @@ export const COMMANDS: readonly CommandSpec[] = [
   { name: "graph", usage: "/graph", description: "browse and inspect executed graphs (Ctrl+G)", select: "run", aliases: ["g"] },
   { name: "pin", usage: "/pin <text>", description: "keep text verbatim across compaction", select: "edit", aliases: [] },
   { name: "effort", usage: "/effort [level]", description: "adjust reasoning effort", select: "run", aliases: [] },
+  { name: "resume", usage: "/resume [id]", description: "resume a saved session", select: "run", aliases: [] },
+  { name: "sessions", usage: "/sessions", description: "browse saved sessions", select: "run", aliases: [] },
+  { name: "name", usage: "/name <text>", description: "name the current session", select: "edit", aliases: [] },
+  { name: "rename", usage: "/rename <text>", description: "rename the current session", select: "edit", aliases: [] },
   { name: "new", usage: "/new", description: "start a fresh session; keep the archive", select: "run", aliases: [] },
   { name: "clear", usage: "/clear", description: "clear the view and start a fresh session", select: "run", aliases: [] },
   { name: "help", usage: "/help", description: "list commands and keys", select: "run", aliases: ["?"] },
@@ -58,6 +62,9 @@ export type ComposerCommand =
   | { kind: "new" }
   | { kind: "clear" }
   | { kind: "effort"; level?: string }
+  | { kind: "resume"; id?: string }
+  | { kind: "sessions" }
+  | { kind: "name"; text: string }
   | { kind: "unknown"; name: string }
   | { kind: "empty" };
 
@@ -75,6 +82,13 @@ export function parseComposerInput(raw: string): ComposerCommand {
       return rest ? { kind: "model", id: rest } : { kind: "model" };
     case "effort":
       return rest ? { kind: "effort", level: rest.toLowerCase() } : { kind: "effort" };
+    case "resume":
+      return rest ? { kind: "resume", id: rest } : { kind: "resume" };
+    case "sessions":
+      return { kind: "sessions" };
+    case "name":
+    case "rename":
+      return rest ? { kind: "name", text: rest } : { kind: "unknown", name: `${spec.name} (needs text)` };
     case "new": return {kind:"new"};
     case "clear": return {kind:"clear"};
     case "pin":

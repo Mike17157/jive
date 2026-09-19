@@ -18,6 +18,7 @@ test("streamed planner graph executes in the real runtime and returns recorded e
   }) as typeof fetch;
   try{
     const agent=createAgent({cwd,model:"fixture/model",apiKey:"fixture-key",toolSchema:graphSchema,
+      generateSessionName:async()=>"Inspect Fixture",
       getPluginCatalog:async()=>(await ExtractorRegistry.load(cwd)).catalog(),
       execute:(g,signal,onEvent)=>executeGraph(g,{cwd,signal,onEvent}),
     });

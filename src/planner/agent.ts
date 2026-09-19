@@ -28,7 +28,15 @@ import {
   DeterministicContext,
   estimateTokens,
   excerptOversizedOutput,
+  fallbackSessionName,
+  listSessions as discoverSessions,
+  OpenRouterSessionNamer,
+  resolveSessionReference,
+  SESSION_NAMING_MODEL,
+  SESSION_NAMING_RETRIES,
   SessionStore,
+  type SessionNameGenerator,
+  type SessionSummary,
   type PlannerMessage,
 } from "../session/index.ts";
 import {
@@ -63,6 +71,9 @@ export interface AgentOptions {
   supportsStreaming?: boolean;
   /** Transient-failure retries for planner requests; see DEFAULT_RETRY_POLICY. */
   retry?: Partial<RetryPolicy>;
+  /** Optional side-channel namer. createAgent() supplies Gemma 3 27B by default. */
+  generateSessionName?: SessionNameGenerator;
+  sessionNamingModel?: string;
 }
 
 export const PLANNER_SYSTEM_PROMPT = [
@@ -212,6 +223,7 @@ export class GraphAgentController implements AgentController {
   #resetPromise?: Promise<void>;
   #resetPending = false;
   #controlRevision = 0;
+  #namingSessions = new Set<string>();
 
   constructor(options: AgentOptions) {
     this.options = options;
@@ -226,6 +238,7 @@ export class GraphAgentController implements AgentController {
       models: mergeModelOptions(undefined, model ? [model] : []),
       events: [],
       sessionId: this.store.sessionId,
+      sessionName: fallbackSessionName(this.store.sessionId),
       contextTokens: 0,
       contextLimit: DEFAULT_CONTEXT_LIMIT,
       cachedTokens: 0,
@@ -281,12 +294,14 @@ export class GraphAgentController implements AgentController {
       return;
     }
 
+    const requestStore = this.store;
     const chatId = randomUUID();
     this.#appendChat({ id: chatId, role: "user", text: input });
 
     if (!this.#snapshot.model) {
       await this.store.appendMessage({ role: "user", content: input }, chatId);
       await this.#fail("Select an OpenRouter model before submitting.");
+      this.#scheduleAutoName(requestStore);
       return;
     }
     if (!this.#apiKey || !this.#client) {
@@ -294,6 +309,7 @@ export class GraphAgentController implements AgentController {
       await this.#fail(
         "OpenRouter API key is missing. Set OPENROUTER_API_KEY or pass apiKey to createAgent(), then restart or create a new controller.",
       );
+      this.#scheduleAutoName(requestStore);
       return;
     }
 
@@ -324,6 +340,7 @@ export class GraphAgentController implements AgentController {
       this.#setPhase("idle");
       this.#update({ busy: false, retry: undefined });
       await this.store.flush();
+      this.#scheduleAutoName(requestStore);
     }
   }
 
@@ -371,6 +388,7 @@ export class GraphAgentController implements AgentController {
         events: [],
         busy: false,
         sessionId: replacement.sessionId,
+        sessionName: replacement.displayName(),
         contextTokens: 0,
         cachedTokens: 0,
         effort,
@@ -386,6 +404,69 @@ export class GraphAgentController implements AgentController {
     } finally {
       this.#resetPending = false;
     }
+  }
+
+  async listSessions(): Promise<SessionSummary[]> {
+    await this.#ready;
+    await this.#sideEffects;
+    await this.store.flush();
+    return discoverSessions(this.options.cwd);
+  }
+
+  resumeSession(idOrPrefix: string): Promise<void> {
+    if (this.#resetPromise) return this.#resetPromise.then(() => this.resumeSession(idOrPrefix));
+    this.#controlRevision += 1;
+    this.#resetPending = true;
+    this.#abort?.abort(new DOMException("Resuming another session", "AbortError"));
+    this.#update({ busy: true, error: undefined });
+    const operation = this.#performResumeSession(idOrPrefix);
+    this.#resetPromise = operation;
+    const clear = () => {
+      if (this.#resetPromise === operation) this.#resetPromise = undefined;
+    };
+    operation.then(clear, clear);
+    return operation;
+  }
+
+  async #performResumeSession(reference: string): Promise<void> {
+    try {
+      const active = this.#activeSubmission;
+      if (active) await active.catch(() => undefined);
+      await this.#ready;
+      await this.#sideEffects;
+      await this.store.flush();
+      const sessionId = await resolveSessionReference(this.options.cwd, reference);
+      if (sessionId === this.store.sessionId) {
+        this.#update({ busy: false, error: undefined });
+        return;
+      }
+      const replacement = new SessionStore({
+        cwd: this.options.cwd,
+        sessionId,
+        existingOnly: true,
+      });
+      const restored = await this.#hydrateStore(replacement);
+      this.#store = replacement;
+      this.#sideEffects = Promise.resolve();
+      this.#snapshot = { ...restored, busy: false, error: undefined };
+      this.#emit();
+    } catch (error) {
+      this.#setPhase("idle");
+      this.#update({ busy: false, error: `Could not resume session: ${errorMessage(error)}` });
+      throw error;
+    } finally {
+      this.#resetPending = false;
+    }
+  }
+
+  async setSessionName(input: string): Promise<void> {
+    if (this.#resetPromise) await this.#resetPromise;
+    await this.#ready;
+    await this.#sideEffects;
+    if (this.#resetPending) throw new Error("Wait for the session switch to finish before naming it.");
+    const store = this.store;
+    const name = await store.setName(input, "manual");
+    if (this.store === store) this.#update({ sessionName: name, error: undefined });
   }
 
   async setEffort(input: string): Promise<void> {
@@ -540,19 +621,24 @@ export class GraphAgentController implements AgentController {
   }
 
   async #initialize(): Promise<void> {
-    await this.store.initialize();
-    const fresh = this.store.events.every((event) => event.type === "session.created");
-    const recovered = await this.store.recoverInterruptedToolCalls();
+    this.#snapshot = await this.#hydrateStore(this.store, this.options.model);
+    this.#emit();
+  }
+
+  async #hydrateStore(store: SessionStore, modelOverride?: string): Promise<AgentSnapshot> {
+    await store.initialize();
+    const fresh = store.events.every((event) => event.type === "session.created");
+    const recovered = await store.recoverInterruptedToolCalls();
     const cachedCatalog = await loadCachedModelCatalog(this.options.cwd);
-    const storedModel = this.store.latestModel();
-    const model = this.options.model ?? (this.#snapshot.model || storedModel || "");
-    const storedEffort = this.store.latestEffort();
+    const storedModel = store.latestModel();
+    const model = modelOverride ?? storedModel ?? this.#snapshot.model ?? "";
+    const storedEffort = store.latestEffort();
     const restoredEffort = storedEffort && REASONING_EFFORT_SET.has(storedEffort)
       ? storedEffort
       : undefined;
     const models = mergeModelOptions(cachedCatalog, model ? [model] : []);
     const selected = models.find((option) => option.id === model);
-    const changedModel = this.options.model !== undefined && model !== storedModel;
+    const changedModel = modelOverride !== undefined && model !== storedModel;
     const resetRestoredEffort = restoredEffort !== undefined && (
       selected?.reasoningEfforts !== undefined
         ? !selected.reasoningEfforts.includes(restoredEffort)
@@ -565,15 +651,15 @@ export class GraphAgentController implements AgentController {
         : `it does not support ${restoredEffort}`;
       const text = `Reasoning effort reset to auto because the resumed session selected ${model} and ${support}.`;
       const chatId = randomUUID();
-      await this.store.append("effort.selected", { effort: null });
-      await this.store.append("notice", { chatId, text });
+      await store.append("effort.selected", { effort: null });
+      await store.append("notice", { chatId, text });
     }
     const messages: ChatEntry[] = [];
     const executionEvents: ExecutionEvent[] = [];
     let cachedTokens = 0;
     let lastPromptTokens = 0;
 
-    for (const event of this.store.events) {
+    for (const event of store.events) {
       if (event.type === "planner.message") {
         const data = event.data as {
           message?: PlannerMessage;
@@ -614,29 +700,33 @@ export class GraphAgentController implements AgentController {
     }
     if (recovered.length) {
       messages.push({
-        id: `recovered-${this.store.events.at(-1)?.id ?? randomUUID()}`,
+        id: `recovered-${store.events.at(-1)?.id ?? randomUUID()}`,
         role: "notice",
         text: `${recovered.length} unfinished graph call${recovered.length === 1 ? " was" : "s were"} marked interrupted. The planner will decide recovery.`,
       });
     }
-    this.#snapshot = {
+    const snapshot: AgentSnapshot = {
       ...this.#snapshot,
       messages,
       events: executionEvents,
+      sessionId: store.sessionId,
+      sessionName: store.displayName(),
       model,
       models,
       contextLimit: this.#contextLimit(model, models),
       cachedTokens,
       contextTokens: lastPromptTokens,
       effort,
+      busy: false,
       phase: "idle",
       activityStartedAt: undefined,
+      error: undefined,
     };
     if (fresh) {
-      if (model) await this.store.append("model.selected", { model });
-      await this.store.append("effort.selected", { effort: effort ?? null });
+      if (model) await store.append("model.selected", { model });
+      await store.append("effort.selected", { effort: effort ?? null });
     }
-    this.#emit();
+    return snapshot;
   }
 
   async #refreshPluginCatalog(publish = true): Promise<string | undefined> {
@@ -1019,6 +1109,48 @@ export class GraphAgentController implements AgentController {
     await this.store.appendMessage(terminalToolResult(callId, name, content));
   }
 
+  #scheduleAutoName(store: SessionStore): void {
+    const generate = this.options.generateSessionName;
+    if (!generate || store.namingAttempted() || this.#namingSessions.has(store.sessionId)) return;
+    const messageEvents = store.plannerMessageEvents();
+    const firstUserIndex = messageEvents.findIndex((event) => event.data.message.role === "user");
+    if (firstUserIndex < 0) return;
+    const userMessage = chatText(messageEvents[firstUserIndex]!.data.message);
+    if (!userMessage) return;
+    const assistantMessage = messageEvents
+      .slice(firstUserIndex + 1)
+      .map((event) => event.data.message)
+      .find((message) => message.role === "assistant" && chatText(message));
+    this.#namingSessions.add(store.sessionId);
+    void (async () => {
+      try {
+        const name = await generate({
+          sessionId: store.sessionId,
+          userMessage,
+          ...(assistantMessage && chatText(assistantMessage)
+            ? { assistantMessage: chatText(assistantMessage) }
+            : {}),
+        });
+        // A manual name entered while generation was running always wins.
+        if (store.latestName()) return;
+        const saved = await store.setName(
+          name,
+          "generated",
+          this.options.sessionNamingModel ?? SESSION_NAMING_MODEL,
+        );
+        if (this.store === store) this.#update({ sessionName: saved });
+      } catch (error) {
+        await store.append("session.name.failed", {
+          model: this.options.sessionNamingModel ?? SESSION_NAMING_MODEL,
+          attempts: SESSION_NAMING_RETRIES + 1,
+          error: errorMessage(error).slice(0, 500),
+        }).catch(() => undefined);
+      } finally {
+        this.#namingSessions.delete(store.sessionId);
+      }
+    })();
+  }
+
   #contextLimit(model: string, models: readonly ModelOption[]): number {
     return models.find((option) => option.id === model)?.contextLength ?? DEFAULT_CONTEXT_LIMIT;
   }
@@ -1106,5 +1238,16 @@ export class GraphAgentController implements AgentController {
 }
 
 export function createAgent(options: AgentOptions): AgentController {
-  return new GraphAgentController(options);
+  const apiKey = options.apiKey ?? process.env.OPENROUTER_API_KEY;
+  const namer = apiKey && !options.generateSessionName
+    ? new OpenRouterSessionNamer({ apiKey })
+    : undefined;
+  return new GraphAgentController({
+    ...options,
+    ...(apiKey ? { apiKey } : {}),
+    ...(options.generateSessionName
+      ? {}
+      : namer ? { generateSessionName: namer.generate } : {}),
+    sessionNamingModel: options.sessionNamingModel ?? SESSION_NAMING_MODEL,
+  });
 }

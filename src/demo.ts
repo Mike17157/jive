@@ -1,6 +1,7 @@
 import { executeGraph } from "./core/executor";
 import { GraphBuildingRound } from "./planner/graph-building";
 import { SessionStore } from "./session/store";
+import { fallbackSessionName, listSessions } from "./session/index";
 import type { AgentController, AgentSnapshot, Graph, JevAdapter, JevRequest, JevResponse } from "./core/types";
 
 export function demoGraph(scenario: "success" | "uncertain" | "failure" = "success"): Graph {
@@ -50,7 +51,8 @@ export class FixtureJev implements JevAdapter {
 }
 export function createDemoController(cwd:string):AgentController {
   const efforts=["none","minimal","low","medium","high","xhigh","max"];
-  let snapshot:AgentSnapshot={messages:[],busy:false,phase:"idle",model:"local-fixture",models:[{id:"local-fixture",name:"Local demo · no API calls",reasoningEfforts:efforts}],events:[],sessionId:`demo-${crypto.randomUUID()}`,contextTokens:0,contextLimit:0,cachedTokens:0};
+  const firstSessionId=`demo-${crypto.randomUUID()}`;
+  let snapshot:AgentSnapshot={messages:[],busy:false,phase:"idle",model:"local-fixture",models:[{id:"local-fixture",name:"Local demo · no API calls",reasoningEfforts:efforts}],events:[],sessionId:firstSessionId,sessionName:fallbackSessionName(firstSessionId),contextTokens:0,contextLimit:0,cachedTokens:0};
   const listeners=new Set<()=>void>();let abort:AbortController|undefined;
   let active:Promise<void>|undefined,resetting:Promise<void>|undefined;
   const notify=()=>listeners.forEach(fn=>fn());
@@ -115,9 +117,18 @@ export function createDemoController(cwd:string):AgentController {
       if(resetting)return resetting;
       resetting=(async()=>{
         abort?.abort(new Error("Starting a new session"));await active;
-        snapshot={...snapshot,messages:[],events:[],sessionId:`demo-${crypto.randomUUID()}`,busy:false,phase:"idle",activityStartedAt:undefined,error:undefined};notify();
+        const sessionId=`demo-${crypto.randomUUID()}`;
+        snapshot={...snapshot,messages:[],events:[],sessionId,sessionName:fallbackSessionName(sessionId),busy:false,phase:"idle",activityStartedAt:undefined,error:undefined};notify();
       })().finally(()=>{resetting=undefined;});
       return resetting;
+    },
+    listSessions:()=>listSessions(cwd),
+    async resumeSession(){throw new Error("Session resume is unavailable in demo mode.");},
+    async setSessionName(name){
+      const store=new SessionStore({cwd,sessionId:snapshot.sessionId});
+      await store.initialize();
+      const saved=await store.setName(name,"manual");
+      snapshot={...snapshot,sessionName:saved,error:undefined};notify();
     },
     pin(text){add("notice",`Demo pin: ${text}`);},
   };

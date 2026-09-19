@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 import { parseArgs } from "node:util";
-import { readFile, readdir } from "node:fs/promises";
+import { readFile } from "node:fs/promises";
 import { resolve, join } from "node:path";
 import { executeGraph } from "./core/executor";
 import { graphSchema } from "./core/schema";
@@ -10,6 +10,7 @@ import { ExtractorRegistry } from "./plugins/registry";
 import { JevClient } from "./jev/client";
 import { createDemoController, demoGraph, FixtureJev } from "./demo";
 import { CURATED_MODELS, fetchOpenRouterModelCatalog, saveModelCatalog } from "./planner/models";
+import { listSessions, resolveSessionReference } from "./session/index";
 
 const {values,positionals}=parseArgs({args:process.argv.slice(2),allowPositionals:true,options:{
   help:{type:"boolean",short:"h"},demo:{type:"boolean"},headless:{type:"boolean"},json:{type:"boolean"},
@@ -34,7 +35,8 @@ async function main(){
   jive --schema                     Print execute_graph JSON Schema
 
 Options: --cwd DIR --model ID --json --headless --prompt TEXT
-Interactive commands: /model, /effort [LEVEL], /new, /clear, /pin TEXT, /quit.
+Interactive commands: /resume [ID], /sessions, /name TEXT, /rename TEXT,
+/model, /effort [LEVEL], /new, /clear, /pin TEXT, /quit.
 The agent works in the current directory: AGENTS.md, .jev/extractors and
 .jev/sessions are read and written there. Override with --cwd DIR.
 See README.md for keys.
@@ -44,10 +46,11 @@ directory (searched upward) or the jive checkout. Install: bin/install.sh.
   if(values.schema){console.log(JSON.stringify(graphSchema,null,2));return;}
   if(values["refresh-models"]){const catalog=await fetchOpenRouterModelCatalog({signal:AbortSignal.timeout(15000)});await saveModelCatalog(cwd,catalog);console.log(`Saved ${catalog.models.length} tool-capable models.`);return;}
   if(values.models){for(const model of CURATED_MODELS)console.log(`${model.id}\t${model.name}`);return;}
-  if(values.sessions){try{for(const entry of await readdir(join(cwd,".jev/sessions"),{withFileTypes:true}))if(entry.isDirectory())console.log(entry.name);}catch(error:any){if(error.code!=="ENOENT")throw error;}return;}
+  if(values.sessions){for(const session of await listSessions(cwd))console.log(`${session.id}\t${session.name}\t${session.updatedAt}`);return;}
   if(values.search!==undefined){
     if(!values.resume || !/^[a-zA-Z0-9][a-zA-Z0-9._-]{0,127}$/.test(values.resume))throw new Error("--search requires a valid --resume SESSION_ID");
-    const lines=(await readFile(join(cwd,".jev/sessions",values.resume,"session.jsonl"),"utf8")).split("\n");
+    const sessionId=await resolveSessionReference(cwd,values.resume);
+    const lines=(await readFile(join(cwd,".jev/sessions",sessionId,"session.jsonl"),"utf8")).split("\n");
     for(let index=0;index<lines.length;index++)if(lines[index]!.toLowerCase().includes(values.search.toLowerCase()))console.log(`${index+1}: ${lines[index]}`);
     return;
   }
@@ -64,7 +67,8 @@ directory (searched upward) or the jive checkout. Install: bin/install.sh.
   if(values.demo)controller=createDemoController(cwd);
   else{
     const {createAgent}=await import("./planner/agent");
-    controller=await createAgent({cwd,model:values.model??(values.resume?undefined:process.env.OPENROUTER_MODEL??"anthropic/claude-sonnet-5"),sessionId:values.resume,toolSchema:graphToolParameters,
+    const sessionId=values.resume?await resolveSessionReference(cwd,values.resume):undefined;
+    controller=await createAgent({cwd,model:values.model??(sessionId?undefined:process.env.OPENROUTER_MODEL??"anthropic/claude-sonnet-5"),sessionId,toolSchema:graphToolParameters,
       supportsStreaming:true,
       execute:async(graph,signal,onEvent,streaming)=>executeGraph(graph,{cwd,signal,onEvent,...streaming,plugins:await ExtractorRegistry.load(cwd)}),
       getPluginCatalog:async()=>runtimeCatalog(cwd),

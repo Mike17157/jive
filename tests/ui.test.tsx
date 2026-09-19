@@ -113,6 +113,7 @@ function makeController(initial: Partial<AgentSnapshot> = {}): MockController {
     ],
     events: [],
     sessionId: "sess-1234abcd",
+    sessionName: "Amber Finch",
     contextTokens: 1234,
     contextLimit: 200_000,
     cachedTokens: 800,
@@ -147,8 +148,11 @@ function makeController(initial: Partial<AgentSnapshot> = {}): MockController {
       calls.push(`effort:${effort}`);state={...state,effort:effort==="auto"?undefined:effort,error:undefined};notify();
     },
     newSession: async () => {
-      calls.push("new");state={...state,sessionId:crypto.randomUUID(),messages:[],events:[],busy:false,error:undefined};notify();
+      calls.push("new");state={...state,sessionId:crypto.randomUUID(),sessionName:"Blue Lantern",messages:[],events:[],busy:false,error:undefined};notify();
     },
+    listSessions: async () => [{id:state.sessionId,name:state.sessionName,nameSource:"fallback",createdAt:new Date(0).toISOString(),updatedAt:new Date().toISOString(),messageCount:state.messages.length}],
+    resumeSession: async (id) => {calls.push(`resume:${id}`);state={...state,sessionId:id,sessionName:`Session ${id}`,messages:[],events:[],busy:false,error:undefined};notify();},
+    setSessionName: async (name) => {calls.push(`name:${name}`);state={...state,sessionName:name};notify();},
     update: (patch) => {
       state = { ...state, ...patch };
       notify();
@@ -599,6 +603,11 @@ describe("parseComposerInput", () => {
     expect(parseComposerInput("/model")).toEqual({ kind: "model" });
     expect(parseComposerInput("/model openai/gpt-6-astra")).toEqual({ kind: "model", id: "openai/gpt-6-astra" });
     expect(parseComposerInput("/pin keep tests green")).toEqual({ kind: "pin", text: "keep tests green" });
+    expect(parseComposerInput("/resume")).toEqual({ kind: "resume" });
+    expect(parseComposerInput("/resume 018f-abcd")).toEqual({ kind: "resume", id: "018f-abcd" });
+    expect(parseComposerInput("/sessions")).toEqual({ kind: "sessions" });
+    expect(parseComposerInput("/name Fix session restore")).toEqual({ kind: "name", text: "Fix session restore" });
+    expect(parseComposerInput("/rename Better title")).toEqual({ kind: "name", text: "Better title" });
     expect(parseComposerInput("/quit")).toEqual({ kind: "quit" });
     expect(parseComposerInput("/nope")).toEqual({ kind: "unknown", name: "nope" });
     expect(parseComposerInput("/g")).toEqual({ kind: "graph" });
@@ -666,6 +675,39 @@ describe("App", () => {
       expect(c.getSnapshot().sessionId).not.toBe(session);
       expect(await frame()).not.toContain("second task");
       expect(c.calls.filter(call=>call==="new")).toHaveLength(2);
+    }finally{setup.renderer.destroy();}
+  });
+
+  test("sessions and resume use the picker or a direct id, and name aliases persist titles", async () => {
+    const c=makeController();
+    c.listSessions=async()=>[
+      {id:"target-12345678",name:"Repair Resume Flow",nameSource:"generated",createdAt:new Date(1).toISOString(),updatedAt:new Date().toISOString(),model:"test/model",messageCount:4},
+      {id:c.getSnapshot().sessionId,name:c.getSnapshot().sessionName,nameSource:"fallback",createdAt:new Date(0).toISOString(),updatedAt:new Date(2).toISOString(),messageCount:0},
+    ];
+    const {setup,type,enter,frame,escape}=await mount(c);
+    try{
+      await type("/sessions");await enter();
+      let f=await frame();
+      expect(f).toContain("sessions");
+      expect(f).toContain("Repair Resume Flow");
+      expect(f).toContain("type to search");
+      await enter();
+      expect(c.calls).toContain("resume:target-12345678");
+      expect(c.getSnapshot().sessionId).toBe("target-12345678");
+
+      await type("/resume direct-87654321");await enter();
+      expect(c.calls).toContain("resume:direct-87654321");
+
+      await type("/name First explicit title");await enter();
+      await type("/rename Final explicit title");await enter();
+      expect(c.calls).toContain("name:First explicit title");
+      expect(c.calls).toContain("name:Final explicit title");
+      expect(c.getSnapshot().sessionName).toBe("Final explicit title");
+
+      await type("/resume");await enter();
+      expect(await frame()).toContain("sessions");
+      await escape();
+      expect(await frame()).not.toContain("type to search by name");
     }finally{setup.renderer.destroy();}
   });
 

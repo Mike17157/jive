@@ -25,6 +25,8 @@ export interface PlannerMessage {
 
 export type SessionEventType =
   | "session.created"
+  | "session.named"
+  | "session.name.failed"
   | "planner.message"
   | "pin.added"
   | "model.selected"
@@ -66,6 +68,25 @@ export interface MessageEventData {
 
 export interface PinEventData {
   text: string;
+}
+
+export type SessionNameSource = "generated" | "manual";
+
+export interface SessionNameEventData {
+  name: string;
+  source: SessionNameSource;
+  model?: string;
+}
+
+export interface SessionSummary {
+  id: string;
+  name: string;
+  nameSource: "fallback" | SessionNameSource;
+  createdAt: string;
+  updatedAt: string;
+  model?: string;
+  effort?: string;
+  messageCount: number;
 }
 
 export interface CompactionEventData {

@@ -79,7 +79,8 @@ with its own `.env`.
 The UI has a looping lit dahlia drawn in Braille dots that blooms on the empty screen, warm-white text, neutral dark
 surfaces, a bottom composer with screen margins, and a conversation that grows
 upward from the bottom. User messages are green and left aligned with padding. Type `/`
-for a searchable command selector; `/model` opens model selection. Completed nodes
+for a searchable command selector; `/model` opens model selection and `/resume` or
+`/sessions` opens the saved-session picker. Completed nodes
 and satisfied edges turn green; failure/handoff states are yellow; blocked work
 is grey. `/pin TEXT` retains a verbatim instruction through compaction, `/model`
 opens model selection, and `/quit` exits. Ctrl+C interrupts active work.
@@ -103,6 +104,20 @@ have animated activity indicators with elapsed time.
 `/new` and `/clear` both cancel and drain active work, then start a new session.
 The previous conversation, pins, and evidence remain archived on disk; the fresh
 session keeps the selected model and effort but starts with empty context.
+
+Every session receives a stable friendly fallback name from Jive's built-in name
+list. After its first turn, a background OpenRouter request asks
+`google/gemma-3-27b-it` for a concise title. It retries three times after the
+initial attempt; naming never blocks the turn, and the fallback remains if every
+attempt fails. `/name TEXT` and `/rename TEXT` set an explicit name that automatic
+naming cannot overwrite. Names are append-only session events and appear in
+`--sessions` and the session picker.
+
+The session picker is scoped to the current working directory, newest first, and
+searchable by typing a name, ID, or model. `/resume ID` also accepts an
+unambiguous session-ID prefix. Resuming drains active work, flushes the current
+log, and restores the selected transcript, reasoning, graph events, model, and
+effort. A missing or corrupt target leaves the current session active.
 
 `/effort` opens a slider inline above the composer — no modal dialog and no
 dimmed background: left/right adjusts, Enter applies, Esc cancels. Direct
@@ -331,6 +346,9 @@ bun src/cli.tsx --sessions
 bun src/cli.tsx --resume SESSION_ID
 bun src/cli.tsx --resume SESSION_ID --search "previous failure"
 ```
+
+`--sessions` prints each session's ID, friendly name, and last activity time.
+`--resume` accepts a complete ID or an unambiguous prefix.
 
 Restarting restores the conversation and evidence. An unfinished graph is marked
 interrupted; commands are never automatically replayed. Filesystem effects that

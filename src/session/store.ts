@@ -1,7 +1,10 @@
-import { appendFile, mkdir, readFile, stat, truncate, writeFile } from "node:fs/promises";
+import { createReadStream } from "node:fs";
+import { appendFile, mkdir, readFile, readdir, stat, truncate, writeFile } from "node:fs/promises";
 import { basename, join, relative, resolve } from "node:path";
 import { randomUUID } from "node:crypto";
+import { createInterface } from "node:readline";
 import { excerptOversizedOutput } from "./excerpts";
+import { fallbackSessionName, normalizeSessionName } from "./names.ts";
 import type { ExecutionEvent, NodeResult } from "../core/types";
 
 import type {
@@ -11,6 +14,8 @@ import type {
   SessionArtifact,
   SessionEvent,
   SessionEventType,
+  SessionNameEventData,
+  SessionSummary,
 } from "./types.ts";
 
 const SESSION_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
@@ -19,6 +24,8 @@ export interface SessionStoreOptions {
   cwd: string;
   sessionId?: string;
   baseDirectory?: string;
+  /** Refuse to create a missing log. Used by resume paths. */
+  existingOnly?: boolean;
 }
 
 export interface AppendSessionEvent {
@@ -55,6 +62,10 @@ export function sessionDirectory(cwd: string, sessionId: string): string {
   return join(resolve(cwd), ".jev", "sessions", sessionId);
 }
 
+export function sessionsDirectory(cwd: string): string {
+  return join(resolve(cwd), ".jev", "sessions");
+}
+
 function jsonLine(event: SessionEvent): string {
   return `${JSON.stringify(event)}\n`;
 }
@@ -79,6 +90,7 @@ export class SessionStore {
   readonly directory: string;
   readonly logPath: string;
   readonly artifactsDirectory: string;
+  readonly existingOnly: boolean;
 
   #events: SessionEvent[] = [];
   #ready = false;
@@ -94,6 +106,7 @@ export class SessionStore {
       : sessionDirectory(this.cwd, this.sessionId);
     this.logPath = join(this.directory, "session.jsonl");
     this.artifactsDirectory = join(this.directory, "artifacts");
+    this.existingOnly = options.existingOnly ?? false;
   }
 
   async initialize(): Promise<void> {
@@ -123,20 +136,25 @@ export class SessionStore {
   ): Promise<SessionEvent<T>> {
     if (!this.#ready) await this.initialize();
 
-    const operation = this.#tail.then(async () => {
-      const event: SessionEvent<T> = {
-        id: randomUUID(),
-        sequence: (this.#events.at(-1)?.sequence ?? 0) + 1,
-        timestamp: new Date().toISOString(),
-        type,
-        data,
-      };
-      await appendFile(this.logPath, jsonLine(event), { encoding: "utf8", flag: "a" });
-      this.#events.push(event as SessionEvent);
-      return event;
-    });
+    const operation = this.#tail.then(() => this.#appendNow(type, data));
     this.#tail = operation.catch(() => undefined);
     return operation;
+  }
+
+  async #appendNow<T extends Record<string, unknown>>(
+    type: SessionEventType,
+    data: T,
+  ): Promise<SessionEvent<T>> {
+    const event: SessionEvent<T> = {
+      id: randomUUID(),
+      sequence: (this.#events.at(-1)?.sequence ?? 0) + 1,
+      timestamp: new Date().toISOString(),
+      type,
+      data,
+    };
+    await appendFile(this.logPath, jsonLine(event), { encoding: "utf8", flag: "a" });
+    this.#events.push(event as SessionEvent);
+    return event;
   }
 
   appendMessage(
@@ -191,6 +209,57 @@ export class SessionStore {
     return selected && typeof selected.data.effort === "string"
       ? selected.data.effort
       : undefined;
+  }
+
+  latestName(): SessionNameEventData | undefined {
+    const event = this.#events.findLast((entry) => entry.type === "session.named");
+    if (!event || typeof event.data.name !== "string") return undefined;
+    const name = normalizeSessionName(event.data.name);
+    if (!name) return undefined;
+    const source = event.data.source === "manual" ? "manual" : "generated";
+    return {
+      name,
+      source,
+      ...(typeof event.data.model === "string" ? { model: event.data.model } : {}),
+    };
+  }
+
+  fallbackName(): string {
+    const created = this.#events.find((entry) => entry.type === "session.created");
+    return typeof created?.data.fallbackName === "string" && created.data.fallbackName
+      ? created.data.fallbackName
+      : fallbackSessionName(this.sessionId);
+  }
+
+  displayName(): string {
+    return this.latestName()?.name ?? this.fallbackName();
+  }
+
+  namingAttempted(): boolean {
+    return this.#events.some(
+      (entry) => entry.type === "session.named" || entry.type === "session.name.failed",
+    );
+  }
+
+  async setName(name: string, source: SessionNameEventData["source"], model?: string): Promise<string> {
+    const normalized = normalizeSessionName(name);
+    if (!normalized) throw new Error("Session name cannot be empty.");
+    if (!this.#ready) await this.initialize();
+    const operation = this.#tail.then(async () => {
+      // Serialize the check with writes so a queued manual name always wins.
+      if (source === "generated") {
+        const existing = this.latestName();
+        if (existing) return existing.name;
+      }
+      await this.#appendNow("session.named", {
+        name: normalized,
+        source,
+        ...(model ? { model } : {}),
+      });
+      return normalized;
+    });
+    this.#tail = operation.catch(() => undefined);
+    return operation;
   }
 
   latestPluginCatalog(): string | undefined {
@@ -477,6 +546,9 @@ export class SessionStore {
   }
 
   async #initializeOnce(): Promise<void> {
+    if (this.existingOnly && !(await this.exists())) {
+      throw new Error(`Session ${this.sessionId} does not exist in ${sessionsDirectory(this.cwd)}.`);
+    }
     await mkdir(this.artifactsDirectory, { recursive: true });
     this.#events = await this.#readLog();
     this.#ready = true;
@@ -485,7 +557,127 @@ export class SessionStore {
         sessionId: this.sessionId,
         cwd: this.cwd,
         format: 1,
+        fallbackName: fallbackSessionName(this.sessionId),
       });
     }
   }
+}
+
+function summaryFromEvents(
+  sessionId: string,
+  events: readonly SessionEvent[],
+  modified: Date,
+): SessionSummary | undefined {
+  const created = events.find((event) => event.type === "session.created");
+  if (!created) return undefined;
+  const named = events.findLast((event) => event.type === "session.named");
+  const explicitName = typeof named?.data.name === "string"
+    ? normalizeSessionName(named.data.name)
+    : "";
+  const fallback = typeof created.data.fallbackName === "string" && created.data.fallbackName
+    ? String(created.data.fallbackName)
+    : fallbackSessionName(sessionId);
+  let model: string | undefined;
+  let effort: string | undefined;
+  let messageCount = 0;
+  for (const event of events) {
+    if (event.type === "model.selected" && typeof event.data.model === "string") {
+      model = event.data.model;
+    }
+    if (event.type === "effort.selected") {
+      effort = typeof event.data.effort === "string" ? event.data.effort : undefined;
+    }
+    if (event.type === "planner.message") {
+      const message = (event.data as Partial<MessageEventData>).message;
+      if (message?.role === "user" || message?.role === "assistant") messageCount += 1;
+      if (typeof event.data.requestedModel === "string") model = event.data.requestedModel;
+    }
+  }
+  const createdAt = typeof created.timestamp === "string"
+    ? created.timestamp
+    : modified.toISOString();
+  const lastTimestamp = events.findLast((event) => !Number.isNaN(Date.parse(event.timestamp)))?.timestamp;
+  return {
+    id: sessionId,
+    name: explicitName || fallback,
+    nameSource: explicitName
+      ? named?.data.source === "manual" ? "manual" : "generated"
+      : "fallback",
+    createdAt,
+    updatedAt: lastTimestamp ?? modified.toISOString(),
+    ...(model ? { model } : {}),
+    ...(effort ? { effort } : {}),
+    messageCount,
+  };
+}
+
+async function readSessionSummary(cwd: string, sessionId: string): Promise<SessionSummary | undefined> {
+  const logPath = join(sessionDirectory(cwd, sessionId), "session.jsonl");
+  const info = await stat(logPath);
+  const events: SessionEvent[] = [];
+  const lines = createInterface({
+    input: createReadStream(logPath, { encoding: "utf8" }),
+    crlfDelay: Infinity,
+  });
+  for await (const line of lines) {
+    if (!line.trim()) continue;
+    try {
+      const event = JSON.parse(line) as SessionEvent;
+      if (event && typeof event === "object" && typeof event.type === "string") events.push(event);
+    } catch {
+      // Discovery is read-only and best-effort. Opening the session reports exact corruption.
+    }
+  }
+  return summaryFromEvents(sessionId, events, info.mtime);
+}
+
+/** Read lightweight picker metadata without loading every log into memory at once. */
+export async function listSessions(cwd: string): Promise<SessionSummary[]> {
+  let entries;
+  try {
+    entries = await readdir(sessionsDirectory(cwd), { withFileTypes: true });
+  } catch (error) {
+    if (isMissingFile(error)) return [];
+    throw error;
+  }
+  const ids = entries
+    .filter((entry) => entry.isDirectory() && SESSION_ID_PATTERN.test(entry.name))
+    .map((entry) => entry.name);
+  const summaries: Array<SessionSummary | undefined> = new Array(ids.length);
+  let next = 0;
+  const workers = Array.from({ length: Math.min(8, ids.length) }, async () => {
+    while (next < ids.length) {
+      const index = next++;
+      try {
+        summaries[index] = await readSessionSummary(cwd, ids[index]!);
+      } catch {
+        summaries[index] = undefined;
+      }
+    }
+  });
+  await Promise.all(workers);
+  return summaries
+    .filter((summary): summary is SessionSummary => summary !== undefined)
+    .sort((left, right) => Date.parse(right.updatedAt) - Date.parse(left.updatedAt));
+}
+
+/** Exact IDs win; otherwise accept only an unambiguous prefix. */
+export async function resolveSessionReference(cwd: string, reference: string): Promise<string> {
+  const value = reference.trim();
+  assertSessionId(value);
+  const exact = new SessionStore({ cwd, sessionId: value, existingOnly: true });
+  if (await exact.exists()) return value;
+  let entries;
+  try {
+    entries = await readdir(sessionsDirectory(cwd), { withFileTypes: true });
+  } catch (error) {
+    if (isMissingFile(error)) throw new Error(`No saved sessions exist in ${sessionsDirectory(cwd)}.`);
+    throw error;
+  }
+  const matches = entries
+    .filter((entry) => entry.isDirectory() && SESSION_ID_PATTERN.test(entry.name) && entry.name.startsWith(value))
+    .map((entry) => entry.name);
+  if (matches.length === 1) return matches[0]!;
+  if (matches.length > 1) throw new Error(`Session reference ${JSON.stringify(value)} is ambiguous.`);
+  throw new Error(`Session ${JSON.stringify(value)} was not found in ${sessionsDirectory(cwd)}.`);
 }

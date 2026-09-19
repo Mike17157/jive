@@ -8,6 +8,7 @@ import { Composer, COMPOSER_CHROME_ROWS } from "./components/Composer.tsx";
 import { Conversation, type GraphPlacement } from "./components/Conversation.tsx";
 import { Inspector } from "./components/Inspector.tsx";
 import { ModelPicker } from "./components/ModelPicker.tsx";
+import { SessionPicker } from "./components/SessionPicker.tsx";
 import { Orb } from "./components/Orb.tsx";
 import { StatusBar } from "./components/StatusBar.tsx";
 import { EffortPicker, EFFORT_PANEL_ROWS } from "./components/EffortPicker.tsx";
@@ -17,8 +18,9 @@ import { foldableIds, layoutGraph, type LayoutRow } from "./graph/layout.ts";
 import { reduceGraphs, type GraphModel } from "./graph/model.ts";
 import { palette } from "./theme.ts";
 import { useAgentSnapshot } from "./useController.ts";
+import type { SessionSummary } from "../session/types.ts";
 
-export type UIMode = "compose" | "graph" | "inspect" | "model" | "effort";
+export type UIMode = "compose" | "graph" | "inspect" | "model" | "effort" | "session";
 
 const QUIT_WINDOW_MS = 1500;
 
@@ -59,6 +61,9 @@ export function App(props: AppProps) {
   const [notice, setNotice] = useState<string | undefined>();
   const [effortLoading,setEffortLoading]=useState(false);
   const [effortError,setEffortError]=useState<string>();
+  const [sessions,setSessions]=useState<SessionSummary[]>([]);
+  const [sessionsLoading,setSessionsLoading]=useState(false);
+  const [sessionsError,setSessionsError]=useState<string>();
   const [composerText, setComposerText, composerTextRef] = useStateRef("");
   const [composerLines, setComposerLines] = useState(1);
   const [popupCursor, setPopupCursor, popupCursorRef] = useStateRef(0);
@@ -138,15 +143,53 @@ export function App(props: AppProps) {
     setMode("graph");
   }, [graphs.length]);
 
+  const resetSessionView = useCallback(() => {
+    setExpanded(new Set());setFolded(new Set());setGraphCursor(0);setRowCursor(0);
+    setHelpOpen(false);setDismissedQuery(null);
+  }, [setExpanded,setFolded,setGraphCursor,setRowCursor,setHelpOpen,setDismissedQuery]);
+
+  const openSessionPicker = useCallback(() => {
+    setSessionsError(undefined);
+    setSessionsLoading(true);
+    setMode("session");
+    void controller.listSessions()
+      .then(setSessions)
+      .catch((error) => setSessionsError(String(error)))
+      .finally(() => setSessionsLoading(false));
+  }, [controller,setMode]);
+
+  const resumeSession = useCallback((id: string, keepPicker = false) => {
+    setSessionsError(undefined);
+    setSessionsLoading(true);
+    void controller.resumeSession(id).then(() => {
+      resetSessionView();
+      setMode("compose");
+      setNotice(`Resumed ${controller.getSnapshot().sessionName}`);
+    }).catch((error) => {
+      const message=`Could not resume session: ${String(error)}`;
+      if(keepPicker)setSessionsError(message);else setNotice(message);
+    }).finally(() => setSessionsLoading(false));
+  }, [controller,resetSessionView,setMode]);
+
   const dispatch = useCallback(
     (cmd: ComposerCommand) => {
       switch (cmd.kind) {
         case "new":
         case "clear":
           void controller.newSession().then(()=>{
-            setMode("compose");setExpanded(new Set());setFolded(new Set());setGraphCursor(0);setRowCursor(0);
-            setHelpOpen(false);setDismissedQuery(null);setNotice("New session");
+            setMode("compose");resetSessionView();setNotice(`New session · ${controller.getSnapshot().sessionName}`);
           }).catch(error=>setNotice(`Could not start session: ${String(error)}`));
+          return;
+        case "resume":
+          if(cmd.id)resumeSession(cmd.id);
+          else openSessionPicker();
+          return;
+        case "sessions":
+          openSessionPicker();
+          return;
+        case "name":
+          void controller.setSessionName(cmd.text).then(()=>setNotice(`session → ${controller.getSnapshot().sessionName}`))
+            .catch(error=>setNotice(`Could not name session: ${String(error)}`));
           return;
         case "effort":
           if(cmd.level){
@@ -196,7 +239,7 @@ export function App(props: AppProps) {
           return;
       }
     },
-    [controller, props, enterGraphMode, setHelpOpen, setPopupCursor],
+    [controller, props, enterGraphMode, openSessionPicker, resetSessionView, resumeSession, setHelpOpen, setPopupCursor],
   );
 
   const setComposer = useCallback(
@@ -309,7 +352,7 @@ export function App(props: AppProps) {
       setNotice(open ? "reasoning shown · Ctrl+O to collapse" : "reasoning collapsed");
       return;
     }
-    if(mode === "effort")return; // The slider owns its keys, including Escape.
+    if(mode === "effort" || mode === "session")return; // These selectors own their keys.
     // Read native input here: a fast Enter can arrive before React has
     // published the final text-change notification used to render the popup.
     const currentText = textareaRef.current?.plainText ?? composerTextRef.current;
@@ -510,6 +553,18 @@ export function App(props: AppProps) {
             setNotice(`model → ${id}`);
             setMode("compose");
           }}
+        />
+      ) : null}
+      {mode === "session" ? (
+        <SessionPicker
+          sessions={sessions}
+          current={snapshot.sessionId}
+          width={width}
+          height={height}
+          loading={sessionsLoading}
+          error={sessionsError}
+          onCancel={()=>setMode("compose")}
+          onChoose={(id)=>resumeSession(id,true)}
         />
       ) : null}
       {mode === "inspect" && focusedGraph && selectedRow ? <Inspector graph={focusedGraph} node={selectedRow.instance ?? selectedRow.node} width={width} height={height} now={Date.now()} /> : null}
