@@ -67,6 +67,91 @@ function report(path: string, status: GraphReport["status"] = "done"): GraphRepo
 }
 
 describe("session controls", () => {
+  test("resume swaps to an existing session and restores its complete visible state", async () => {
+    const root = await cwd();
+    const target = new SessionStore({ cwd: root, sessionId: "resume-target-123" });
+    await target.initialize();
+    await target.append("model.selected", { model: "saved/model" });
+    await target.append("effort.selected", { effort: "high" });
+    await target.setName("Restore saved investigation", "generated", "google/gemma-3-27b-it");
+    await target.appendMessage({ role: "user", content: "saved question" }, "saved-user");
+    await target.appendMessage({ role: "assistant", content: "saved answer", reasoning: "saved reasoning" }, "saved-answer", { reasoningChatId: "saved-thinking" });
+    const event: ExecutionEvent = { sequence: 1, time: Date.now(), graphId: "saved-graph", type: "graph.started", data: { label: "saved graph" } };
+    await target.append("execution.event", { event });
+    const finished: ExecutionEvent = { sequence: 2, time: Date.now(), graphId: "saved-graph", type: "graph.finished", data: { status: "done" } };
+    await target.append("execution.event", { event: finished });
+
+    const controller = new GraphAgentController({
+      cwd: root,
+      sessionId: "current-session",
+      model: "current/model",
+      apiKey: "key",
+      toolSchema,
+      getPluginCatalog: async () => "",
+      execute: async () => report("unused"),
+    });
+    await controller.ready();
+    await controller.resumeSession("resume-target");
+
+    const snapshot = controller.getSnapshot();
+    expect(snapshot.sessionId).toBe("resume-target-123");
+    expect(snapshot.sessionName).toBe("Restore saved investigation");
+    expect(snapshot.model).toBe("saved/model");
+    expect(snapshot.effort).toBe("high");
+    expect(snapshot.messages.map((message) => [message.role, message.text])).toEqual([
+      ["user", "saved question"],
+      ["thinking", "saved reasoning"],
+      ["assistant", "saved answer"],
+    ]);
+    expect(snapshot.events).toEqual([event, finished]);
+  });
+
+  test("a failed resume leaves the current session active, and manual names persist", async () => {
+    const root = await cwd();
+    const controller = new GraphAgentController({
+      cwd: root,
+      sessionId: "kept-session",
+      model: "test/model",
+      apiKey: "key",
+      toolSchema,
+      getPluginCatalog: async () => "",
+      execute: async () => report("unused"),
+    });
+    await controller.ready();
+    await controller.setSessionName("My explicit name");
+    expect(controller.getSnapshot().sessionName).toBe("My explicit name");
+    await expect(controller.resumeSession("missing-session")).rejects.toThrow("not found");
+    expect(controller.getSnapshot().sessionId).toBe("kept-session");
+    expect(controller.getSnapshot().sessionName).toBe("My explicit name");
+
+    const reopened = new SessionStore({ cwd: root, sessionId: "kept-session", existingOnly: true });
+    await reopened.initialize();
+    expect(reopened.latestName()).toMatchObject({ name: "My explicit name", source: "manual" });
+  });
+
+  test("automatic naming is best-effort and preserves the fallback after failure", async () => {
+    const root = await cwd();
+    globalThis.fetch = (async () => answer("planner answer")) as unknown as typeof fetch;
+    const controller = new GraphAgentController({
+      cwd: root,
+      sessionId: "auto-name-failure",
+      model: "test/model",
+      apiKey: "key",
+      toolSchema,
+      generateSessionName: async () => { throw new Error("namer unavailable"); },
+      getPluginCatalog: async () => "",
+      execute: async () => report("unused"),
+    });
+    await controller.ready();
+    const fallback = controller.getSnapshot().sessionName;
+    await controller.submit("Investigate the flaky session test");
+    for (let attempt = 0; attempt < 20 && !controller.store.namingAttempted(); attempt += 1) {
+      await Bun.sleep(1);
+    }
+    expect(controller.getSnapshot().sessionName).toBe(fallback);
+    expect(controller.store.events.some((event) => event.type === "session.name.failed")).toBe(true);
+  });
+
   test("newSession archives the old session and exposes a clean session with preserved controls", async () => {
     const root = await cwd();
     let fetches = 0;

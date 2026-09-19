@@ -1,3 +1,5 @@
+import type { SessionSummary } from "../session/types.ts";
+
 export type Json = null | boolean | number | string | Json[] | { [key: string]: Json };
 export type Expression = unknown;
 export interface Condition { op: "eq" | "ne" | "gt" | "gte" | "lt" | "lte" | "and" | "or" | "not" | "exists" | "in"; args: Expression[] }
@@ -109,6 +111,7 @@ export interface AgentSnapshot {
   models: ModelOption[];
   events: ExecutionEvent[];
   sessionId: string;
+  sessionName: string;
   contextTokens: number;
   contextLimit: number;
   cachedTokens: number;
@@ -127,6 +130,9 @@ export interface AgentController {
   setModel(id: string): void;
   setEffort(effort: string): Promise<void>;
   newSession(): Promise<void>;
+  listSessions(): Promise<SessionSummary[]>;
+  resumeSession(idOrPrefix: string): Promise<void>;
+  setSessionName(name: string): Promise<void>;
   refreshModels?(signal?: AbortSignal): Promise<ModelOption[]>;
   pin(text: string): void;
 }
