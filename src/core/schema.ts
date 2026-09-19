@@ -31,7 +31,7 @@ export const graphSchema: Record<string, any> = {
         acceptedExitCodes: { type: "array", minItems: 1, uniqueItems: true, items: { type: "integer", minimum: 0, maximum: 255 } },
         outputFormat: { enum: ["text", "json"] },
       } },
-      { type: "object", additionalProperties: false, required: ["type", "state", "questions", "accept"], properties: {
+      { type: "object", additionalProperties: false, required: ["type", "state", "questions"], properties: {
         ...common, type: { const: "jev" }, state: {}, questions: {}, accept: { $ref: "#/$defs/condition" },
         prepare: { type: "array", items: { type: "object", additionalProperties: false, required: ["use", "as", "input"], properties: {
           use: { type: "string", minLength: 1 }, as: { type: "string", pattern: "^[a-zA-Z][a-zA-Z0-9_-]*$" }, input: {}, config: {},

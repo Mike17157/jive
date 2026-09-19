@@ -1,11 +1,12 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import {
   applyGraphEdits,
   loadSavedGraph,
+  loadGraphFile,
   parseGraphModCall,
   saveGraphForEditing,
 } from "../src/core/graph-edits.ts";
@@ -113,16 +114,36 @@ describe("parseGraphModCall", () => {
 
   test("explains malformed calls", () => {
     expect(() => parseGraphModCall("{")).toThrow("execute_graph_mod arguments are not valid JSON");
-    expect(() => parseGraphModCall(JSON.stringify({ edits: [] }))).toThrow("base must be the graphId string");
-    expect(() => parseGraphModCall(JSON.stringify({ base: "g", edits: [] }))).toThrow("edits must be a non-empty array");
+    expect(() => parseGraphModCall(JSON.stringify({ edits: [] }))).toThrow("Supply exactly one of base");
+    expect(() => parseGraphModCall(JSON.stringify({ base: "g", file: "g.json" }))).toThrow("Supply exactly one of base");
+    expect(() => parseGraphModCall(JSON.stringify({ base: "../g" }))).toThrow("use file for paths");
+    expect(() => parseGraphModCall(JSON.stringify({ file: " " }))).toThrow("non-empty graph JSON path");
     expect(() => parseGraphModCall(JSON.stringify({ base: "g", edits: [{ path: "nodes/a", new: 1 }] }))).toThrow("edits[0].path must be a JSON pointer starting with /");
     expect(() => parseGraphModCall(JSON.stringify({ base: "g", edits: [{ path: "/nodes/a" }] }))).toThrow("edits[0] needs new");
     expect(() => parseGraphModCall(JSON.stringify({ base: "g", edits: [{ path: "/nodes/a", old: "x" }] }))).toThrow("edits[0].new must be the replacement string when old is given");
     expect(() => parseGraphModCall(JSON.stringify({ base: "g", edits: [{ path: "/nodes/a", old: "", new: "y" }] }))).toThrow("edits[0].old must not be empty");
   });
+
+  test("accepts unchanged replay by ID or file and optional edits", () => {
+    expect(parseGraphModCall('{"base":"g1"}')).toEqual({ base: "g1", edits: [] });
+    expect(parseGraphModCall('{"base":"g1","edits":[]}')).toEqual({ base: "g1", edits: [] });
+    expect(parseGraphModCall('{"file":"work/graph.json"}')).toEqual({ file: "work/graph.json", edits: [] });
+    expect(parseGraphModCall('{"file":"work/graph.json","edits":[{"path":"/label","new":"replay"}]}').edits).toHaveLength(1);
+  });
 });
 
 describe("saved graphs", () => {
+  test("reads relative and absolute file paths and diagnoses missing or invalid files", async () => {
+    const cwd = await mkdtemp(join(tmpdir(), "jive-file-replay-"));
+    temporaryDirectories.push(cwd);
+    const path = join(cwd, "graph with spaces.json");
+    await writeFile(path, JSON.stringify(base));
+    expect(await loadGraphFile(cwd, "graph with spaces.json")).toEqual(base);
+    expect(await loadGraphFile(cwd, path)).toEqual(base);
+    await expect(loadGraphFile(cwd, "missing.json")).rejects.toThrow("Could not read graph file");
+    await writeFile(path, "{");
+    await expect(loadGraphFile(cwd, path)).rejects.toThrow("is not valid JSON");
+  });
   test("round-trips through .jev/runs/<id>/graph.json and confines IDs to one segment", async () => {
     const cwd = await mkdtemp(join(tmpdir(), "jev-graph-edits-"));
     temporaryDirectories.push(cwd);

@@ -1,5 +1,5 @@
 /**
- * execute_graph_mod: rerun a saved graph after small edits.
+ * execute_graph_mod: run a saved graph by ID or file, with optional edits.
  *
  * Every executed (or schema-rejected) graph is written to .jev/runs/<graphId>/graph.json. The
  * planner refers back to it by ID and sends edits that apply to the DECODED graph, never to the
@@ -7,7 +7,7 @@
  * long script cannot collide with the same text in another node and needs no JSON escaping.
  */
 import { mkdir, readFile, writeFile } from "node:fs/promises";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 
 export const GRAPH_TOOL_NAME = "execute_graph";
 export const GRAPH_MOD_TOOL_NAME = "execute_graph_mod";
@@ -20,21 +20,22 @@ export interface GraphEdit {
 }
 
 export interface GraphModCall {
-  base: string;
+  base?: string;
+  file?: string;
   label?: string;
   edits: GraphEdit[];
 }
 
 export const graphModToolParameters: Record<string, unknown> = {
   type: "object",
-  description: "Rerun a previously submitted graph after small edits. The graph is identified by the graphId returned from an earlier execute_graph or execute_graph_mod result (also returned for schema-rejected graphs). Edits apply to the saved graph's decoded JSON values, not to its text, so scripts need no JSON escaping. The edited graph is validated and executed exactly like execute_graph and is saved under a new graphId.",
-  required: ["base", "edits"],
+  description: "Execute a saved graph by base graphId or JSON file, with optional edits. Supply exactly one of base or file. Omit edits (or use []) to run unchanged. Edits apply to decoded JSON values. The graph is validated and executed in this session and saved under a new graphId; the source is unchanged. Every node runs again; this is not a resume of unfinished nodes.",
   properties: {
     base: { type: "string", description: "graphId of the saved graph to start from, copied from an earlier tool result." },
+    file: { type: "string", description: "Path to a graph JSON file, absolute or relative to the session working directory. Mutually exclusive with base. Node paths still resolve from the session directory, not the graph file's directory." },
     label: { type: "string", description: "Optional new label for the rerun (1 to 200 chars). Defaults to the base graph's label." },
     edits: {
       type: "array",
-      description: "Edits applied in order. Each targets one location with a JSON pointer such as /nodes/build/script or /templates/expand/nodes/links/timeoutMs. With old: the target must be a string and old must occur exactly once in it; only that substring is replaced with new (a string). Without old: new replaces the whole value at path (any JSON, including a complete new node under a fresh ID), and new: null deletes the entry.",
+      description: "Optional edits applied in order; omit or use [] to run unchanged. Each targets one location with a JSON pointer such as /nodes/build/script or /templates/expand/nodes/links/timeoutMs. With old: the target must be a string and old must occur exactly once in it; only that substring is replaced with new (a string). Without old: new replaces the whole value at path (any JSON, including a complete new node under a fresh ID), and new: null deletes the entry.",
       items: {
         type: "object",
         required: ["path"],
@@ -76,6 +77,16 @@ export async function loadSavedGraph(cwd: string, graphId: string): Promise<unkn
   }
 }
 
+/** File replay uses the same executor and session cwd as inline and ID-based graphs. */
+export async function loadGraphFile(cwd: string, file: string): Promise<unknown> {
+  const path = resolve(cwd, file);
+  let text: string;
+  try { text = await readFile(path, "utf8"); }
+  catch (error) { throw new Error(`Could not read graph file ${JSON.stringify(path)}: ${errorMessage(error)}`); }
+  try { return JSON.parse(text); }
+  catch (error) { throw new Error(`Graph file ${JSON.stringify(path)} is not valid JSON: ${errorMessage(error)}`); }
+}
+
 /** Writes graph.json for a graph the executor never reached (parse or schema rejection), so it can still be edited. */
 export async function saveGraphForEditing(cwd: string, graphId: string, graph: unknown): Promise<string> {
   const directory = graphRunDirectory(cwd, graphId);
@@ -93,18 +104,20 @@ export function parseGraphModCall(argumentsText: string): GraphModCall {
     throw new Error(`${GRAPH_MOD_TOOL_NAME} arguments are not valid JSON: ${errorMessage(error)}`);
   }
   if (!value || typeof value !== "object" || Array.isArray(value)) {
-    throw new Error(`${GRAPH_MOD_TOOL_NAME} arguments must be a JSON object with base and edits.`);
+    throw new Error(`${GRAPH_MOD_TOOL_NAME} arguments must be a JSON object with base or file and optional edits.`);
   }
   const call = value as Record<string, unknown>;
-  if (typeof call.base !== "string" || !call.base) throw new Error("base must be the graphId string of a saved graph.");
+  if ((call.base !== undefined) === (call.file !== undefined)) throw new Error("Supply exactly one of base (graphId) or file (graph JSON path).");
+  if (call.base !== undefined && (typeof call.base !== "string" || !GRAPH_ID_PATTERN.test(call.base))) throw new Error("base must be a valid graphId string, not a file path; use file for paths.");
+  if (call.file !== undefined && (typeof call.file !== "string" || !call.file.trim() || call.file.includes("\0"))) throw new Error("file must be a non-empty graph JSON path without null bytes.");
   if (call.label !== undefined && (typeof call.label !== "string" || !call.label.trim() || call.label.length > 200)) {
     throw new Error("label must be a string of 1 to 200 characters.");
   }
-  let edits = call.edits;
+  let edits = call.edits === undefined ? [] : call.edits;
   if (typeof edits === "string") {
     try { edits = JSON.parse(edits); } catch { /* reported below */ }
   }
-  if (!Array.isArray(edits) || edits.length === 0) throw new Error("edits must be a non-empty array of {path, old?, new?} objects.");
+  if (!Array.isArray(edits)) throw new Error("edits must be an array of {path, old?, new?} objects; omit it to run unchanged.");
   for (const [index, edit] of edits.entries()) {
     if (!edit || typeof edit !== "object" || Array.isArray(edit)) throw new Error(`edits[${index}] must be an object with a path.`);
     const entry = edit as Record<string, unknown>;
@@ -121,7 +134,7 @@ export function parseGraphModCall(argumentsText: string): GraphModCall {
     if (entry.old === "") throw new Error(`edits[${index}].old must not be empty.`);
   }
   return {
-    base: call.base,
+    ...(call.base !== undefined ? { base: call.base as string } : { file: call.file as string }),
     ...(call.label !== undefined ? { label: call.label as string } : {}),
     edits: (edits as Array<Record<string, unknown>>).map((entry) => ({
       path: entry.path as string,

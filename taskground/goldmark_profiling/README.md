@@ -131,10 +131,10 @@ go tool pprof -top -focus 'extension\.' ../work/cpu-gfm.pprof                   
   as scope, e.g. `perf(parser): reuse segment buffer in parseBlock`. Committing is
   optional; `scripts/diff.sh` diffs against the baseline commit either way.
 
-## Notes for a graph/bash-node agent
+## Measurement constraints
 
-- Every script writes its detail to `work/` and keeps stdout short. Read the files,
-  don't cat whole profiles into context: `sed -n '1,40p' work/cpu-plain.goldmark.txt`.
+- Every script writes its detail to `work/` and keeps stdout short. The profile
+  summaries are saved as text, for example `work/cpu-plain.goldmark.txt`.
 - `check.sh golden` is the cheap gate; run it after every edit. Run the full `check.sh`
   before any bench you intend to report.
 - Benchmarks are CPU-bound and single-process; running two `bench.sh` at once corrupts

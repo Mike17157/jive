@@ -25,6 +25,22 @@ immutable. Dependencies must already exist in the committed prefix. Normal mode
 permits forward references and waits for the entire graph. See the streaming
 example and recovery behavior in [README.md](../README.md).
 
+## Saved graph replay
+
+`execute_graph_mod` accepts exactly one of `base` (a saved graphId) or `file`
+(an absolute graph JSON path or one relative to the session cwd). `edits` is
+optional; omission or `[]` executes unchanged. Edits and an optional label apply
+to a copy, then the same executor validates, runs, and records a fresh graphId.
+The source graph stays unchanged. All nodes run again; there is no implicit
+resumption or cache. Node paths are relative to the session cwd regardless of
+the source file location. Standalone replay uses `jive --cwd DIR --run FILE --json`.
+
+Reports contain `graphId`, `status`, `recordPath`, `previews`, and `requested`.
+Requested results and saved `result-ID.json` artifacts are envelopes with
+`id`, `type`, `status`, `output`, `error`, and `artifact` as applicable. A saved
+foreach result's items are at `output.items`, never at the envelope root. Inside
+the graph use `/groups/ID/output/items` to pass them to an aggregation node.
+
 ## References
 
 Use explicit objects such as:
@@ -68,6 +84,11 @@ downstream nodes; an unhandled failure invokes the graph's failure policy.
 A Jev node selects input references, optionally runs a declared extractor
 pipeline, constructs state and questions, invokes Jev, and evaluates acceptance
 criteria. The actual state and question definitions sent to Jev are recorded.
+`accept` is optional: omission accepts any schema-valid answer. A supplied
+condition that evaluates false yields to the planner. Choice answers expose
+`choice`, `confidence`, and `probabilities`; score answers expose a possibly
+fractional `score`, `confidence`, and probabilities keyed by zero-based string
+indices; `noul` answers expose the yes-probability `noul` without confidence.
 
 Plugins can perform commands and network operations. They receive explicit
 inputs, configuration, cancellation, and runtime helpers for observable work.

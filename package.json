@@ -10,6 +10,7 @@
     "start": "bun src/cli.tsx",
     "demo": "bun src/cli.tsx --demo",
     "test": "bun test",
+    "eval:planner": "bun bin/eval-planner.ts",
     "typecheck": "tsc --noEmit",
     "jive": "./bin/jive",
     "install-cli": "./bin/install.sh"

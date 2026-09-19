@@ -1,5 +1,5 @@
-import { randomUUID } from "node:crypto";
-import { GRAPH_GUIDE } from "../core/planner-guide.ts";
+import { createHash, randomUUID } from "node:crypto";
+import { GRAPH_GUIDE, PLANNING_GUIDE } from "../core/planner-guide.ts";
 import { loadProjectInstructions, type ProjectInstructionsSnapshot } from "../core/project-instructions.ts";
 import { GRAPH_VALIDATION_HINT, GRAPH_VALIDATION_PREFIX, MINIMAL_GRAPH_EXAMPLE, repairGraph } from "../core/schema.ts";
 import type { ExecuteOptions } from "../core/executor.ts";
@@ -9,11 +9,13 @@ import {
   GRAPH_MOD_TOOL_NAME,
   GRAPH_TOOL_NAME,
   graphModToolParameters,
+  loadGraphFile,
   loadSavedGraph,
   parseGraphModCall,
   saveGraphForEditing,
 } from "../core/graph-edits.ts";
 import { GraphBuildingRound, type BuildingGraph } from "./graph-building.ts";
+import { runtimeContext, runtimeContextMessage } from "./runtime-context.ts";
 
 import type {
   AgentController,
@@ -68,6 +70,8 @@ export interface AgentOptions {
   getPluginCatalog: () => Promise<string>;
   toolSchema: Record<string, unknown>;
   demo?: boolean;
+  /** Override capability facts when embedding an executor with different configuration. */
+  getRuntimeContext?: () => ReturnType<typeof runtimeContext>;
   /** Enable only when execute() supports the streaming options argument. */
   supportsStreaming?: boolean;
   /** Transient-failure retries for planner requests; see DEFAULT_RETRY_POLICY. */
@@ -78,13 +82,12 @@ export interface AgentOptions {
 }
 
 export const PLANNER_SYSTEM_PROMPT = [
-  "You are the planning model for a graph-driven terminal agent.",
-  "You have two tools. execute_graph is not a command runner; it executes a program you write: parallel bash work, bounded loops over discovered items, and Jev decisions that choose the next work inside the graph.",
-  "Each call is expensive for the user, so make it do as much of the task as the evidence allows: encode the loop and the per-item judgments in the graph and return only when you need a new strategy, original code, or a user decision. A round that runs a few probe commands so you can decide the obvious next command is a failure of planning.",
-  "Every submitted graph is saved under the graphId in its result, including graphs rejected by validation. execute_graph_mod reruns a saved graph after small edits (a fixed script, a changed limit, a deleted or added node) and executes immediately, so never rewrite a large graph to fix one node: name the base graphId and send only the edits. Reserve execute_graph for a genuinely new program.",
+  "You are Jive, a terminal agent that plans and executes graphs. You design the strategy and write code; bash handles mechanical work and Jev handles focused semantic judgments.",
+  "Your tools are execute_graph for a new program and execute_graph_mod for a saved graph ID or file, with optional edits. Use the runtime context and contracts below as your operating interface.",
+  PLANNING_GUIDE,
   "You may answer directly when no execution is needed.",
   "Treat graph results as observations, preserve artifact references, and never claim omitted output was complete.",
-  "Separate graph invocations are executed serially. A tool result may describe interruption or partial effects; inspect it before deciding whether recovery is safe.",
+  "A tool result may describe interruption or partial effects; inspect it before deciding how to recover.",
   GRAPH_GUIDE,
 ].join("\n");
 
@@ -159,7 +162,7 @@ function normalizeToolSchema(schema: Record<string, unknown>): Record<string, un
 function graphModToolSchema(): Record<string, unknown> {
   return {
     name: GRAPH_MOD_TOOL_NAME,
-    description: "Rerun a saved graph after small edits, without resending it. Give the base graphId from an earlier result and a list of edits (JSON pointer path plus old/new substring replacement, or a whole new value; null deletes). The edited graph is validated, executed like execute_graph, and saved under a new graphId.",
+    description: "Execute a saved graph in this session. Supply exactly one of base (earlier graphId) or file (graph JSON path). Optional edits change decoded values; omit edits or use [] to run unchanged. Validates and executes all nodes, saves a new graphId, and leaves the source unchanged. This reruns the graph, not just unfinished work.",
     parameters: structuredClone(graphModToolParameters),
   };
 }
@@ -173,7 +176,7 @@ function provisionalGraphIdFor(callId: string): string {
 
 /** Tells the planner how to fix this graph without resending it. */
 function rerunHint(graphId: string): string {
-  return `Saved as graphId ${graphId}; call ${GRAPH_MOD_TOOL_NAME} with base ${JSON.stringify(graphId)} to rerun it with edits.`;
+  return `Saved as graphId ${graphId}; call ${GRAPH_MOD_TOOL_NAME} with base ${JSON.stringify(graphId)} to rerun unchanged, or add edits. A file path can be supplied as file instead of base. All nodes run again; reuse persisted results or remove completed work when recovering.`;
 }
 
 function parsedGraph(argumentsText: string): { graph: Graph; repairs: string[] } {
@@ -794,15 +797,34 @@ export class GraphAgentController implements AgentController {
       this.#setPhase("thinking");
       const model = this.#snapshot.model;
       const contextLimit = this.#contextLimit(model, this.#snapshot.models);
+      const capabilities = structuredClone(this.options.getRuntimeContext?.() ?? runtimeContext(requestStore.cwd, this.options.demo));
+      capabilities.execution.eagerGraphs = Boolean(this.options.supportsStreaming);
+      const prefix: PlannerMessage[] = [
+        { role: "system", content: plannerSystemPrompt(requestStore.cwd, this.#projectInstructions) },
+        { role: "system", content: runtimeContextMessage(capabilities) },
+      ];
+      // Persist the exact instructions/tools once per change, not another copy every round.
+      // The prefix is supplied anew even after compaction or a resumed session.
+      const contextData = { messages: prefix, toolSchemas: this.#toolSchemas, runtime: capabilities };
+      const hash = createHash("sha256").update(JSON.stringify(contextData)).digest("hex");
+      let snapshot = requestStore.events.findLast(event => event.type === "planner.context");
+      if (snapshot?.data.hash !== hash) snapshot = await requestStore.append("planner.context", { hash, ...contextData });
       const context = new DeterministicContext(
         requestStore,
-        [{ role: "system", content: plannerSystemPrompt(requestStore.cwd, this.#projectInstructions) }],
+        prefix,
         {
           contextLimit,
           fixedTokenCost: estimateTokens(this.#toolSchemas),
         },
       );
       const prepared = await context.prepare();
+      const effort = this.#snapshot.effort ?? defaultEffortFor(this.#snapshot.models.find((option) => option.id === model));
+      await requestStore.append("planner.request", {
+        contextSequence: snapshot!.sequence,
+        historyThroughSequence: requestStore.events.at(-1)?.sequence,
+        compactionSequence: requestStore.events.findLast(event => event.type === "context.compacted")?.sequence,
+        model, effort, estimatedTokens: prepared.estimatedTokens,
+      });
       this.#update({ contextTokens: prepared.estimatedTokens, contextLimit });
 
       const streamId = `stream-${randomUUID()}`;
@@ -827,7 +849,7 @@ export class GraphAgentController implements AgentController {
           sessionId: requestStore.sessionId,
           messages: prepared.messages,
           toolSchema: this.#toolSchemas,
-          effort: this.#snapshot.effort ?? defaultEffortFor(this.#snapshot.models.find((option) => option.id === model)),
+          effort,
           signal,
           onRetry: (notice) => {
             if (this.store !== requestStore) return;
@@ -1011,9 +1033,11 @@ export class GraphAgentController implements AgentController {
     }
     let base: unknown;
     try {
-      base = await loadSavedGraph(this.options.cwd, call.base);
+      base = call.base !== undefined
+        ? await loadSavedGraph(this.options.cwd, call.base)
+        : await loadGraphFile(this.options.cwd, call.file!);
     } catch (error) {
-      await fail(errorMessage(error), { base: call.base });
+      await fail(errorMessage(error), { base: call.base, file: call.file });
       return;
     }
     let edited: unknown;
@@ -1021,7 +1045,7 @@ export class GraphAgentController implements AgentController {
     try {
       ({ graph: edited, applied } = applyGraphEdits(base, call.edits));
     } catch (error) {
-      await fail(errorMessage(error), { base: call.base, hint: "No edit was applied and nothing ran. Fix the failing edit and resend the whole edits list against the same base." });
+      await fail(errorMessage(error), { base: call.base, file: call.file, hint: "The source is unchanged and nothing ran. Fix the failing edit and resend the whole edits list against the same source." });
       return;
     }
     if (call.label && edited && typeof edited === "object" && !Array.isArray(edited)) {
@@ -1031,7 +1055,7 @@ export class GraphAgentController implements AgentController {
     await this.#runGraph({
       callId, name, graph: repaired.value as Graph, repairs: repaired.repairs, signal,
       provisionalGraphId: provisionalGraphIdFor(callId),
-      startedFields: { base: call.base, edits: call.edits },
+      startedFields: { ...(call.base !== undefined ? { base: call.base } : { file: call.file }), edits: call.edits },
       applied,
     });
   }
@@ -1140,6 +1164,7 @@ export class GraphAgentController implements AgentController {
       maxInline,
     );
     await this.store.appendMessage(terminalToolResult(callId, name, content));
+    if (report.status === "done" && !streamError) this.#update({ error: undefined });
   }
 
   #scheduleAutoName(store: SessionStore): void {

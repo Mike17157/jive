@@ -2,6 +2,7 @@ import { spawn } from "node:child_process";
 import { createWriteStream } from "node:fs";
 import { writeFile } from "node:fs/promises";
 import { finished } from "node:stream/promises";
+import { DEFAULT_COMMAND_TIMEOUT_MS } from "./runtime-contract.ts";
 
 export interface CommandOptions {
   script: string; cwd: string; env?: Record<string, string>; stdin?: string;
@@ -33,7 +34,7 @@ export async function runCommand(options: CommandOptions): Promise<CommandResult
   };
   const stop = () => { stopped = true; kill("SIGTERM"); force = setTimeout(() => kill("SIGKILL"), 400); };
   options.signal?.addEventListener("abort", stop, { once: true });
-  const timer = setTimeout(() => { timedOut = true; stop(); }, options.timeoutMs ?? 60000);
+  const timer = setTimeout(() => { timedOut = true; stop(); }, options.timeoutMs ?? DEFAULT_COMMAND_TIMEOUT_MS);
   for (const stream of ["stdout", "stderr"] as const) {
     child[stream].setEncoding("utf8");
     child[stream].on("data", (chunk: string) => {
@@ -52,7 +53,7 @@ export async function runCommand(options: CommandOptions): Promise<CommandResult
       child.once("close", code => resolve(code ?? 128));
     });
     const result = { exitCode: code, ...capture, ...(options.outputPrefix ? { stdoutPath: `${options.outputPrefix}.stdout`, stderrPath: `${options.outputPrefix}.stderr` } : {}) };
-    if (timedOut || stopped) throw Object.assign(new Error(timedOut ? `Command exceeded ${options.timeoutMs ?? 60000}ms timeout` : "Command interrupted"), { commandResult: result });
+    if (timedOut || stopped) throw Object.assign(new Error(timedOut ? `Command exceeded ${options.timeoutMs ?? DEFAULT_COMMAND_TIMEOUT_MS}ms timeout` : "Command interrupted"), { commandResult: result });
     return result;
   } finally {
     clearTimeout(timer); if (force) { kill("SIGKILL"); clearTimeout(force); }

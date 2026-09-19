@@ -28,6 +28,8 @@ export type SessionEventType =
   | "session.named"
   | "session.name.failed"
   | "planner.message"
+  | "planner.context"
+  | "planner.request"
   | "pin.added"
   | "model.selected"
   | "effort.selected"

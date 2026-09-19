@@ -55,7 +55,7 @@ directory (searched upward) or the jive checkout. Install: bin/install.sh.
     return;
   }
   if(values.run || values.demo&&values.headless){
-    const graph=values.run?JSON.parse(await readFile(resolve(values.run),"utf8")):demoGraph();
+    const graph=values.run?JSON.parse(await readFile(resolve(cwd,values.run),"utf8")):demoGraph();
     const abort=new AbortController();const cancel=()=>abort.abort(new Error("Interrupted by user"));process.once("SIGINT",cancel);
     try{
       const report=await executeGraph(graph,{cwd,signal:abort.signal,jev:values.demo?new FixtureJev():new JevClient(),onEvent:values.json?event=>console.log(JSON.stringify(event)):event=>{if(event.type==="node.finished"){const r=event.data.result as any;console.log(`${r.status.padEnd(10)} ${r.id}`);}}});

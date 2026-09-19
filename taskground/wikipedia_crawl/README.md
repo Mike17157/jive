@@ -13,10 +13,9 @@ taskground/wikipedia_crawl/
   README.md
 ```
 
-Run it from anywhere: `taskground/wikipedia_crawl/wikigraph <command> [...]`. Every subcommand
-has `--help`. From a `execute_graph` bash node, remember each node is its own
-process in the session working directory, so use the path above and pass
-`--out` so results land in a file instead of the planner's context.
+From this folder, run `./wikigraph <command> [...]`. From elsewhere, use the path
+to this folder's `wikigraph` executable. Every subcommand has `--help`.
+Pass `--out` to save results to a file.
 
 ## Quickstart
 

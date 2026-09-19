@@ -46,8 +46,21 @@ const node = {
     acceptedExitCodes: { type: "array", items: { type: "integer" }, description: "bash-only. Exit codes that count as success. Defaults to [0]; use [0,1] for rg or a test run." },
     outputFormat: { type: "string", enum: ["text", "json"], description: "bash-only. json additionally parses stdout into output.json." },
     state: { description: `jev-only, required. The evidence Jev reasons over: source, goal, constraints. ${REF_RULE}` },
-    questions: { type: "object", description: `jev-only, required. Map of question ID to a question of type choice, score or noul; each holds complete instructions. ${REF_RULE}` },
-    accept: { ...condition, description: `jev-only, required. Acceptance condition over /answers/QUESTION/... ${condition.description}` },
+    questions: {
+      type: "object", description: `jev-only, required. Map of question ID to a question, or a $ref to a question map. IDs carry no meaning: instructions must give the complete question. ${REF_RULE}`,
+      properties: { $ref: { type: "string", description: "Alternatively reference an entire question map." } },
+      additionalProperties: {
+        type: "object",
+        properties: {
+          $ref: { type: "string", description: "Alternatively reference an entire question definition. Direct definitions require type and instructions." },
+          type: { type: "string", enum: ["choice", "score", "noul"], description: "Required for direct questions: choice selects an option, score rates ordered levels, noul estimates a yes-probability." },
+          instructions: { description: "Complete question text or structured instructions. Include the goal and relevant constraints." },
+          criteria: { description: 'choice: object mapping 2–255 option IDs to descriptions. score: array of 2–10 ordered descriptions, indexed from 0. noul: omit. May be a $ref. Example choice: {"keep":"Relevant","skip":"Irrelevant"}; score: ["Poor","Adequate","Good"].' },
+        },
+        description: 'choice answer: {type:"choice",choice:OPTION_ID,confidence:number,probabilities:{OPTION_ID:number,...}}. score answer: {type:"score",score:number,confidence:number,probabilities:{"0":number,...}}; score can be fractional. noul answer: {type:"noul",noul:number} is a yes-probability without confidence. All probabilities are 0–1. Results are /nodes/ID/output/answers/QUESTION.',
+      },
+    },
+    accept: { ...condition, description: `jev-only, optional. Omit to accept every schema-valid answer. Use for deliberate handoff on uncertainty. References inside accept use /answers/QUESTION/..., e.g. {op:"gte",args:[{$ref:"/answers/q/confidence"},0.8]}. ${condition.description}` },
     prepare: {
       type: "array",
       description: "jev-only. Extractors to run in order before the call; outputs are available as /prepared/NAME inside this node.",

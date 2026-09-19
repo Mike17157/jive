@@ -3,9 +3,9 @@
 A self-contained loop for one job: **judge AI assistant responses the way human annotators
 did, and prove it.** The data is NVIDIA's HelpSteer2 (CC-BY-4.0): real user prompts, some
 multi-turn, each with two candidate assistant responses that humans rated on five attributes.
-You design the grading rubric, run it as Jev decisions over every conversation, and the scorer
-measures how well your judgments agree with the humans. Nothing is fetched from the network
-after `scripts/prepare.py` has run once; the splits are checked in.
+You design the grading rubric and a rerunnable evaluation workflow. The scorer measures how
+well its judgments agree with the humans. The dataset splits are checked in, so no dataset
+download is needed after `scripts/prepare.py` has run once. Model calls may use the network.
 
 ```
 conversation_eval/
@@ -53,8 +53,8 @@ Every line of `data/*.jsonl` is one conversation to judge:
 - `data/*_pairs.jsonl`: `{"pair_id", "a", "b"}` and, in dev only, `"preferred": "a" | "b" | "tie"`.
   The preference is derived from the helpfulness labels: the higher-rated response wins; equal
   ratings are a tie. Between a quarter and a third of pairs are ties.
-- Sizes: no conversation exceeds 12 000 characters (prompt plus response), so one conversation,
-  or one pair, fits comfortably in a single Jev call's state. Median is about 2 000 characters.
+- Sizes: no conversation exceeds 12 000 characters (prompt plus response).
+  Median is about 2 000 characters.
 
 ## Predictions
 
@@ -88,7 +88,8 @@ The full breakdown, including predicted-vs-human distributions per attribute, go
 
 ## Definition of done
 
-`scripts/score.py` on the test split prints `SCORE PASS`, which means all four gates hold:
+The scoring target is `SCORE PASS` from `scripts/score.py` on the test split, meaning all
+four gates hold:
 
 | gate | threshold | what a constant judge gets |
 | --- | --- | --- |
@@ -103,53 +104,40 @@ one that does not. The thresholds are provisional calibration targets, not the c
 
 Rules:
 
-1. Predictions come from Jev decisions over the conversation text, inside `execute_graph`. Bash may
-   parse, batch, aggregate, calibrate and write files; it may not decide a score. The planner
-   model reading a conversation and scoring it in its own reasoning is also out: that is the
-   round-per-item anti-pattern this task exists to catch.
+1. Predictions must be produced by model calls or executable code over the conversation text.
+   Do not assign individual ratings or preferences in your own reasoning. Preserve the rubric,
+   configuration, and evidence needed to reproduce the workflow. Dev labels may inform calibration;
+   keep reference labels separate from the inputs used to judge each item.
 2. `golden/test_labels.jsonl` and `golden/test_pairs.jsonl` are never read, grepped, copied or
    diffed by anything you run. `golden/dev_*` is the same information as `data/dev.jsonl` and is
    fine to use.
 3. Ties are legitimate answers, but abstaining on every pair is not a strategy: the pair gate only
    counts pairs where you picked a side, and the report shows how many decisive pairs you dodged.
 
-Report back with: the score table for the final test run, the rubric you settled on (the actual
-Jev criteria text), what changed between calibration rounds on dev and why, and the number of
-Jev calls the final graph used.
+## Calibration and deliverables
 
-## Notes for a graph/bash-node agent
+Score the first workflow on dev, then do exactly two rounds of refinement. After each of the
+first two dev reports, inspect the errors and distributions, state the reason for the next
+change, change the workflow, and re-score. Preserve each round's rubric, predictions, evidence,
+and report under `work/` with `-r1`, `-r2`, and `-r3` suffixes.
 
-- One conversation per Jev node is the natural unit. All five attributes are independent judgments
-  over the same state, so they can share one call as five `score` questions, each with five ordered
-  criteria descriptions for 0–4. Put the attribute definitions from the table above into the
-  criteria; Jev sees only what the node's `state` and `questions` contain.
-- Pair preference is a `choice` question over both responses with options `a`, `b`, `tie`. Both
-  responses of a pair are adjacent in `data/*.jsonl` and share `turns`, so a pair node can carry
-  the context once. You can also derive the preference from your own per-response helpfulness
-  scores in bash and compare the two approaches on dev.
-- Read the input with bash, not Jev: `python3 -c` over `data/dev.jsonl` to select items, build
-  the per-item state, and write it to a file or emit JSON for a `foreach`. A `foreach` over the
-  items with `maxItems` set to the split size and `onItemFailure:"continue"` finishes even if a
-  few calls error; the merge node writes the predictions file and skips failed items.
-- Budget: 100 dev conversations plus 50 pairs is 150 Jev calls; the full test run is 300. The
-  default `maxJevCalls` is 100, so declare the real budget in `limits`. Score answers include a
-  probability distribution over the 0–4 options; the expected value or the argmax are both valid
-  ways to turn it into an integer, and which one agrees better with humans is a dev-split question.
-- Calibrate before you sit the exam. Score a rubric on dev, look at `pred_distribution` versus
-  `gold_distribution` in `work/score-dev.json` (over-scoring is the usual failure: a judge that
-  gives 4 to everything mildly good), tighten the criteria text, and rerun. A `repeat` group with
-  the rubric as carried state and `until` agreement stops improving is the shape of that loop.
-  Then run the test split once with the final rubric.
-- Keep evidence: write each item's answers, confidence and probabilities to `work/` as you go, so
-  a failed run resumes from what was done and the report can quote real examples of disagreement.
+Freeze the final version after r3. Grade every test response on all five attributes and every
+test pair once, writing `work/predictions.jsonl` and `work/pair_predictions.jsonl`, then run
+`scripts/score.py`. Report the result even if a gate fails; do not tune against test results or
+repeat the test evaluation to chase a pass.
+
+Deliver the rerunnable workflow and a short report containing dev scores for all three rounds,
+the final test score table, the actual final rubric text, and what changed between rounds and
+why. Document the command that reproduces the final predictions from scratch. Model judgments
+may vary between executions; record the model and settings used. Preserve completed evidence
+when recovering from execution errors.
 
 ## Example task statement
 
-> Build a Jev grading workflow for the HelpSteer2 conversations in this folder. Design the rubric
-> on `data/dev.jsonl`, calibrate it against the dev labels with `scripts/score.py --split dev`
-> until helpfulness kappa stops improving, then grade all of `data/test.jsonl` and
-> `data/test_pairs.jsonl` once and run `scripts/score.py`. Definition of done as in README.
-> Report the score table, the final criteria text, and what you changed between rounds.
+> Build an evaluation workflow for the HelpSteer2 conversations in this folder. Follow the
+> calibration and deliverable requirements above: three dev rounds with documented refinements,
+> then one final test evaluation. Do not rate items in your own reasoning or read held-out labels.
+> Deliver the workflow, score tables, final rubric, and explanation of the refinements.
 
 ## Regenerating the splits (maintainers only)
 
