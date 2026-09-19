@@ -107,7 +107,7 @@ export function App(props: AppProps) {
       }
     }
     initialised.current = true;
-    return graphs.map((g, index) => ({ graph: g, anchor: anchors.current.get(g.id) ?? msgs.length, index }));
+    return graphs.map((g) => ({ graph: g, anchor: anchors.current.get(g.id) ?? msgs.length }));
   }, [graphs, snapshot.messages, snapshot.sessionId]);
 
   const focusedGraph: GraphModel | null = mode === "graph" || mode === "inspect" ? (graphs[Math.min(graphCursor, graphs.length - 1)] ?? null) : null;

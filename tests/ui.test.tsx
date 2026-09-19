@@ -306,7 +306,7 @@ describe("graph presentation", () => {
   const view = async (events: ExecutionEvent[], width = 90) => {
     const graph = reduceGraphs(events)[0]!;
     const setup = await testRender(
-      <GraphView graph={graph} width={width} expanded={new Set()} folded={new Set()} selectedRow={-1} focused={false} index={0} total={1} />,
+      <GraphView graph={graph} width={width} expanded={new Set()} folded={new Set()} selectedRow={-1} focused={false} />,
       { width, height: 12 },
     );
     (globalThis as Record<string, unknown>).IS_REACT_ACT_ENVIRONMENT = false;
@@ -337,6 +337,22 @@ describe("graph presentation", () => {
     expect(lines[0]).not.toContain("read");
   });
 
+  test("the progress counter covers this graph's own nodes, and only once there are more than five", async () => {
+    const sized = (count: number) => {
+      const ev = eventFactory(`sized-${count}`);
+      const events = [ev("graph.started", undefined, { label: "walk the tree" })];
+      for (let i = 0; i < count; i++) events.push(ev("node.created", `n${i}`, { label: `step ${i}`, type: "bash", needs: [] }));
+      events.push(ev("node.finished", "n0", { result: { id: "n0", label: "step 0", type: "bash", status: "done" } }));
+      return events;
+    };
+    // Six nodes, one of them finished: the counter reports this graph alone.
+    expect((await view(sized(6))).join("\n")).toContain("1/6 done");
+    // Five is still small enough to read off the rows themselves.
+    const small = (await view(sized(5))).join("\n");
+    expect(small).not.toContain("1/5 done");
+    expect(small).toContain("walk the tree");
+  });
+
   test("a failed call shows one inline error and a clickable copy control", async () => {
     const ev = eventFactory("failed-call");
     const events = [
@@ -347,7 +363,7 @@ describe("graph presentation", () => {
     ];
     const copied: string[] = [];
     const setup = await testRender(
-      <GraphView graph={reduceGraphs(events)[0]!} width={70} expanded={new Set()} folded={new Set()} selectedRow={-1} focused={false} index={0} total={1} onCopyFailure={(text) => copied.push(text)} />,
+      <GraphView graph={reduceGraphs(events)[0]!} width={70} expanded={new Set()} folded={new Set()} selectedRow={-1} focused={false} onCopyFailure={(text) => copied.push(text)} />,
       { width: 70, height: 8, useMouse: true },
     );
     (globalThis as Record<string, unknown>).IS_REACT_ACT_ENVIRONMENT = false;
@@ -1184,7 +1200,8 @@ describe("App", () => {
       let f = await frame();
       expect(f).toContain("draft plan");
       expect(f).toMatch(/assembling\.{0,3}/);
-      expect(f).toContain("3 nodes");
+      // Three rows count themselves; the progress counter stays off below the threshold.
+      expect(f).not.toContain("3 nodes");
       expect(f).toMatch(/· scan repo/);
       expect(f).toMatch(/· pick file/);
       expect(f).toMatch(/· ▾ ≡ per file\s+foreach · ≤3 items/);

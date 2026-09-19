@@ -8,6 +8,8 @@ import { dimHex, mixHex, palette } from "../theme.ts";
 const TICK_MS = 80;
 const BUILD_TICK_MS = 240;
 const BUILD_DOTS = ["   ", ".  ", ".. ", "..."];
+/** Graphs of this many nodes or fewer are read directly; above it the progress counter earns its place. */
+const COUNTER_MIN_NODES = 5;
 
 export function toneColor(tone: StatusTone, type?: GraphNode["type"]): string {
   switch (tone) {
@@ -130,8 +132,6 @@ export interface GraphViewProps {
   /** Row index highlighted when this graph has keyboard focus, else -1. */
   selectedRow: number;
   focused: boolean;
-  index: number;
-  total: number;
   onCopyFailure?: (text: string) => void;
 }
 
@@ -181,8 +181,11 @@ export function GraphView(props: GraphViewProps) {
   const gutterWidth = layout.laneCount * 2;
   const labelBudget = Math.max(6, width - gutterWidth - (narrow ? 14 : 34));
   const caption = phaseCaption(graph, tick);
+  // A handful of rows counts itself at a glance, so the progress counter — this graph's own
+  // node executions, nothing from any other call — only appears once the graph outgrows that.
+  const counted = counts.total > COUNTER_MIN_NODES;
   const summary = [
-    counts.total > counts.building ? `${counts.done}/${counts.total} done` : counts.total ? `${counts.total} nodes` : "",
+    counted ? (counts.total > counts.building ? `${counts.done}/${counts.total} done` : `${counts.total} nodes`) : "",
     counts.building && counts.total > counts.building ? `${counts.building} drafted` : "",
     counts.running ? `${counts.running} running` : "",
     counts.warn ? `${counts.warn} stopped` : "",
@@ -192,12 +195,10 @@ export function GraphView(props: GraphViewProps) {
     .filter(Boolean)
     .join(" · ");
   const graphDuration = graph.startedAt !== undefined ? formatDuration((graph.finishedAt ?? now) - graph.startedAt) : "";
-  const marker = props.total > 1 ? ` ${props.index + 1}/${props.total}` : "";
   const title = truncate(graph.label, Math.max(8, width - 40));
   // Everything the title line carries after the title, measured so the badge can be the
   // first thing to go when the line is full: the files are named on the line below anyway.
   const tail = [
-    marker,
     caption ? ` · ${caption.text}` : "",
     summary ? ` · ${summary}` : "",
     graph.status ? ` · ${graph.status}` : "",
@@ -209,8 +210,7 @@ export function GraphView(props: GraphViewProps) {
   const only = layout.rows.length === 1 && !layout.rows[0]!.group && !caption ? layout.rows[0]! : null;
   // The same measurement for that row, which carries the title itself.
   const soloTitle = only ? truncate(graph.label || only.node.label, labelBudget) : "";
-  const soloTail = only && marker ? ` ·${marker}` : "";
-  const soloBadge = only ? fittedBadge(graph.changes, width - 7 - soloTitle.length - soloTail.length) : null;
+  const soloBadge = only ? fittedBadge(graph.changes, width - 7 - soloTitle.length) : null;
   const reasonShownOnNode = graph.reason !== undefined && Object.values(graph.nodes).some((node) => node.error === graph.reason);
 
   return (
@@ -235,7 +235,6 @@ export function GraphView(props: GraphViewProps) {
                   <span fg={palette.textDim}>{soloBadge}</span>
                 </>
               ) : null}
-              {marker ? <span fg={palette.textFaint}> ·{marker}</span> : null}
             </>
           }
         />
@@ -243,7 +242,6 @@ export function GraphView(props: GraphViewProps) {
       <text wrapMode="none">
         <span fg={props.focused ? palette.accent : building ? palette.textDim : palette.text}>{props.focused ? "◆ " : building ? "◌ " : "◇ "}</span>
         <span fg={palette.text}>{title}</span>
-        {props.total > 1 ? <span fg={palette.textFaint}> {props.index + 1}/{props.total}</span> : null}
         {caption ? (
           <>
             <span fg={palette.textFaint}> · </span>
