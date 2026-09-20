@@ -901,14 +901,13 @@ describe("App", () => {
       const f = await frame();
       const lines = f.split("\n").filter((l) => l.length > 0);
       expect(lines.length).toBe(30);
-      // Composer card: side margins of 2, bottom margin row, rounded border,
-      // and a blank padding row under the top border.
-      expect(lines[29]!.trim()).toBe("");
-      expect(lines[28]).toMatch(/^ {2}╰─+╯ {2}$/);
-      expect(lines[27]).toContain("│ ❯ Ask, or type / for commands");
-      expect(lines[26]).toMatch(/^ {2}│ +│ {2}$/);
-      expect(lines[25]).toMatch(/^ {2}╭─+╮ {2}$/);
-      expect(lines[24]).toContain("Claude Sonnet 5");
+      // Composer card: side margins of 2, rounded border flush with the
+      // bottom of the viewport, and a blank padding row under the top border.
+      expect(lines[29]).toMatch(/^ {2}╰─+╯ {2}$/);
+      expect(lines[28]).toContain("│ ❯ Ask, or type / for commands");
+      expect(lines[27]).toMatch(/^ {2}│ +│ {2}$/);
+      expect(lines[26]).toMatch(/^ {2}╭─+╮ {2}$/);
+      expect(lines[25]).toContain("Claude Sonnet 5");
       expect(f).not.toContain("graph · bash · jev");
       expect(f).not.toContain("Describe a task");
       expect(f).toMatch(/[\u2801-\u28ff]{3,}/); // Braille-dot flower

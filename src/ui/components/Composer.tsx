@@ -18,8 +18,8 @@ const MAX_LINES = 6;
 const PROMPT_WIDTH = 2;
 /** Horizontal margin around the composer card. */
 export const COMPOSER_MARGIN_X = 2;
-/** Rows used by the composer chrome (border, top padding, bottom margin) beyond the text lines. */
-export const COMPOSER_CHROME_ROWS = 4;
+/** Rows used by the composer chrome (borders and top padding) beyond the text lines. */
+export const COMPOSER_CHROME_ROWS = 3;
 
 const glimmerEpoch = Date.now();
 const inputBackground = RGBA.fromHex(palette.input);
@@ -97,9 +97,8 @@ export function Composer(props: {
     <box
       flexDirection="column"
       flexShrink={0}
-      height={lines + COMPOSER_CHROME_ROWS - 1}
+      height={lines + COMPOSER_CHROME_ROWS}
       marginX={COMPOSER_MARGIN_X}
-      marginBottom={1}
       border
       borderStyle="rounded"
       borderColor={props.focused ? palette.border : palette.borderSoft}

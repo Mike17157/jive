@@ -493,7 +493,7 @@ export function App(props: AppProps) {
 
   const empty = messages.length === 0 && graphs.length === 0;
   const modeLabel = mode === "compose" ? "compose" : mode === "graph" ? "graph ↑↓ → Esc" : mode === "inspect" ? "inspect Esc" : mode;
-  // Rows left for the conversation: total minus status bar, composer card (+ margin) and the popup.
+  // Rows left for the conversation: total minus status bar, composer card and the popup.
   const viewportHeight = Math.max(4, height - 1 - (composerLines + COMPOSER_CHROME_ROWS) - popupRows - (mode === "effort" ? EFFORT_PANEL_ROWS + 1 : 0) - (snapshot.busy?1:0));
 
   return (
