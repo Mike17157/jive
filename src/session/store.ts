@@ -6,6 +6,7 @@ import { createInterface } from "node:readline";
 import { excerptOversizedOutput } from "./excerpts";
 import { fallbackSessionName, normalizeSessionName } from "./names.ts";
 import type { ExecutionEvent, NodeResult } from "../core/types";
+import type { ProjectSkillsSnapshot } from "../core/project-skills.ts";
 
 import type {
   ArchiveMatch,
@@ -219,6 +220,18 @@ export class SessionStore {
       path: event.data.path,
       text: typeof event.data.text === "string" ? event.data.text : null,
     };
+  }
+
+  projectSkills(): ProjectSkillsSnapshot | undefined {
+    const event = this.#events.find((entry) => entry.type === "project.skills");
+    if (!event) return undefined;
+    const { directory, skills, diagnostics } = event.data;
+    if (typeof directory !== "string" || !Array.isArray(skills) || !Array.isArray(diagnostics) ||
+      !skills.every(skill => skill && typeof skill.name === "string" && typeof skill.description === "string" && typeof skill.path === "string") ||
+      !diagnostics.every(diagnostic => typeof diagnostic === "string")) {
+      throw new Error("Invalid project skill catalog snapshot in session.");
+    }
+    return structuredClone({ directory, skills, diagnostics });
   }
 
   latestName(): SessionNameEventData | undefined {
