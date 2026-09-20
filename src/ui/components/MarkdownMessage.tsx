@@ -1,8 +1,16 @@
-import { MAX_LINK_URL_BYTES, RGBA, StyledText, TextAttributes, type TextChunk } from "@opentui/core";
-import { useRenderer } from "@opentui/react";
+import { MAX_LINK_URL_BYTES, RGBA, StyledText, TextAttributes, TextTableRenderable, type TextChunk, type TextTableContent } from "@opentui/core";
+import { extend, useRenderer } from "@opentui/react";
 import { Lexer, type Token, type Tokens } from "marked";
 import { useCallback, useMemo, useSyncExternalStore } from "react";
 import { palette } from "../theme";
+
+declare module "@opentui/react" {
+  interface OpenTUIComponents {
+    "text-table": typeof TextTableRenderable;
+  }
+}
+
+extend({"text-table":TextTableRenderable});
 
 const colors=Object.fromEntries(Object.entries(palette).map(([key,value])=>[key,RGBA.fromHex(value)]));
 function decode(text:string):string {
@@ -69,8 +77,7 @@ function Blocks({tokens,hyperlinks,compact=false,depth=0}:{tokens:Token[];hyperl
       const margin=index===0||compact?0:1;
       if(depth>24)return <text key={index} wrapMode="word" fg={palette.prose}>{token.raw}</text>;
       if(token.type==="heading")return <text key={index} marginTop={margin} content={inlineMarkdown(token.tokens??Lexer.lexInline(token.text),TextAttributes.BOLD,colors.text,hyperlinks)} wrapMode="word"/>;
-      if(token.type==="code")return <box key={index} marginTop={margin} width="100%" flexDirection="column" border={["left"]} borderColor={palette.borderSoft} backgroundColor={palette.surface} paddingX={1} paddingY={1}>
-        {token.lang?<text fg={palette.textDim} marginBottom={1}>{token.lang}</text>:null}
+      if(token.type==="code")return <box key={index} marginTop={margin} width="100%" flexDirection="column" border={["left"]} borderColor={palette.borderSoft} backgroundColor={palette.surface} paddingX={1}>
         <text content={token.text} fg={palette.text} wrapMode="word" selectable/>
       </box>;
       if(token.type==="blockquote")return <box key={index} marginTop={margin} width="100%" flexDirection="column" border={["left"]} borderColor={palette.borderSoft} paddingLeft={1}><Blocks tokens={token.tokens??Lexer.lex(token.text)} hyperlinks={hyperlinks} depth={depth+1}/></box>;
@@ -80,13 +87,12 @@ function Blocks({tokens,hyperlinks,compact=false,depth=0}:{tokens:Token[];hyperl
           <box flexGrow={1} minWidth={0} flexDirection="column"><Blocks tokens={item.tokens} hyperlinks={hyperlinks} compact={!token.loose} depth={depth+1}/></box>
         </box>)}
       </box>;
-      if(token.type==="table")return <box key={index} marginTop={margin} width="100%" flexDirection="column" border borderColor={palette.borderSoft}>
-        {[token.header,...token.rows].map((row:Tokens.TableCell[],rowIndex:number)=><box key={rowIndex} width="100%" flexDirection="row">
-          {row.map((cell,column)=><box key={column} width={`${100/row.length}%`} flexDirection="column" paddingX={1} border={column?["left"]:false} borderColor={palette.borderSoft}>
-            <text content={inlineMarkdown(cell.tokens,rowIndex===0?TextAttributes.BOLD:0,rowIndex===0?colors.proseAccent:colors.prose,hyperlinks)} wrapMode="word"/>
-          </box>)}
-        </box>)}
-      </box>;
+      if(token.type==="table"){
+        const content:TextTableContent=[token.header,...token.rows].map((row:Tokens.TableCell[],rowIndex:number)=>
+          row.map(cell=>inlineMarkdown(cell.tokens,rowIndex===0?TextAttributes.BOLD:0,rowIndex===0?colors.proseAccent:colors.prose,hyperlinks).chunks),
+        );
+        return <text-table key={index} marginTop={margin} width="100%" content={content} columnWidthMode="content" columnFitter="proportional" wrapMode="word" columnGap={2} cellPadding={0} border={false} outerBorder={false} showBorders={false} selectable/>;
+      }
       if(token.type==="hr")return <box key={index} marginY={1} width="100%" height={1} border={["top"]} borderColor={palette.borderSoft}/>;
       if(token.type==="def")return null;
       const text="text" in token?String(token.text):token.raw;

@@ -17,6 +17,12 @@ test("Markdown renders headings, lists, links, tables and code immediately", asy
     await setup.flush();const frame=setup.captureCharFrame();
     for(const text of ["Overview","Ready","inline code","Docs","https://example.com","First item","Verified","1. Run the agent","Quoted evidence","const answer = 42;","scan","done"])expect(frame).toContain(text);
     expect(frame).not.toContain("# Overview");expect(frame).not.toContain("**Ready**");expect(frame).not.toContain("```ts");
+    const lines=frame.split("\n").map(line=>line.trimEnd());
+    expect(lines.map(line=>line.trim())).not.toContain("ts");
+    expect(lines).toContain("Node  State");expect(lines).toContain("scan  done");
+    const codeLine=lines.findIndex(line=>line.includes("const answer = 42;"));
+    const tableLine=lines.findIndex(line=>line==="Node  State");
+    expect(tableLine-codeLine).toBe(2);
     const styled=inlineMarkdown(Lexer.lexInline("**bold** and [link](https://example.com)"));
     expect(styled.chunks.find(chunk=>chunk.text==="bold")!.attributes! & TextAttributes.BOLD).not.toBe(0);
     expect(styled.chunks.find(chunk=>chunk.text==="link")?.link?.url).toBe("https://example.com");
