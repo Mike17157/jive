@@ -1,0 +1,51 @@
+{
+  "adaptation": true,
+  "seed": "taskground-v1-2026",
+  "benchmark": "NVIDIA HelpSteer2; existing Jive conversation_eval adaptation",
+  "upstream": "https://huggingface.co/datasets/nvidia/HelpSteer2",
+  "sources": [
+    {
+      "path": "taskground/conversation_eval/data/dev.jsonl",
+      "sha256": "9ec32fd1764c12715d42d6733fa3975b95ac20c6ae808ef4e8266c9384e698b9"
+    },
+    {
+      "path": "taskground/conversation_eval/data/dev_pairs.jsonl",
+      "sha256": "2f874617b0f0eb0c91bd8abf57102a8696cde3a352a8de900fdbc14b81a6c1c9"
+    },
+    {
+      "path": "taskground/conversation_eval/golden/dev_labels.jsonl",
+      "sha256": "4fc8b168a32612cfbea8ae15336b55fe68c1913d4ee58f9f1047372878923d03"
+    },
+    {
+      "path": "taskground/conversation_eval/golden/dev_pairs.jsonl",
+      "sha256": "288f355dfd110c6fbdf6551402518ea451fd56b3cef4bacf2cffceb44afa2883"
+    },
+    {
+      "path": "taskground/conversation_eval/data/test.jsonl",
+      "sha256": "9d17a6476bc80a8d81158042801eeeed42bd41be2f3f2394183fee8185b32573"
+    },
+    {
+      "path": "taskground/conversation_eval/data/test_pairs.jsonl",
+      "sha256": "3635af7c459a83ada1ece387cf70baf01a34d1be77f9b0a5c837349f3e397e92"
+    },
+    {
+      "path": "taskground/conversation_eval/golden/test_labels.jsonl",
+      "sha256": "d80a24b151a74724f2271c6dd29e74c787549fc22fe1e6a2800c0ad1463e99a4"
+    },
+    {
+      "path": "taskground/conversation_eval/golden/test_pairs.jsonl",
+      "sha256": "7aa06957a445182cd3570974b5295ba5ea27a55a6901860bcd884e8bf7cb2b8f"
+    }
+  ],
+  "size": {
+    "dev_responses": 20,
+    "dev_pairs": 10,
+    "test_responses": 40,
+    "test_pairs": 20,
+    "dev_rounds": 3,
+    "judgments_without_batching": 150
+  },
+  "selection": "Deterministic subsets of existing dev/test pairs, preserving the original split. Three dev rounds, one final test pass; all five attributes judged together per response.",
+  "license": "CC-BY-4.0",
+  "attribution": "NVIDIA HelpSteer2. Original full task remains at taskground/conversation_eval. Thresholds are provisional development targets, not official benchmark scores."
+}

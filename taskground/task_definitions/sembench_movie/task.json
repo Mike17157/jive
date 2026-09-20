@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "id": "sembench_movie",
+  "title": "Movie review analytics",
+  "description": "Classify 120 reviews, count sentiment, join review pairs, and rank four movies.",
+  "estimatedCalls": 132,
+  "verify": ["python3", "{definition}/_shared/verify.py"]
+}

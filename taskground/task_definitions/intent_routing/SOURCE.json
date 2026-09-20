@@ -1,0 +1,29 @@
+{
+  "adaptation": true,
+  "seed": "taskground-v1-2026",
+  "benchmark": "BANKING77",
+  "upstream": "https://github.com/PolyAI-LDN/task-specific-datasets",
+  "revision": "57ec275d8078af65b7731c2a98be812d844a6d6b",
+  "sources": [
+    {
+      "url": "https://raw.githubusercontent.com/PolyAI-LDN/task-specific-datasets/57ec275d8078af65b7731c2a98be812d844a6d6b/banking_data/test.csv",
+      "sha256": "d12d6e3bc4c3103966ae786dc435913c0c563dfa328f5a3646d0e62cfeeb474d"
+    },
+    {
+      "url": "https://raw.githubusercontent.com/PolyAI-LDN/task-specific-datasets/57ec275d8078af65b7731c2a98be812d844a6d6b/banking_data/train.csv",
+      "sha256": "b06e26ac675513959a63135f11b94ea7786ed02da65db93a5650d8838cbc664b"
+    },
+    {
+      "url": "https://raw.githubusercontent.com/PolyAI-LDN/task-specific-datasets/57ec275d8078af65b7731c2a98be812d844a6d6b/banking_data/categories.json",
+      "sha256": "53261da888122daf2d120d925458631d9619e15d82e56052e7a42e535ce32b63"
+    }
+  ],
+  "size": {
+    "test_requests": 154,
+    "labeled_examples": 77,
+    "intents": 77
+  },
+  "selection": "Two deterministic test examples and one training example for every intent. Original train/test boundary preserved; examples shuffled by stable content hash.",
+  "license": "CC-BY-4.0",
+  "attribution": "Iñigo Casanueva et al., Efficient Intent Detection with Dual Sentence Encoders (2020), PolyAI. Small development adaptation; not an official full-test score."
+}

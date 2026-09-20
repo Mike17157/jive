@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "id": "conversation_eval",
+  "title": "Conversation grading calibration",
+  "description": "Calibrate response judgments over three small dev rounds, then grade held-out conversations.",
+  "estimatedCalls": 150,
+  "verify": ["python3", "{definition}/_shared/verify.py"]
+}

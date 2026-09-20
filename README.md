@@ -66,6 +66,12 @@ jive
 The working directory is that folder: `AGENTS.md`, `.jev/extractors`,
 `.jev/sessions` and the model cache are read and written there, so each task
 folder keeps its own sessions and records. `--cwd DIR` still overrides it.
+
+For repeatable task runs with fresh workspaces, use `bun run taskground run
+intent_routing --agent jive` (or `--agent codex` / `--agent claude`). The
+[taskground guide](taskground/README.md) covers the four bundled tasks, headless
+parent-agent runs, credentials, logs and verification.
+
 At session creation, Jive snapshots that folder's `AGENTS.md` into the leading
 system prompt and persists the snapshot with the session. Changes to the file
 take effect in a new session (`/new`), without changing the prompt prefix of an

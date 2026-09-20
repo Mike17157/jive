@@ -1,0 +1,485 @@
+{
+  "task": "product_matching",
+  "labels": [
+    {
+      "id": "test-000",
+      "match": false
+    },
+    {
+      "id": "test-001",
+      "match": false
+    },
+    {
+      "id": "test-002",
+      "match": false
+    },
+    {
+      "id": "test-003",
+      "match": false
+    },
+    {
+      "id": "test-004",
+      "match": true
+    },
+    {
+      "id": "test-005",
+      "match": false
+    },
+    {
+      "id": "test-006",
+      "match": false
+    },
+    {
+      "id": "test-007",
+      "match": false
+    },
+    {
+      "id": "test-008",
+      "match": true
+    },
+    {
+      "id": "test-009",
+      "match": true
+    },
+    {
+      "id": "test-010",
+      "match": false
+    },
+    {
+      "id": "test-011",
+      "match": false
+    },
+    {
+      "id": "test-012",
+      "match": false
+    },
+    {
+      "id": "test-013",
+      "match": false
+    },
+    {
+      "id": "test-014",
+      "match": true
+    },
+    {
+      "id": "test-015",
+      "match": true
+    },
+    {
+      "id": "test-016",
+      "match": true
+    },
+    {
+      "id": "test-017",
+      "match": false
+    },
+    {
+      "id": "test-018",
+      "match": false
+    },
+    {
+      "id": "test-019",
+      "match": true
+    },
+    {
+      "id": "test-020",
+      "match": false
+    },
+    {
+      "id": "test-021",
+      "match": true
+    },
+    {
+      "id": "test-022",
+      "match": false
+    },
+    {
+      "id": "test-023",
+      "match": false
+    },
+    {
+      "id": "test-024",
+      "match": true
+    },
+    {
+      "id": "test-025",
+      "match": false
+    },
+    {
+      "id": "test-026",
+      "match": false
+    },
+    {
+      "id": "test-027",
+      "match": false
+    },
+    {
+      "id": "test-028",
+      "match": true
+    },
+    {
+      "id": "test-029",
+      "match": false
+    },
+    {
+      "id": "test-030",
+      "match": false
+    },
+    {
+      "id": "test-031",
+      "match": true
+    },
+    {
+      "id": "test-032",
+      "match": false
+    },
+    {
+      "id": "test-033",
+      "match": true
+    },
+    {
+      "id": "test-034",
+      "match": false
+    },
+    {
+      "id": "test-035",
+      "match": false
+    },
+    {
+      "id": "test-036",
+      "match": false
+    },
+    {
+      "id": "test-037",
+      "match": false
+    },
+    {
+      "id": "test-038",
+      "match": false
+    },
+    {
+      "id": "test-039",
+      "match": false
+    },
+    {
+      "id": "test-040",
+      "match": false
+    },
+    {
+      "id": "test-041",
+      "match": false
+    },
+    {
+      "id": "test-042",
+      "match": false
+    },
+    {
+      "id": "test-043",
+      "match": false
+    },
+    {
+      "id": "test-044",
+      "match": false
+    },
+    {
+      "id": "test-045",
+      "match": false
+    },
+    {
+      "id": "test-046",
+      "match": false
+    },
+    {
+      "id": "test-047",
+      "match": false
+    },
+    {
+      "id": "test-048",
+      "match": false
+    },
+    {
+      "id": "test-049",
+      "match": false
+    },
+    {
+      "id": "test-050",
+      "match": false
+    },
+    {
+      "id": "test-051",
+      "match": false
+    },
+    {
+      "id": "test-052",
+      "match": false
+    },
+    {
+      "id": "test-053",
+      "match": false
+    },
+    {
+      "id": "test-054",
+      "match": false
+    },
+    {
+      "id": "test-055",
+      "match": false
+    },
+    {
+      "id": "test-056",
+      "match": true
+    },
+    {
+      "id": "test-057",
+      "match": false
+    },
+    {
+      "id": "test-058",
+      "match": false
+    },
+    {
+      "id": "test-059",
+      "match": false
+    },
+    {
+      "id": "test-060",
+      "match": false
+    },
+    {
+      "id": "test-061",
+      "match": false
+    },
+    {
+      "id": "test-062",
+      "match": false
+    },
+    {
+      "id": "test-063",
+      "match": false
+    },
+    {
+      "id": "test-064",
+      "match": false
+    },
+    {
+      "id": "test-065",
+      "match": false
+    },
+    {
+      "id": "test-066",
+      "match": false
+    },
+    {
+      "id": "test-067",
+      "match": false
+    },
+    {
+      "id": "test-068",
+      "match": false
+    },
+    {
+      "id": "test-069",
+      "match": false
+    },
+    {
+      "id": "test-070",
+      "match": false
+    },
+    {
+      "id": "test-071",
+      "match": false
+    },
+    {
+      "id": "test-072",
+      "match": false
+    },
+    {
+      "id": "test-073",
+      "match": true
+    },
+    {
+      "id": "test-074",
+      "match": true
+    },
+    {
+      "id": "test-075",
+      "match": true
+    },
+    {
+      "id": "test-076",
+      "match": true
+    },
+    {
+      "id": "test-077",
+      "match": true
+    },
+    {
+      "id": "test-078",
+      "match": true
+    },
+    {
+      "id": "test-079",
+      "match": true
+    },
+    {
+      "id": "test-080",
+      "match": true
+    },
+    {
+      "id": "test-081",
+      "match": true
+    },
+    {
+      "id": "test-082",
+      "match": true
+    },
+    {
+      "id": "test-083",
+      "match": true
+    },
+    {
+      "id": "test-084",
+      "match": true
+    },
+    {
+      "id": "test-085",
+      "match": true
+    },
+    {
+      "id": "test-086",
+      "match": true
+    },
+    {
+      "id": "test-087",
+      "match": true
+    },
+    {
+      "id": "test-088",
+      "match": true
+    },
+    {
+      "id": "test-089",
+      "match": true
+    },
+    {
+      "id": "test-090",
+      "match": true
+    },
+    {
+      "id": "test-091",
+      "match": true
+    },
+    {
+      "id": "test-092",
+      "match": true
+    },
+    {
+      "id": "test-093",
+      "match": true
+    },
+    {
+      "id": "test-094",
+      "match": true
+    },
+    {
+      "id": "test-095",
+      "match": true
+    },
+    {
+      "id": "test-096",
+      "match": true
+    },
+    {
+      "id": "test-097",
+      "match": true
+    },
+    {
+      "id": "test-098",
+      "match": true
+    },
+    {
+      "id": "test-099",
+      "match": true
+    },
+    {
+      "id": "test-100",
+      "match": true
+    },
+    {
+      "id": "test-101",
+      "match": true
+    },
+    {
+      "id": "test-102",
+      "match": true
+    },
+    {
+      "id": "test-103",
+      "match": true
+    },
+    {
+      "id": "test-104",
+      "match": true
+    },
+    {
+      "id": "test-105",
+      "match": true
+    },
+    {
+      "id": "test-106",
+      "match": true
+    },
+    {
+      "id": "test-107",
+      "match": true
+    },
+    {
+      "id": "test-108",
+      "match": true
+    },
+    {
+      "id": "test-109",
+      "match": true
+    },
+    {
+      "id": "test-110",
+      "match": true
+    },
+    {
+      "id": "test-111",
+      "match": true
+    },
+    {
+      "id": "test-112",
+      "match": true
+    },
+    {
+      "id": "test-113",
+      "match": true
+    },
+    {
+      "id": "test-114",
+      "match": true
+    },
+    {
+      "id": "test-115",
+      "match": true
+    },
+    {
+      "id": "test-116",
+      "match": true
+    },
+    {
+      "id": "test-117",
+      "match": true
+    },
+    {
+      "id": "test-118",
+      "match": true
+    },
+    {
+      "id": "test-119",
+      "match": true
+    }
+  ]
+}

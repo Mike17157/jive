@@ -1,0 +1,641 @@
+{
+  "task": "conversation_eval",
+  "dev_labels": [
+    {
+      "id": "dev-p001-a",
+      "helpfulness": 3,
+      "correctness": 3,
+      "coherence": 3,
+      "complexity": 2,
+      "verbosity": 2
+    },
+    {
+      "id": "dev-p001-b",
+      "helpfulness": 3,
+      "correctness": 3,
+      "coherence": 4,
+      "complexity": 2,
+      "verbosity": 3
+    },
+    {
+      "id": "dev-p007-a",
+      "helpfulness": 4,
+      "correctness": 4,
+      "coherence": 4,
+      "complexity": 1,
+      "verbosity": 2
+    },
+    {
+      "id": "dev-p007-b",
+      "helpfulness": 1,
+      "correctness": 1,
+      "coherence": 2,
+      "complexity": 1,
+      "verbosity": 2
+    },
+    {
+      "id": "dev-p013-a",
+      "helpfulness": 0,
+      "correctness": 0,
+      "coherence": 2,
+      "complexity": 0,
+      "verbosity": 0
+    },
+    {
+      "id": "dev-p013-b",
+      "helpfulness": 4,
+      "correctness": 4,
+      "coherence": 4,
+      "complexity": 2,
+      "verbosity": 2
+    },
+    {
+      "id": "dev-p015-a",
+      "helpfulness": 3,
+      "correctness": 3,
+      "coherence": 4,
+      "complexity": 2,
+      "verbosity": 2
+    },
+    {
+      "id": "dev-p015-b",
+      "helpfulness": 4,
+      "correctness": 4,
+      "coherence": 4,
+      "complexity": 2,
+      "verbosity": 2
+    },
+    {
+      "id": "dev-p019-a",
+      "helpfulness": 3,
+      "correctness": 3,
+      "coherence": 4,
+      "complexity": 2,
+      "verbosity": 2
+    },
+    {
+      "id": "dev-p019-b",
+      "helpfulness": 4,
+      "correctness": 4,
+      "coherence": 4,
+      "complexity": 2,
+      "verbosity": 2
+    },
+    {
+      "id": "dev-p020-a",
+      "helpfulness": 4,
+      "correctness": 4,
+      "coherence": 4,
+      "complexity": 2,
+      "verbosity": 3
+    },
+    {
+      "id": "dev-p020-b",
+      "helpfulness": 3,
+      "correctness": 2,
+      "coherence": 3,
+      "complexity": 2,
+      "verbosity": 1
+    },
+    {
+      "id": "dev-p029-a",
+      "helpfulness": 2,
+      "correctness": 2,
+      "coherence": 4,
+      "complexity": 2,
+      "verbosity": 2
+    },
+    {
+      "id": "dev-p029-b",
+      "helpfulness": 1,
+      "correctness": 1,
+      "coherence": 3,
+      "complexity": 2,
+      "verbosity": 3
+    },
+    {
+      "id": "dev-p031-a",
+      "helpfulness": 3,
+      "correctness": 3,
+      "coherence": 3,
+      "complexity": 2,
+      "verbosity": 2
+    },
+    {
+      "id": "dev-p031-b",
+      "helpfulness": 4,
+      "correctness": 4,
+      "coherence": 4,
+      "complexity": 2,
+      "verbosity": 2
+    },
+    {
+      "id": "dev-p038-a",
+      "helpfulness": 3,
+      "correctness": 3,
+      "coherence": 4,
+      "complexity": 2,
+      "verbosity": 2
+    },
+    {
+      "id": "dev-p038-b",
+      "helpfulness": 1,
+      "correctness": 1,
+      "coherence": 4,
+      "complexity": 2,
+      "verbosity": 1
+    },
+    {
+      "id": "dev-p042-a",
+      "helpfulness": 3,
+      "correctness": 3,
+      "coherence": 4,
+      "complexity": 3,
+      "verbosity": 2
+    },
+    {
+      "id": "dev-p042-b",
+      "helpfulness": 4,
+      "correctness": 4,
+      "coherence": 4,
+      "complexity": 3,
+      "verbosity": 3
+    }
+  ],
+  "dev_pairs": [
+    {
+      "pair_id": "dev-p001",
+      "preferred": "tie",
+      "margin": 0
+    },
+    {
+      "pair_id": "dev-p007",
+      "preferred": "a",
+      "margin": 3
+    },
+    {
+      "pair_id": "dev-p013",
+      "preferred": "b",
+      "margin": 4
+    },
+    {
+      "pair_id": "dev-p015",
+      "preferred": "b",
+      "margin": 1
+    },
+    {
+      "pair_id": "dev-p019",
+      "preferred": "b",
+      "margin": 1
+    },
+    {
+      "pair_id": "dev-p020",
+      "preferred": "a",
+      "margin": 1
+    },
+    {
+      "pair_id": "dev-p029",
+      "preferred": "a",
+      "margin": 1
+    },
+    {
+      "pair_id": "dev-p031",
+      "preferred": "b",
+      "margin": 1
+    },
+    {
+      "pair_id": "dev-p038",
+      "preferred": "a",
+      "margin": 2
+    },
+    {
+      "pair_id": "dev-p042",
+      "preferred": "b",
+      "margin": 1
+    }
+  ],
+  "test_labels": [
+    {
+      "id": "test-p003-a",
+      "helpfulness": 3,
+      "correctness": 3,
+      "coherence": 4,
+      "complexity": 2,
+      "verbosity": 2
+    },
+    {
+      "id": "test-p003-b",
+      "helpfulness": 3,
+      "correctness": 4,
+      "coherence": 4,
+      "complexity": 2,
+      "verbosity": 2
+    },
+    {
+      "id": "test-p004-a",
+      "helpfulness": 3,
+      "correctness": 3,
+      "coherence": 4,
+      "complexity": 2,
+      "verbosity": 2
+    },
+    {
+      "id": "test-p004-b",
+      "helpfulness": 3,
+      "correctness": 3,
+      "coherence": 4,
+      "complexity": 2,
+      "verbosity": 1
+    },
+    {
+      "id": "test-p007-a",
+      "helpfulness": 2,
+      "correctness": 2,
+      "coherence": 3,
+      "complexity": 2,
+      "verbosity": 2
+    },
+    {
+      "id": "test-p007-b",
+      "helpfulness": 4,
+      "correctness": 4,
+      "coherence": 4,
+      "complexity": 2,
+      "verbosity": 2
+    },
+    {
+      "id": "test-p013-a",
+      "helpfulness": 4,
+      "correctness": 4,
+      "coherence": 4,
+      "complexity": 1,
+      "verbosity": 1
+    },
+    {
+      "id": "test-p013-b",
+      "helpfulness": 2,
+      "correctness": 2,
+      "coherence": 4,
+      "complexity": 1,
+      "verbosity": 1
+    },
+    {
+      "id": "test-p019-a",
+      "helpfulness": 0,
+      "correctness": 0,
+      "coherence": 4,
+      "complexity": 2,
+      "verbosity": 2
+    },
+    {
+      "id": "test-p019-b",
+      "helpfulness": 4,
+      "correctness": 4,
+      "coherence": 4,
+      "complexity": 2,
+      "verbosity": 2
+    },
+    {
+      "id": "test-p020-a",
+      "helpfulness": 4,
+      "correctness": 4,
+      "coherence": 4,
+      "complexity": 2,
+      "verbosity": 3
+    },
+    {
+      "id": "test-p020-b",
+      "helpfulness": 3,
+      "correctness": 3,
+      "coherence": 4,
+      "complexity": 2,
+      "verbosity": 3
+    },
+    {
+      "id": "test-p041-a",
+      "helpfulness": 3,
+      "correctness": 3,
+      "coherence": 4,
+      "complexity": 2,
+      "verbosity": 1
+    },
+    {
+      "id": "test-p041-b",
+      "helpfulness": 3,
+      "correctness": 4,
+      "coherence": 4,
+      "complexity": 2,
+      "verbosity": 3
+    },
+    {
+      "id": "test-p046-a",
+      "helpfulness": 0,
+      "correctness": 0,
+      "coherence": 2,
+      "complexity": 2,
+      "verbosity": 2
+    },
+    {
+      "id": "test-p046-b",
+      "helpfulness": 1,
+      "correctness": 0,
+      "coherence": 2,
+      "complexity": 2,
+      "verbosity": 2
+    },
+    {
+      "id": "test-p052-a",
+      "helpfulness": 2,
+      "correctness": 3,
+      "coherence": 4,
+      "complexity": 2,
+      "verbosity": 2
+    },
+    {
+      "id": "test-p052-b",
+      "helpfulness": 2,
+      "correctness": 2,
+      "coherence": 4,
+      "complexity": 2,
+      "verbosity": 4
+    },
+    {
+      "id": "test-p055-a",
+      "helpfulness": 4,
+      "correctness": 4,
+      "coherence": 4,
+      "complexity": 1,
+      "verbosity": 0
+    },
+    {
+      "id": "test-p055-b",
+      "helpfulness": 2,
+      "correctness": 2,
+      "coherence": 4,
+      "complexity": 1,
+      "verbosity": 2
+    },
+    {
+      "id": "test-p058-a",
+      "helpfulness": 4,
+      "correctness": 4,
+      "coherence": 4,
+      "complexity": 2,
+      "verbosity": 2
+    },
+    {
+      "id": "test-p058-b",
+      "helpfulness": 4,
+      "correctness": 4,
+      "coherence": 4,
+      "complexity": 2,
+      "verbosity": 1
+    },
+    {
+      "id": "test-p059-a",
+      "helpfulness": 4,
+      "correctness": 4,
+      "coherence": 4,
+      "complexity": 2,
+      "verbosity": 2
+    },
+    {
+      "id": "test-p059-b",
+      "helpfulness": 1,
+      "correctness": 1,
+      "coherence": 4,
+      "complexity": 2,
+      "verbosity": 4
+    },
+    {
+      "id": "test-p061-a",
+      "helpfulness": 4,
+      "correctness": 4,
+      "coherence": 4,
+      "complexity": 3,
+      "verbosity": 2
+    },
+    {
+      "id": "test-p061-b",
+      "helpfulness": 2,
+      "correctness": 3,
+      "coherence": 3,
+      "complexity": 3,
+      "verbosity": 3
+    },
+    {
+      "id": "test-p067-a",
+      "helpfulness": 2,
+      "correctness": 2,
+      "coherence": 4,
+      "complexity": 1,
+      "verbosity": 2
+    },
+    {
+      "id": "test-p067-b",
+      "helpfulness": 3,
+      "correctness": 3,
+      "coherence": 4,
+      "complexity": 1,
+      "verbosity": 2
+    },
+    {
+      "id": "test-p080-a",
+      "helpfulness": 3,
+      "correctness": 3,
+      "coherence": 4,
+      "complexity": 3,
+      "verbosity": 2
+    },
+    {
+      "id": "test-p080-b",
+      "helpfulness": 4,
+      "correctness": 4,
+      "coherence": 4,
+      "complexity": 3,
+      "verbosity": 2
+    },
+    {
+      "id": "test-p086-a",
+      "helpfulness": 4,
+      "correctness": 3,
+      "coherence": 4,
+      "complexity": 2,
+      "verbosity": 2
+    },
+    {
+      "id": "test-p086-b",
+      "helpfulness": 4,
+      "correctness": 4,
+      "coherence": 4,
+      "complexity": 3,
+      "verbosity": 2
+    },
+    {
+      "id": "test-p089-a",
+      "helpfulness": 0,
+      "correctness": 1,
+      "coherence": 2,
+      "complexity": 1,
+      "verbosity": 2
+    },
+    {
+      "id": "test-p089-b",
+      "helpfulness": 0,
+      "correctness": 0,
+      "coherence": 0,
+      "complexity": 1,
+      "verbosity": 2
+    },
+    {
+      "id": "test-p092-a",
+      "helpfulness": 3,
+      "correctness": 3,
+      "coherence": 4,
+      "complexity": 1,
+      "verbosity": 2
+    },
+    {
+      "id": "test-p092-b",
+      "helpfulness": 4,
+      "correctness": 4,
+      "coherence": 4,
+      "complexity": 1,
+      "verbosity": 2
+    },
+    {
+      "id": "test-p093-a",
+      "helpfulness": 4,
+      "correctness": 4,
+      "coherence": 4,
+      "complexity": 2,
+      "verbosity": 2
+    },
+    {
+      "id": "test-p093-b",
+      "helpfulness": 4,
+      "correctness": 4,
+      "coherence": 4,
+      "complexity": 2,
+      "verbosity": 2
+    },
+    {
+      "id": "test-p094-a",
+      "helpfulness": 0,
+      "correctness": 0,
+      "coherence": 0,
+      "complexity": 2,
+      "verbosity": 4
+    },
+    {
+      "id": "test-p094-b",
+      "helpfulness": 4,
+      "correctness": 4,
+      "coherence": 4,
+      "complexity": 2,
+      "verbosity": 2
+    }
+  ],
+  "test_pairs": [
+    {
+      "pair_id": "test-p003",
+      "preferred": "tie",
+      "margin": 0
+    },
+    {
+      "pair_id": "test-p004",
+      "preferred": "tie",
+      "margin": 0
+    },
+    {
+      "pair_id": "test-p007",
+      "preferred": "b",
+      "margin": 2
+    },
+    {
+      "pair_id": "test-p013",
+      "preferred": "a",
+      "margin": 2
+    },
+    {
+      "pair_id": "test-p019",
+      "preferred": "b",
+      "margin": 4
+    },
+    {
+      "pair_id": "test-p020",
+      "preferred": "a",
+      "margin": 1
+    },
+    {
+      "pair_id": "test-p041",
+      "preferred": "tie",
+      "margin": 0
+    },
+    {
+      "pair_id": "test-p046",
+      "preferred": "b",
+      "margin": 1
+    },
+    {
+      "pair_id": "test-p052",
+      "preferred": "tie",
+      "margin": 0
+    },
+    {
+      "pair_id": "test-p055",
+      "preferred": "a",
+      "margin": 2
+    },
+    {
+      "pair_id": "test-p058",
+      "preferred": "tie",
+      "margin": 0
+    },
+    {
+      "pair_id": "test-p059",
+      "preferred": "a",
+      "margin": 3
+    },
+    {
+      "pair_id": "test-p061",
+      "preferred": "a",
+      "margin": 2
+    },
+    {
+      "pair_id": "test-p067",
+      "preferred": "b",
+      "margin": 1
+    },
+    {
+      "pair_id": "test-p080",
+      "preferred": "b",
+      "margin": 1
+    },
+    {
+      "pair_id": "test-p086",
+      "preferred": "tie",
+      "margin": 0
+    },
+    {
+      "pair_id": "test-p089",
+      "preferred": "tie",
+      "margin": 0
+    },
+    {
+      "pair_id": "test-p092",
+      "preferred": "b",
+      "margin": 1
+    },
+    {
+      "pair_id": "test-p093",
+      "preferred": "tie",
+      "margin": 0
+    },
+    {
+      "pair_id": "test-p094",
+      "preferred": "b",
+      "margin": 4
+    }
+  ]
+}

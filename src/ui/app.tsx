@@ -42,6 +42,7 @@ function useStateRef<T>(initial: T | (() => T)): [T, (next: T | ((prev: T) => T)
 export interface AppProps {
   controller: AgentController;
   onQuit: () => void;
+  initialInput?: string;
 }
 
 export function App(props: AppProps) {
@@ -255,6 +256,16 @@ export function App(props: AppProps) {
     },
     [onComposerText],
   );
+
+  // Seed the native editor once. Notifications, session switches and later prop
+  // updates must not overwrite an edited draft or reinsert a submitted prompt.
+  const initialInput = useRef(props.initialInput ?? "");
+  useEffect(() => {
+    if (!initialInput.current) return;
+    const text = initialInput.current;
+    initialInput.current = "";
+    setComposer(text);
+  }, [setComposer]);
 
   /** Run the popup's highlighted command, or leave it in the composer for editing. */
   const selectPopupCommand = useCallback(
@@ -577,7 +588,7 @@ export function App(props: AppProps) {
 }
 
 /** Mount the app on an existing renderer; resolves when the user quits or the renderer is destroyed. */
-export function runWithRenderer(controller: AgentController, renderer: CliRenderer): Promise<void> {
+export function runWithRenderer(controller: AgentController, renderer: CliRenderer, options: { initialInput?: string } = {}): Promise<void> {
   return new Promise<void>((resolve) => {
     const root = createRoot(renderer);
     let finished = false;
@@ -598,17 +609,17 @@ export function runWithRenderer(controller: AgentController, renderer: CliRender
       resolve();
     };
     renderer.once("destroy", finish);
-    root.render(<App controller={controller} onQuit={finish} />);
+    root.render(<App controller={controller} onQuit={finish} initialInput={options.initialInput} />);
   });
 }
 
 /** Launch the terminal UI for a controller; resolves after graceful shutdown. */
-export async function launchUI(controller: AgentController): Promise<void> {
+export async function launchUI(controller: AgentController, options: { initialInput?: string } = {}): Promise<void> {
   const renderer = await createCliRenderer({
     exitOnCtrlC: false,
     useMouse: true,
     backgroundColor: palette.bg,
     targetFps: 30,
   });
-  await runWithRenderer(controller, renderer);
+  await runWithRenderer(controller, renderer, options);
 }

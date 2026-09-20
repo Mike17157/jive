@@ -162,8 +162,8 @@ function makeController(initial: Partial<AgentSnapshot> = {}): MockController {
 
 const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 
-async function mount(controller: MockController, width = 90, height = 30, onQuit: () => void = () => {}) {
-  const setup = await testRender(<App controller={controller} onQuit={onQuit} />, { width, height, exitOnCtrlC: false });
+async function mount(controller: MockController, width = 90, height = 30, onQuit: () => void = () => {}, initialInput?: string) {
+  const setup = await testRender(<App controller={controller} onQuit={onQuit} initialInput={initialInput} />, { width, height, exitOnCtrlC: false });
   // Timers in the app update state outside act(); silence the act() warnings.
   (globalThis as Record<string, unknown>).IS_REACT_ACT_ENVIRONMENT = false;
   // React commits key-driven updates through its own macrotask scheduler, so
@@ -1060,6 +1060,32 @@ describe("App", () => {
       expect(quit).toBe(0);
       await press("c", { ctrl: true });
       expect(quit).toBe(1);
+    } finally {
+      setup.renderer.destroy();
+    }
+  });
+
+  test("initial task prompt is an editable draft and is submitted only on Enter", async () => {
+    const c = makeController();
+    const draft = "Inspect this repository.\nPreserve existing changes.";
+    const { setup, frame, type, enter } = await mount(c, 90, 30, () => {}, draft);
+    try {
+      const initialFrame = await frame();
+      expect(initialFrame).toContain("❯ Inspect this repository.");
+      expect(initialFrame).toContain("Preserve existing changes.");
+      expect(c.calls).toEqual([]);
+      expect(c.getSnapshot().messages).toEqual([]);
+      await type(" Also explain the result.");
+      c.update({ contextTokens: 2345 });
+      await frame();
+      expect(c.calls).toEqual([]);
+      await enter();
+      expect(c.calls).toEqual([`submit:${draft} Also explain the result.`]);
+      expect(await frame()).toContain("❯ Ask, or type / for commands");
+      c.update({ busy: false });
+      expect(await frame()).not.toContain("Preserve existing changes.");
+      await enter();
+      expect(c.calls).toHaveLength(1);
     } finally {
       setup.renderer.destroy();
     }

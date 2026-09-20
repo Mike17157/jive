@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "id": "intent_routing",
+  "title": "Banking request routing",
+  "description": "Route 154 requests across all 77 BANKING77 intent categories.",
+  "estimatedCalls": 154,
+  "verify": ["python3", "{definition}/_shared/verify.py"]
+}

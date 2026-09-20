@@ -1,0 +1,21 @@
+{
+  "adaptation": true,
+  "seed": "taskground-v1-2026",
+  "benchmark": "SemBench movie scenario",
+  "upstream": "https://github.com/SemBench/SemBench",
+  "revision": "c814e3807e72d4cf876b852b17e77f3cc94575c2",
+  "sources": [
+    {
+      "url": "https://raw.githubusercontent.com/SemBench/SemBench/c814e3807e72d4cf876b852b17e77f3cc94575c2/files/movie/data/sf_2000/Reviews.csv",
+      "sha256": "df231cfb189c9e169aa6afe415e4fa24533b04499179bbd61416c4c6af28ca21"
+    }
+  ],
+  "size": {
+    "test_reviews": 120,
+    "dev_reviews": 12,
+    "movies": 4
+  },
+  "selection": "Deduplicate review IDs, then choose four most frequent movies with at least 30 reviews; 30 deterministic hash-sampled reviews per movie; 6 positive and 6 negative disjoint dev examples.",
+  "changes": "Small adaptation of semantic count/join/rank workloads. Rank by positive-review fraction rather than Q10's 1–5 ratings. Strip originalScore, reviewState, scoreSentiment, URLs and all other label-bearing metadata from test inputs.",
+  "attribution": "SemBench authors; Rotten Tomatoes review corpus distributed with SemBench. Upstream repository code is MIT/Apache-2.0; source review content retains its original rights. These are development fixtures, not official benchmark results."
+}

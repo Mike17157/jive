@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "id": "product_matching",
+  "title": "Product offer matching",
+  "description": "Match 120 WDC product-offer pairs, with 20 labeled development examples.",
+  "estimatedCalls": 140,
+  "verify": ["python3", "{definition}/_shared/verify.py"]
+}

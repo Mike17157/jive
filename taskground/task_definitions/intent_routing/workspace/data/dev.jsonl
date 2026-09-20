@@ -1,0 +1,77 @@
+{"id": "dev-000", "text": "I am looking to transfer some money from my other bank account into this one.", "intent": "transfer_into_account"}
+{"id": "dev-001", "text": "I made an international purchase, but the exchange rate was wrong", "intent": "card_payment_wrong_exchange_rate"}
+{"id": "dev-002", "text": "I'm trying to verify my identity but can't figure out how, what do I do?", "intent": "verify_my_identity"}
+{"id": "dev-003", "text": "Are there any limits to using disposable virtual cards?", "intent": "disposable_card_limits"}
+{"id": "dev-004", "text": "I was overcharged a pound.", "intent": "extra_charge_on_statement"}
+{"id": "dev-005", "text": "My ATM transaction shorted me on cash, and I think the exchange rate was wrong. Did I receive the correct rate?", "intent": "wrong_exchange_rate_for_cash_withdrawal"}
+{"id": "dev-006", "text": "I lost track of my card", "intent": "lost_or_stolen_card"}
+{"id": "dev-007", "text": "I didn't make these transactions. Is someone else using my card?", "intent": "compromised_card"}
+{"id": "dev-008", "text": "If I find a card I lost do I need to dispose of it? Or can I re-active the card and continue to use it?", "intent": "card_linking"}
+{"id": "dev-009", "text": "My top up is incomplete.", "intent": "pending_top_up"}
+{"id": "dev-010", "text": "My credit card has been declined.", "intent": "declined_card_payment"}
+{"id": "dev-011", "text": "Is there a way to view the history on where my funds came from?", "intent": "verify_source_of_funds"}
+{"id": "dev-012", "text": "Can I top up using cash?", "intent": "top_up_by_cash_or_cheque"}
+{"id": "dev-013", "text": "I was charged for getting cash.", "intent": "cash_withdrawal_charge"}
+{"id": "dev-014", "text": "Is there a reason why top-up needs verifying?", "intent": "verify_top_up"}
+{"id": "dev-015", "text": "The other bank confirmed a transfer I made, but this account is not reflecting it yet.", "intent": "balance_not_updated_after_bank_transfer"}
+{"id": "dev-016", "text": "Can I track when my card will be delivered?", "intent": "card_arrival"}
+{"id": "dev-017", "text": "After I used my card I saw I was charged a fee for using it", "intent": "card_payment_fee_charged"}
+{"id": "dev-018", "text": "I forgot my password to get into the app!", "intent": "passcode_forgotten"}
+{"id": "dev-019", "text": "I received a refund, however I cannot see it in my account", "intent": "Refund_not_showing_up"}
+{"id": "dev-020", "text": "Why did I not get the amount of money I requested?", "intent": "wrong_amount_of_cash_received"}
+{"id": "dev-021", "text": "Do you offer cards for those in other countries?", "intent": "country_support"}
+{"id": "dev-022", "text": "I need to cancel my recent transfer quickly since I made a mistake. Please help before it goes through.", "intent": "cancel_transfer"}
+{"id": "dev-023", "text": "what is the time frame for transfers", "intent": "transfer_timing"}
+{"id": "dev-024", "text": "I just received my card and I'd like to activate it.", "intent": "activate_my_card"}
+{"id": "dev-025", "text": "A direct debit payment that I didn't authorise shows up in my app.", "intent": "direct_debit_payment_not_recognised"}
+{"id": "dev-026", "text": "Please tell me why the same transaction is showing up on my account more than once.", "intent": "transaction_charged_twice"}
+{"id": "dev-027", "text": "unhappy with service need to delete account", "intent": "terminate_account"}
+{"id": "dev-028", "text": "Would you please unblock my pin? I don't know why, but it's blocked.", "intent": "pin_blocked"}
+{"id": "dev-029", "text": "Can i receive transfers from my employer this way?", "intent": "receiving_money"}
+{"id": "dev-030", "text": "I'm still waiting for my transaction.", "intent": "transfer_not_received_by_recipient"}
+{"id": "dev-031", "text": "How long do you have to wait to see your virtual card your ordered?", "intent": "getting_virtual_card"}
+{"id": "dev-032", "text": "There are charges on my card from the past few day I am pretty sure I didnt make, can you please freeze it for me? How do I get my money returned since it wasnt me?", "intent": "card_payment_not_recognised"}
+{"id": "dev-033", "text": "Instead of GBP, how do I exchange for AUD?", "intent": "exchange_via_app"}
+{"id": "dev-034", "text": "I need to exchange some foreign currency. What's the charge for doing that?", "intent": "exchange_charge"}
+{"id": "dev-035", "text": "is apple pay a top up service?", "intent": "apple_pay_or_google_pay"}
+{"id": "dev-036", "text": "What types of cards and money do you accept?", "intent": "supported_cards_and_currencies"}
+{"id": "dev-037", "text": "My card is about to expired what will happen?", "intent": "card_about_to_expire"}
+{"id": "dev-038", "text": "Can you tell me whats going on with my card it seems to be not working?", "intent": "card_not_working"}
+{"id": "dev-039", "text": "The app says my transfer failed", "intent": "failed_transfer"}
+{"id": "dev-040", "text": "Where can I use my Mastercard?", "intent": "card_acceptance"}
+{"id": "dev-041", "text": "How do I change my details?", "intent": "edit_personal_details"}
+{"id": "dev-042", "text": "I anticipate getting a Visa card", "intent": "visa_or_mastercard"}
+{"id": "dev-043", "text": "I've been waiting ages and my PIN hasn't gotten here.", "intent": "get_physical_card"}
+{"id": "dev-044", "text": "What should I do if my phone is lost or stolen?", "intent": "lost_or_stolen_phone"}
+{"id": "dev-045", "text": "Why am I unable to withdraw money even though in the past I've done it just fine?", "intent": "declined_cash_withdrawal"}
+{"id": "dev-046", "text": "Hey a seller just contacted me that my money didn't come through. It was definitely deducted from my account, but now it appears it's back with me! Sort this out asap please.", "intent": "reverted_card_payment?"}
+{"id": "dev-047", "text": "Are their certain cash machines where I can change my pin?", "intent": "change_pin"}
+{"id": "dev-048", "text": "Why was my virtual card rejected?", "intent": "virtual_card_not_working"}
+{"id": "dev-049", "text": "Is the cash withdrawal going to show?", "intent": "pending_cash_withdrawal"}
+{"id": "dev-050", "text": "Is there a reason my top-up has been cancelled?", "intent": "top_up_reverted"}
+{"id": "dev-051", "text": "How can I go about getting a refund?", "intent": "request_refund"}
+{"id": "dev-052", "text": "How come I can't seem to verify my id?", "intent": "unable_to_verify_identity"}
+{"id": "dev-053", "text": "why is a transfer to beneficiary not possible?", "intent": "beneficiary_not_allowed"}
+{"id": "dev-054", "text": "My contactless stopped working today for no good reason. It's not working no matter where I try to use it. Can you please help me fix it?", "intent": "contactless_not_working"}
+{"id": "dev-055", "text": "where is my money from this morning", "intent": "balance_not_updated_after_cheque_or_cash_deposit"}
+{"id": "dev-056", "text": "Why am I getting declines when trying to make a purchase online?", "intent": "declined_transfer"}
+{"id": "dev-057", "text": "I don't recognize this withdrawal on my statement", "intent": "cash_withdrawal_not_recognised"}
+{"id": "dev-058", "text": "I made a card payment which is showing me pending.", "intent": "pending_card_payment"}
+{"id": "dev-059", "text": "Where did my top-up go? I can't find it in my wallet", "intent": "topping_up_by_card"}
+{"id": "dev-060", "text": "Tell me where I can find the auto top up feature and a little bit about it please.", "intent": "automatic_top_up"}
+{"id": "dev-061", "text": "How much will it be in order to pay with a bank transfer using SEPA?", "intent": "top_up_by_bank_transfer_charge"}
+{"id": "dev-062", "text": "The ATM took my card.", "intent": "card_swallowed"}
+{"id": "dev-063", "text": "A transfer is pending.", "intent": "pending_transfer"}
+{"id": "dev-064", "text": "Can I have it by a certain date?", "intent": "card_delivery_estimate"}
+{"id": "dev-065", "text": "What are the top up charges for all US cards?", "intent": "top_up_by_card_charge"}
+{"id": "dev-066", "text": "Are all fiat currencies supported?", "intent": "fiat_currency_support"}
+{"id": "dev-067", "text": "Why has transferring money resulted in a charge?", "intent": "transfer_fee_charged"}
+{"id": "dev-068", "text": "I tried again to top up my card after doing it a couple days ago when it had worked. Now, it doesn't seem to be working. Can you tell me what the deal is here please?", "intent": "top_up_failed"}
+{"id": "dev-069", "text": "What exchange rates do you use?", "intent": "exchange_rate"}
+{"id": "dev-070", "text": "Can I use my card to withdraw from my account?", "intent": "atm_support"}
+{"id": "dev-071", "text": "Do you have any age limit?", "intent": "age_limit"}
+{"id": "dev-072", "text": "Who can purchase a disposable virtual card?", "intent": "get_disposable_virtual_card"}
+{"id": "dev-073", "text": "Is there a charge for sending out more cards?", "intent": "getting_spare_card"}
+{"id": "dev-074", "text": "Must I verify my identity?", "intent": "why_verify_identity"}
+{"id": "dev-075", "text": "Can I top up any amount?", "intent": "top_up_limits"}
+{"id": "dev-076", "text": "Can I get a physical card for free, or is there a charge?", "intent": "order_physical_card"}

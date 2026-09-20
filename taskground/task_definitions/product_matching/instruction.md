@@ -1,0 +1,1 @@
+Build a rerunnable workflow that determines whether each pair of product offers describes the same exact product. Use the labeled development examples to understand the task, classify all test pairs, and write the predictions and report specified in README.md. Preserve evidence and explain how you handle confusing variants.

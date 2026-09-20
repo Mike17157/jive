@@ -14,7 +14,7 @@ import { listSessions, resolveSessionReference } from "./session/index";
 
 const {values,positionals}=parseArgs({args:process.argv.slice(2),allowPositionals:true,options:{
   help:{type:"boolean",short:"h"},demo:{type:"boolean"},headless:{type:"boolean"},json:{type:"boolean"},
-  run:{type:"string"},model:{type:"string"},resume:{type:"string"},cwd:{type:"string"},prompt:{type:"string"},
+  run:{type:"string"},model:{type:"string"},resume:{type:"string"},cwd:{type:"string"},prompt:{type:"string"},prefill:{type:"string"},
   schema:{type:"boolean"},models:{type:"boolean"},"refresh-models":{type:"boolean"},sessions:{type:"boolean"},search:{type:"string"},
 }});
 const cwd=resolve(values.cwd??process.cwd());
@@ -23,6 +23,7 @@ async function main(){
   if(values.help){console.log(`Jive
 
   jive                              Interactive agent in the current directory
+  jive --prefill "Inspect this repository"  Editable draft; press Enter to start
   jive --demo                       Interactive demo (no API calls)
   jive --headless --prompt "Inspect this repository"
   jive --run examples/parallel.json --json
@@ -34,7 +35,8 @@ async function main(){
   jive --refresh-models             Refresh OpenRouter model capabilities
   jive --schema                     Print execute_graph JSON Schema
 
-Options: --cwd DIR --model ID --json --headless --prompt TEXT
+Options: --cwd DIR --model ID --json --headless --prompt TEXT --prefill TEXT
+--prompt submits immediately. --prefill fills the interactive composer without submitting.
 Interactive commands: /resume [ID], /sessions, /name TEXT, /rename TEXT,
 /model, /effort [LEVEL], /new, /clear, /pin TEXT, /quit.
 The agent works in the current directory: AGENTS.md, .jev/extractors and
@@ -43,6 +45,7 @@ See README.md for keys.
 Credentials: OPENROUTER_API_KEY and JEV_API_TOKEN, from .env in the working
 directory (searched upward) or the jive checkout. Install: bin/install.sh.
 `);return;}
+  if(values.prefill!==undefined && (values.headless || values.run || values.prompt!==undefined || positionals.length))throw new Error("--prefill is interactive-only and cannot be combined with --prompt, positional prompts, --headless, or --run");
   if(values.schema){console.log(JSON.stringify(graphSchema,null,2));return;}
   if(values["refresh-models"]){const catalog=await fetchOpenRouterModelCatalog({signal:AbortSignal.timeout(15000)});await saveModelCatalog(cwd,catalog);console.log(`Saved ${catalog.models.length} tool-capable models.`);return;}
   if(values.models){for(const model of CURATED_MODELS)console.log(`${model.id}\t${model.name}`);return;}
@@ -88,6 +91,6 @@ directory (searched upward) or the jive checkout. Install: bin/install.sh.
   }
   const {launchUI}=await import("./ui/app");
   if(prompt)void controller.submit(prompt);
-  await launchUI(controller);
+  await launchUI(controller,{initialInput:values.prefill});
 }
 main().catch(error=>{console.error(error instanceof Error?error.message:String(error));process.exitCode=1;});

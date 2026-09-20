@@ -1,0 +1,1 @@
+Build a rerunnable workflow that routes every test banking request to one of the supplied intent categories. Use the labeled examples as reference, preserve per-item evidence, and write the predictions and concise report specified in README.md.
