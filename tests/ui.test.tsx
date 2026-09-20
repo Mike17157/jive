@@ -905,11 +905,10 @@ describe("App", () => {
       // and a blank padding row under the top border.
       expect(lines[29]!.trim()).toBe("");
       expect(lines[28]).toMatch(/^ {2}╰─+╯ {2}$/);
-      expect(lines[27]).toContain("Enter sends");
-      expect(lines[26]).toContain("│ ❯ Ask, or type / for commands");
-      expect(lines[25]).toMatch(/^ {2}│ +│ {2}$/);
-      expect(lines[24]).toMatch(/^ {2}╭─+╮ {2}$/);
-      expect(lines[23]).toContain("Claude Sonnet 5");
+      expect(lines[27]).toContain("│ ❯ Ask, or type / for commands");
+      expect(lines[26]).toMatch(/^ {2}│ +│ {2}$/);
+      expect(lines[25]).toMatch(/^ {2}╭─+╮ {2}$/);
+      expect(lines[24]).toContain("Claude Sonnet 5");
       expect(f).not.toContain("graph · bash · jev");
       expect(f).not.toContain("Describe a task");
       expect(f).toMatch(/[\u2801-\u28ff]{3,}/); // Braille-dot flower
@@ -952,7 +951,7 @@ describe("App", () => {
       expect(f).not.toContain("read a.ts");
       expect(f).toMatch(/╯\s+verify/);
       expect(f).not.toContain("folded");
-      expect(f).toContain("working… Ctrl+C interrupts");
+      expect(f).toMatch(/Thinking · \d+\.\d+s/);
       expect(f).toContain("⎘"); // artifact marker
     } finally {
       setup.renderer.destroy();

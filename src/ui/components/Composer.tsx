@@ -18,8 +18,8 @@ const MAX_LINES = 6;
 const PROMPT_WIDTH = 2;
 /** Horizontal margin around the composer card. */
 export const COMPOSER_MARGIN_X = 2;
-/** Rows used by the composer chrome (border, top padding, hint row, bottom margin) beyond the text lines. */
-export const COMPOSER_CHROME_ROWS = 5;
+/** Rows used by the composer chrome (border, top padding, bottom margin) beyond the text lines. */
+export const COMPOSER_CHROME_ROWS = 4;
 
 const glimmerEpoch = Date.now();
 const inputBackground = RGBA.fromHex(palette.input);
@@ -48,7 +48,6 @@ function paintGlimmer(this: BoxRenderable, buffer: OptimizedBuffer): void {
 export function Composer(props: {
   textareaRef: RefObject<TextareaRenderable | null>;
   focused: boolean;
-  busy: boolean;
   width: number;
   onSubmit: () => void;
   onTextChange?: (text: string) => void;
@@ -94,8 +93,6 @@ export function Composer(props: {
   // Explicit width: the row's prompt glyph plus card chrome, subtracted so the
   // wrapped text stops at the border instead of painting over it.
   const textWidth = Math.max(8, props.width - COMPOSER_MARGIN_X * 2 - 4 - PROMPT_WIDTH);
-  const wide = props.width >= 72;
-  const hint = props.busy ? (wide ? "working… Ctrl+C interrupts" : "working…") : wide ? "Enter sends · Shift+Enter or Ctrl+J newline · / commands" : "/ commands";
   return (
     <box
       flexDirection="column"
@@ -134,9 +131,6 @@ export function Composer(props: {
           flexShrink={0}
         />
       </box>
-      <text fg={palette.textFaint} wrapMode="none">
-        {hint}
-      </text>
     </box>
   );
 }

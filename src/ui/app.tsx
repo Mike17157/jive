@@ -545,7 +545,7 @@ export function App(props: AppProps) {
         }}/>:null}
       {snapshot.busy?<ThinkingIndicator snapshot={snapshot}/>:null}
       <StatusBar snapshot={snapshot} width={width} mode={modeLabel} notice={notice} />
-      <Composer textareaRef={textareaRef} focused={mode === "compose"} busy={snapshot.busy} width={width} onSubmit={submit} onTextChange={onComposerText} onLinesChange={setComposerLines} />
+      <Composer textareaRef={textareaRef} focused={mode === "compose"} width={width} onSubmit={submit} onTextChange={onComposerText} onLinesChange={setComposerLines} />
       {mode === "model" ? (
         <ModelPicker
           models={snapshot.models}
