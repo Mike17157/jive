@@ -34,6 +34,7 @@ export type SessionEventType =
   | "model.selected"
   | "effort.selected"
   | "project.instructions"
+  | "project.skills"
   | "plugin.catalog"
   | "context.compacted"
   | "graph.started"

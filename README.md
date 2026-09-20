@@ -63,13 +63,16 @@ cd taskground/wikipedia_crawl
 jive
 ```
 
-The working directory is that folder: `AGENTS.md`, `.jev/extractors`,
+The working directory is that folder: `AGENTS.md`, `.jive/skills`, `.jev/extractors`,
 `.jev/sessions` and the model cache are read and written there, so each task
 folder keeps its own sessions and records. `--cwd DIR` still overrides it.
 At session creation, Jive snapshots that folder's `AGENTS.md` into the leading
 system prompt and persists the snapshot with the session. Changes to the file
 take effect in a new session (`/new`), without changing the prompt prefix of an
 existing session.
+Project skill names, descriptions, and instruction paths are also snapshotted at
+session creation. Full skill instructions and graphs are read from their current
+files when needed. See [Project skills](#project-skills).
 
 Every planning request also receives runtime facts: the session cwd, runtime and
 contract versions, configured Jev model and credential availability (never credential
@@ -319,6 +322,69 @@ It uses task-only prompts in fresh temporary workspaces and records correctness,
 tool rounds, parallel structure, semantic decisions and capability probes.
 See [the evaluation guide](evals/planner/README.md). Regular `bun test` uses
 fixtures and makes no model calls.
+
+## Project skills
+
+Each project can supply its own skills in `.jive/skills/`, relative to the session
+working directory (or `--cwd`). These are ordinary, version-controlled project
+files. Jive discovers `.jive/skills/*/SKILL.md` at session creation and injects
+their names, descriptions, and absolute instruction paths into the planner's
+system prompt. It does not search parent directories or nested skill folders.
+Symlinked skill directories are supported.
+
+```text
+.jive/skills/
+  check-api-change/
+    SKILL.md
+    graph.json
+    scripts/
+```
+
+`SKILL.md` starts with YAML frontmatter containing a nonempty, single-line `name`
+and a nonempty `description`. Describe when to use the skill so the planner can
+identify relevant tasks. Quoted strings and multiline YAML descriptions are
+supported; additional metadata is ignored.
+
+```markdown
+---
+name: check-api-change
+description: >-
+  Review API changes against this project's compatibility rules.
+  Use after changing routes, request formats, or response schemas.
+---
+
+Read graph.json for the starting procedure. Adapt its checks and execution
+steps to the change being reviewed. Supporting scripts are in scripts/.
+```
+
+Only the catalog metadata enters the initial prompt. The agent reads a relevant
+`SKILL.md` before using it, then loads whatever graphs and supporting files it
+needs. Graph filenames and the rest of the folder layout are up to the author;
+a graph is not required for discovery. Graphs and scripts can be edited,
+combined, or replaced freely, using the existing execution tools:
+
+```json
+{"file":".jive/skills/check-api-change/graph.json","edits":[{"path":"/context/base","new":"main"}]}
+```
+
+This is an `execute_graph_mod` call; the example edit assumes the graph defines
+`context.base`. The source graph stays unchanged, and every node runs again.
+The agent can also write an adapted graph to its task workspace or submit it
+with `execute_graph`. Supporting file references in instructions are relative to
+the skill directory, but graph node paths still resolve from the session cwd.
+Use explicit paths or node `cwd` when a script needs the skill directory.
+
+The catalog is persisted as a `project.skills` session event, including when no
+skills are found. Turns, compaction, restarts, and session switching reuse that
+snapshot. `/new` and `/clear` discover the current catalog. Edits to instruction
+bodies, graphs, and scripts are available immediately when read; a newly added
+skill can be used by path before it is advertised in a new session. Sessions
+created before skill discovery retain an empty catalog until a new session.
+
+Discovery processes skill directories in deterministic name order. Malformed
+metadata or unreadable entries produce visible session notices and are skipped;
+duplicate skill names keep the first discovered entry and report the conflict.
+A missing skills folder simply yields an empty catalog.
 
 ## Extractor plugins
 

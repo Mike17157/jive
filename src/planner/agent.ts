@@ -1,6 +1,7 @@
 import { createHash, randomUUID } from "node:crypto";
 import { GRAPH_GUIDE, PLANNING_GUIDE } from "../core/planner-guide.ts";
 import { loadProjectInstructions, type ProjectInstructionsSnapshot } from "../core/project-instructions.ts";
+import { emptyProjectSkills, loadProjectSkills, projectSkillsPrompt, type ProjectSkillsSnapshot } from "../core/project-skills.ts";
 import { GRAPH_VALIDATION_HINT, GRAPH_VALIDATION_PREFIX, MINIMAL_GRAPH_EXAMPLE, repairGraph } from "../core/schema.ts";
 import type { ExecuteOptions } from "../core/executor.ts";
 import {
@@ -94,6 +95,7 @@ export const PLANNER_SYSTEM_PROMPT = [
 export function plannerSystemPrompt(
   cwd: string,
   instructions?: ProjectInstructionsSnapshot,
+  skills?: ProjectSkillsSnapshot,
 ): string {
   const prompt = [PLANNER_SYSTEM_PROMPT, `Session working directory: ${cwd}`];
   if (instructions?.text !== null && instructions?.text !== undefined) {
@@ -102,6 +104,7 @@ export function plannerSystemPrompt(
       instructions.text,
     ].join("\n"));
   }
+  if (skills) prompt.push(projectSkillsPrompt(skills));
   return prompt.join("\n\n");
 }
 
@@ -241,6 +244,7 @@ export class GraphAgentController implements AgentController {
   #resetPending = false;
   #controlRevision = 0;
   #projectInstructions?: ProjectInstructionsSnapshot;
+  #projectSkills?: ProjectSkillsSnapshot;
   #namingSessions = new Set<string>();
 
   constructor(options: AgentOptions) {
@@ -395,16 +399,20 @@ export class GraphAgentController implements AgentController {
       const replacement = new SessionStore({ cwd: this.options.cwd });
       await replacement.initialize();
       const projectInstructions = await this.#loadSessionProjectInstructions(replacement);
+      const projectSkills = await this.#loadSessionProjectSkills(replacement, true);
       if (model) await replacement.append("model.selected", { model });
       await replacement.append("effort.selected", { effort: effort ?? null });
       await replacement.flush();
 
       this.#store = replacement;
       this.#projectInstructions = projectInstructions;
+      this.#projectSkills = projectSkills;
       this.#sideEffects = Promise.resolve();
       this.#snapshot = {
         ...this.#snapshot,
-        messages: [],
+        messages: replacement.events.filter(event => event.type === "notice").map(event => ({
+          id: String(event.data.chatId ?? event.id), role: "notice", text: String(event.data.text ?? ""),
+        })),
         events: [],
         busy: false,
         sessionId: replacement.sessionId,
@@ -468,6 +476,7 @@ export class GraphAgentController implements AgentController {
       const restored = await this.#hydrateStore(replacement);
       this.#store = replacement;
       this.#projectInstructions = restored.projectInstructions;
+      this.#projectSkills = restored.projectSkills;
       this.#sideEffects = Promise.resolve();
       this.#snapshot = { ...restored.snapshot, busy: false, error: undefined };
       this.#emit();
@@ -645,16 +654,19 @@ export class GraphAgentController implements AgentController {
     const restored = await this.#hydrateStore(this.store, this.options.model);
     this.#snapshot = restored.snapshot;
     this.#projectInstructions = restored.projectInstructions;
+    this.#projectSkills = restored.projectSkills;
     this.#emit();
   }
 
   async #hydrateStore(store: SessionStore, modelOverride?: string): Promise<{
     snapshot: AgentSnapshot;
     projectInstructions: ProjectInstructionsSnapshot;
+    projectSkills: ProjectSkillsSnapshot;
   }> {
     await store.initialize();
     const fresh = store.events.every((event) => event.type === "session.created");
     const projectInstructions = await this.#loadSessionProjectInstructions(store);
+    const projectSkills = await this.#loadSessionProjectSkills(store, fresh);
     const recovered = await store.recoverInterruptedToolCalls();
     const cachedCatalog = await loadCachedModelCatalog(this.options.cwd);
     const storedModel = store.latestModel();
@@ -753,7 +765,7 @@ export class GraphAgentController implements AgentController {
       if (model) await store.append("model.selected", { model });
       await store.append("effort.selected", { effort: effort ?? null });
     }
-    return { snapshot, projectInstructions };
+    return { snapshot, projectInstructions, projectSkills };
   }
 
   async #loadSessionProjectInstructions(store: SessionStore): Promise<ProjectInstructionsSnapshot> {
@@ -761,6 +773,16 @@ export class GraphAgentController implements AgentController {
     if (persisted) return persisted;
     const snapshot = await loadProjectInstructions(store.cwd);
     await store.append("project.instructions", { path: snapshot.path, text: snapshot.text });
+    return snapshot;
+  }
+
+  async #loadSessionProjectSkills(store: SessionStore, fresh: boolean): Promise<ProjectSkillsSnapshot> {
+    const persisted = store.projectSkills();
+    if (persisted) return persisted;
+    // Sessions predating skill discovery had no advertised skills. Preserve that on resume.
+    const snapshot = fresh ? await loadProjectSkills(store.cwd) : emptyProjectSkills(store.cwd);
+    await store.append("project.skills", { ...snapshot });
+    for (const text of snapshot.diagnostics) await store.append("notice", { chatId: randomUUID(), text });
     return snapshot;
   }
 
@@ -800,7 +822,7 @@ export class GraphAgentController implements AgentController {
       const capabilities = structuredClone(this.options.getRuntimeContext?.() ?? runtimeContext(requestStore.cwd, this.options.demo));
       capabilities.execution.eagerGraphs = Boolean(this.options.supportsStreaming);
       const prefix: PlannerMessage[] = [
-        { role: "system", content: plannerSystemPrompt(requestStore.cwd, this.#projectInstructions) },
+        { role: "system", content: plannerSystemPrompt(requestStore.cwd, this.#projectInstructions, this.#projectSkills) },
         { role: "system", content: runtimeContextMessage(capabilities) },
       ];
       // Persist the exact instructions/tools once per change, not another copy every round.
