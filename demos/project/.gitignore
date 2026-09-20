@@ -1,0 +1,4 @@
+.venv/
+*.png
+header-*.mp4
+*-progress.txt
