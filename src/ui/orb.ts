@@ -1,14 +1,11 @@
 /**
- * Procedural lit dahlia for the empty conversation, drawn in Braille dots.
+ * Procedural lit dahlia for the empty conversation, drawn in shaded blocks.
  *
- * Inspired by ASCII time-lapse footage: a tight bud unfolds ring by ring into
- * a full dahlia, holds, dissolves into scattered dots and grows again on a
- * fixed loop. The head is shaded by a directional light (diffuse + specular)
- * over a curved-petal surface, and rendered at 2×4 sub-cell resolution with
- * Braille glyphs: each dot is roughly square, brightness sets both how many
- * dots a cell shows (ordered dithering) and the cell colour, which runs from
- * deep blue through the accent blue into warm white for highlights. No block
- * glyphs, which render as solid tiles in many terminals.
+ * A bud unfolds, sways in changing wind, and occasionally folds and reopens.
+ * Seeded events vary the timing and duration of each rest without erasing the
+ * flower. Petals flutter independently, under a slowly drifting light.
+ * Sampling at 2×4 sub-cell resolution smooths the silhouette; brightness
+ * chooses both the block density and its blue-to-white colour.
  *
  * Pure: given a time and a size it returns rows of colour runs, so it is
  * deterministic, unit-testable and renderer-independent. The historical
@@ -36,18 +33,6 @@ export const flowerColors = { body: palette.accent, light: palette.text } as con
 // ---------------------------------------------------------------------------
 // Timing
 
-/** Seconds per loop: bud, bloom, hold, dissolve, dark, grow back in. */
-export const LOOP_SECONDS = 18;
-
-const PHASES = {
-  bud: [0, 1.6],
-  bloom: [1.6, 10],
-  hold: [10, 14.4],
-  dissolve: [14.4, 16.4],
-  dark: [16.4, 17],
-  growIn: [17, 18],
-} as const;
-
 function clamp01(v: number): number {
   return v < 0 ? 0 : v > 1 ? 1 : v;
 }
@@ -61,43 +46,40 @@ function lerp(a: number, b: number, k: number): number {
   return a + (b - a) * k;
 }
 
-function span(t: number, [a, b]: readonly [number, number]): number {
-  return clamp01((t - a) / (b - a));
-}
-
-function wrapTime(t: number): number {
-  return ((t % LOOP_SECONDS) + LOOP_SECONDS) % LOOP_SECONDS;
-}
-
 export interface Phase {
   /** 0 = closed bud, 1 = fully open. */
   bloom: number;
-  /** 0 = nothing drawn, 1 = every dot drawn. */
+  /** The flower stays present throughout its life. */
   presence: number;
 }
 
-/** Bloom and presence for a time in seconds; periodic in LOOP_SECONDS. */
-export function phaseAt(t: number): Phase {
-  const u = wrapTime(t);
-  const bloom = u >= PHASES.dark[0] ? 0 : smooth(span(u, PHASES.bloom));
-  let presence = 1;
-  if (u >= PHASES.growIn[0]) presence = span(u, PHASES.growIn);
-  else if (u >= PHASES.dark[0]) presence = 0;
-  else if (u >= PHASES.dissolve[0]) presence = 1 - span(u, PHASES.dissolve);
-  return { bloom, presence };
+/** Random-access lifecycle: no accumulated state, frame dependence or reset. */
+export function phaseAt(t: number, seed = 0): Phase {
+  if (t < 12) return { bloom: smooth((t - 1.6) / 8.4), presence: 1 };
+  // Each event fits fully inside its window and meets the next at full bloom.
+  // Every rest reaches a closed bud; only its timing varies. The first closure
+  // finishes within 24 seconds, so it is visible during a short idle pause.
+  const window = Math.floor((t - 12) / 32);
+  const u = t - 12 - window * 32;
+  const start = 2 + 4 * hash(window, 1, seed);
+  const close = 4 + 2 * hash(window, 2, seed);
+  const rest = 2 + 2 * hash(window, 3, seed);
+  const reopen = 5 + 3 * hash(window, 4, seed);
+  const fold = smooth((u - start) / close);
+  const unfold = smooth((u - start - close - rest) / reopen);
+  return { bloom: 1 - fold * (1 - unfold), presence: 1 };
 }
 
-/** Wind lean in [-1,1]; slow, gust-like and periodic in the loop. */
-export function windLean(t: number): number {
-  const w = (2 * Math.PI) / LOOP_SECONDS;
-  return 0.7 * Math.sin(t * w + 0.4) + 0.3 * Math.sin(t * w * 3 + 1.7);
+/** Smooth gusts in [-1,1], layered at independent time scales. */
+export function windLean(t: number, seed = 0): number {
+  return 0.55 * Math.sin(t * 0.39 + seed + 0.4)
+    + 0.27 * noise(t / 6, seed + 7) + 0.18 * noise(t / 2.3, seed + 19);
 }
 
 /** Unit direction towards the light (upper left, in front of the flower), drifting slowly. */
-export function lightDirection(t: number): [number, number, number] {
-  const w = (2 * Math.PI) / LOOP_SECONDS;
-  const x = -0.5 + 0.2 * Math.sin(t * w * 2 + 0.9);
-  const y = -0.65 + 0.1 * Math.sin(t * w + 2.3);
+export function lightDirection(t: number, seed = 0): [number, number, number] {
+  const x = -0.5 + 0.2 * Math.sin(t * 0.113 + 0.9 + seed);
+  const y = -0.65 + 0.1 * noise(t / 17, seed + 31);
   const z = 0.6;
   const n = Math.hypot(x, y, z);
   return [x / n, y / n, z / n];
@@ -110,6 +92,12 @@ export function lightDirection(t: number): [number, number, number] {
 function hash(x: number, y: number, seed = 0): number {
   const s = Math.sin(x * 127.1 + y * 311.7 + seed * 74.7) * 43758.5453;
   return s - Math.floor(s);
+}
+
+/** Continuous value noise; zero slope where intervals meet. */
+function noise(t: number, seed: number): number {
+  const i = Math.floor(t);
+  return 2 * lerp(hash(i, 0, seed), hash(i + 1, 0, seed), smooth(t - i)) - 1;
 }
 
 // ---------------------------------------------------------------------------
@@ -184,7 +172,7 @@ function halfWidth(count: number, u: number): number {
 
 /** Pick a flower size that fits, keeping a 2:1 character aspect for the head. */
 export function orbSize(availableWidth: number, availableHeight: number): { width: number; height: number } {
-  const height = Math.max(5, Math.min(28, availableHeight - 2, Math.floor((availableWidth - 4) / 2)));
+  const height = Math.max(5, Math.min(40, availableHeight - 2, Math.floor((availableWidth - 4) / 2)));
   const width = height * 2 + 1;
   return { width, height };
 }
@@ -211,7 +199,7 @@ function shade(nx: number, ny: number, nz: number, L: readonly [number, number, 
 }
 
 /** Lit brightness of the head at normalised polar coords, or -1 when outside. */
-function headBrightness(r: number, theta: number, ny: number, bloom: number, L: readonly [number, number, number], px: number, py: number): number {
+function headBrightness(r: number, theta: number, ny: number, bloom: number, L: readonly [number, number, number], px: number, py: number, rings: readonly Ring[]): number {
   const rr = r / stretch(theta);
   const grain = 0.06 * (hash(px, py, 5) - 0.5);
   const dx = Math.cos(theta);
@@ -219,7 +207,7 @@ function headBrightness(r: number, theta: number, ny: number, bloom: number, L: 
   // Innermost ring on top: the first ring containing the pixel wins. A petal
   // seen through the gap between two petals of a ring above it is in shadow.
   let shadow = 0;
-  for (const ring of RINGS) {
+  for (const ring of rings) {
     const open = ringOpen(ring, bloom);
     const len = ringLength(ring, open);
     if (rr < PETAL_BASE || rr > len) continue;
@@ -262,82 +250,85 @@ export interface PixelField {
   data: Float32Array;
 }
 
-/** Shade the flower at Braille sub-cell resolution. */
-export function renderPixels(t: number, width: number, height: number): PixelField {
-  const { bloom, presence } = phaseAt(t);
+/** Shade the flower at 2×4 sub-cell resolution. */
+export function renderPixels(t: number, width: number, height: number, seed = 0): PixelField {
+  const { bloom } = phaseAt(t, seed);
   const px = width * 2;
   const py = height * 4;
   const data = new Float32Array(px * py).fill(-1);
-  const L = lightDirection(t);
+  const L = lightDirection(t, seed);
+  const rings = RINGS.map((ring, i) => ({
+    ...ring,
+    offset: ring.offset + bloom * 0.035 * noise(t / (3 + i * 0.7), seed + i + 41),
+    length: ring.length * (1 - bloom * 0.025 * (1 + noise(t / (4 + i), seed + i + 53))),
+  }));
   const cx = (px - 1) / 2;
   const ryUnit = (py - 1) / (DOWN_EXTENT + UP_EXTENT);
   const cy = UP_EXTENT * ryUnit;
   const rxUnit = Math.min(cx, ryUnit * 1.08);
   const scale = lerp(0.82, 1, bloom);
   const squeeze = lerp(0.8, 1, bloom);
-  const lean = windLean(t);
+  const lean = windLean(t, seed);
   const maxShear = Math.max(1, rxUnit * 0.14);
-  const fade = presence >= 1 ? 0 : (1 - presence) * 0.3;
 
   for (let y = 0; y < py; y++) {
     // Lean grows with distance from the bottom of the head.
     const h = (py - 1 - y) / Math.max(1, py - 1);
     const shear = lean * maxShear * Math.pow(h, 1.4);
     for (let x = 0; x < px; x++) {
-      if (presence < 1 && hash(x, y, 11) >= presence) continue;
       const nx = (x - cx - shear) / (rxUnit * scale * squeeze);
       const ny = (y - cy) / (ryUnit * scale);
       const r = Math.hypot(nx, ny);
       if (r > DOWN_EXTENT + 0.05) continue;
-      const theta = Math.atan2(ny, nx);
-      const b = headBrightness(r, theta, ny, bloom, L, x, y);
+      const angle = Math.atan2(ny, nx);
+      // A travelling ripple bends neighbouring petal tips at different times.
+      const theta = angle + 0.018 * bloom * Math.min(1, r) * Math.sin(angle * 5 - t * 0.8 + seed);
+      const b = headBrightness(r, theta, ny, bloom, L, x, y, rings);
       if (b < 0) continue;
-      data[y * px + x] = clamp01(b - fade);
+      data[y * px + x] = clamp01(b);
     }
   }
   return { px, py, data };
 }
 
 // ---------------------------------------------------------------------------
-// Braille quantisation
+// Character and colour quantisation
 
-/** 4×4 Bayer matrix thresholds in [0,1) for ordered dithering. */
-const BAYER = [0, 8, 2, 10, 12, 4, 14, 6, 3, 11, 1, 9, 15, 7, 13, 5].map((v) => (v + 0.5) / 16);
-const DOT_BITS = [
-  [0x01, 0x08],
-  [0x02, 0x10],
-  [0x04, 0x20],
-  [0x40, 0x80],
-] as const;
+/** Block shades with a sparse, faint step between the background and ░. */
+export const GLYPH_RAMP = " ·░▒▓█";
+
+export function brightnessGlyph(b: number): string {
+  const v = clamp01(b);
+  if (v < 0.025) return " ";
+  if (v < 0.14) return "·";
+  if (v < 0.28) return "░";
+  if (v < 0.5) return "▒";
+  if (v < 0.8) return "▓";
+  return "█";
+}
 
 /** Brightness levels for colour runs; quantised so adjacent cells can merge. */
-const LEVELS = 14;
-const DARK = mixHex(flowerColors.body, palette.bg, 0.62);
+const LEVELS = 40;
+const DARK = mixHex(flowerColors.body, palette.bg, 0.88);
 /** Level at which the accent blue starts blending towards white (aligned to LEVELS). */
-export const LIGHT_FROM = 10 / LEVELS;
+export const LIGHT_FROM = 28 / LEVELS;
 
 /** Colour for a brightness: deep blue → accent blue → warm white. */
 export function brightnessColor(b: number): string {
   const q = Math.round(clamp01(b) * LEVELS) / LEVELS;
   if (q >= LIGHT_FROM) return mixHex(flowerColors.body, flowerColors.light, (q - LIGHT_FROM) / (1 - LIGHT_FROM));
-  return mixHex(DARK, flowerColors.body, q / LIGHT_FROM);
+  return mixHex(DARK, flowerColors.body, smooth(q / LIGHT_FROM));
 }
 
-/** Dot density for a brightness: always some dots inside the shape, all when bright. */
-function density(b: number): number {
-  return 0.3 + 0.7 * b;
-}
-
-export function renderOrb(t: number, width: number, height: number): OrbFrame {
-  const field = renderPixels(t, width, height);
+export function renderOrb(t: number, width: number, height: number, seed = 0): OrbFrame {
+  const field = renderPixels(t, width, height, seed);
   const rows: OrbRun[][] = [];
   for (let cy = 0; cy < height; cy++) {
     const runs: OrbRun[] = [];
     let cur: OrbRun | null = null;
     for (let cx = 0; cx < width; cx++) {
-      let bits = 0;
       let sum = 0;
-      let n = 0;
+      let covered = 0;
       for (let dy = 0; dy < 4; dy++) {
         for (let dx = 0; dx < 2; dx++) {
           const x = cx * 2 + dx;
@@ -345,12 +336,14 @@ export function renderOrb(t: number, width: number, height: number): OrbFrame {
           const b = field.data[y * field.px + x]!;
           if (b < 0) continue;
           sum += b;
-          n++;
-          if (density(b) > BAYER[(y & 3) * 4 + (x & 3)]!) bits |= DOT_BITS[dy]![dx]!;
+          covered++;
         }
       }
-      const ch = bits === 0 ? " " : String.fromCharCode(0x2800 + bits);
-      const color = bits === 0 ? palette.bg : brightnessColor(sum / n);
+      // Lift the lit surface, then apply coverage separately: boosting partial
+      // coverage made the edges too bright and erased the fade to background.
+      const brightness = covered === 0 ? 0 : Math.pow(sum / covered, 0.78) * covered / 8;
+      const ch = brightnessGlyph(brightness);
+      const color = ch === " " ? palette.bg : brightnessColor(brightness);
       if (cur && cur.color === color) cur.text += ch;
       else {
         cur = { text: ch, color };
@@ -371,11 +364,52 @@ export function orbToString(frame: OrbFrame): string {
 
 export const flowerToString = orbToString;
 
-/** Number of raised dots in a Braille glyph (0 for anything else). */
-export function dotCount(ch: string): number {
-  const code = ch.charCodeAt(0) - 0x2800;
-  if (code < 0 || code > 0xff) return 0;
-  let n = 0;
-  for (let b = code; b; b >>= 1) n += b & 1;
-  return n;
+/** Two glyphs across and down per terminal cell: four times the detail. */
+export const FLOWER_RESOLUTION = 2;
+const GLYPH_WIDTH = 4;
+const GLYPH_HEIGHT = 8;
+
+export interface FlowerRaster {
+  width: number;
+  height: number;
+  data: Uint8Array;
+}
+
+/** Rasterise the block palette so terminal graphics can display smaller glyphs.
+ * The faint shade uses 12.5% coverage, followed by 25/50/75/100% blocks.
+ * Geometry is sampled on the denser grid before rasterising, not upscaled.
+ */
+export function renderFlowerRaster(t: number, width: number, height: number, seed = 0): FlowerRaster {
+  return rasterizeFlower(renderOrb(t, width * FLOWER_RESOLUTION, height * FLOWER_RESOLUTION, seed));
+}
+
+export function rasterizeFlower(frame: OrbFrame): FlowerRaster {
+  const width = frame.width * GLYPH_WIDTH;
+  const height = frame.height * GLYPH_HEIGHT;
+  const data = new Uint8Array(width * height * 4);
+  const rgb = (hex: string) => [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16));
+  const bg = rgb(palette.bg);
+  const pattern = [0, 8, 2, 10, 12, 4, 14, 6, 3, 11, 1, 9, 15, 7, 13, 5];
+  const coverage = [0, 2, 4, 8, 12, 16];
+  frame.rows.forEach((runs, cy) => {
+    let cx = 0;
+    for (const run of runs) {
+      const fg = rgb(run.color);
+      for (const ch of run.text) {
+        const level = coverage[GLYPH_RAMP.indexOf(ch)] ?? 0;
+        for (let y = 0; y < GLYPH_HEIGHT; y++) {
+          for (let x = 0; x < GLYPH_WIDTH; x++) {
+            const color = pattern[(y % 4) * 4 + x % 4]! < level ? fg : bg;
+            const i = ((cy * GLYPH_HEIGHT + y) * width + cx * GLYPH_WIDTH + x) * 4;
+            data[i] = color[0]!;
+            data[i + 1] = color[1]!;
+            data[i + 2] = color[2]!;
+            data[i + 3] = 255;
+          }
+        }
+        cx++;
+      }
+    }
+  });
+  return { width, height, data };
 }

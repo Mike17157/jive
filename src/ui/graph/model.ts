@@ -96,7 +96,7 @@ export interface GraphModel {
   status?: string;
   reason?: string;
   phase: GraphPhase;
-  /** Generation and execution can overlap in eager mode. */
+  /** Generation and execution overlap while graph arguments stream. */
   building?: boolean;
   /** Error reported by graph.building.finished when construction failed. */
   buildError?: string;

@@ -1,12 +1,13 @@
 import { describe, expect, test } from "bun:test";
-import { createElement } from "react";
+import { act, createElement } from "react";
 import { testRender } from "@opentui/react/test-utils";
+import { ImageRenderable } from "@opentui/core";
 import { Orb } from "../src/ui/components/Orb.tsx";
 import {
   LIGHT_FROM,
-  LOOP_SECONDS,
+  GLYPH_RAMP,
   brightnessColor,
-  dotCount,
+  brightnessGlyph,
   flowerColors,
   lightDirection,
   orbSize,
@@ -15,15 +16,18 @@ import {
   phaseAt,
   renderOrb,
   renderPixels,
+  rasterizeFlower,
+  renderFlowerRaster,
   windLean,
 } from "../src/ui/orb.ts";
 import { palette } from "../src/ui/theme.ts";
 
 const lines = (t: number, w: number, h: number) => orbToString(renderOrb(t, w, h)).split("\n");
-const rowDots = (line: string) => [...line].reduce((n, c) => n + dotCount(c), 0);
-const inkCount = (rows: string[]) => rows.reduce((n, r) => n + rowDots(r), 0);
+const glyphInk = (ch: string) => ({ " ": 0, "·": 0.125, "░": 0.25, "▒": 0.5, "▓": 0.75, "█": 1 })[ch] ?? 0;
+const rowInk = (line: string) => [...line].reduce((n, c) => n + glyphInk(c), 0);
+const inkCount = (rows: string[]) => rows.reduce((n, r) => n + rowInk(r), 0);
 
-/** Fraction of character cells that differ between two frames of equal size. */
+/** Mean density change, normalised so finer shade steps don't count as jumps. */
 function cellDelta(a: string[], b: string[]): number {
   let diff = 0;
   let total = 0;
@@ -32,7 +36,7 @@ function cellDelta(a: string[], b: string[]): number {
     const rb = [...b[i]!];
     for (let x = 0; x < ra.length; x++) {
       total++;
-      if (ra[x] !== rb[x]) diff++;
+      diff += Math.abs(glyphInk(ra[x]!) - glyphInk(rb[x]!));
     }
   });
   return diff / total;
@@ -82,7 +86,8 @@ const H = 28;
 describe("flower sizing", () => {
   test("fits the available space with a 2:1 aspect and clamps small terminals", () => {
     const big = orbSize(120, 40);
-    expect(big.height).toBe(28);
+    expect(big.height).toBe(38);
+    expect(orbSize(180, 60).height).toBe(40);
     expect(big.width).toBe(big.height * 2 + 1);
     const short = orbSize(80, 9);
     expect(short.height).toBe(7);
@@ -95,25 +100,50 @@ describe("flower sizing", () => {
   });
 });
 
-describe("flower loop", () => {
-  test("cycles bud → bloom → hold → dissolve → dark → grow in, and is periodic", () => {
+describe("flower lifecycle", () => {
+  test("opens once, stays present and fully closes at varied times", () => {
     expect(phaseAt(0)).toEqual({ bloom: 0, presence: 1 });
     expect(phaseAt(BUD).bloom).toBe(0);
     expect(phaseAt(5).bloom).toBeGreaterThan(0.1);
     expect(phaseAt(5).bloom).toBeLessThan(0.9);
     expect(phaseAt(FULL)).toEqual({ bloom: 1, presence: 1 });
-    expect(phaseAt(15.4).presence).toBeGreaterThan(0.1);
-    expect(phaseAt(15.4).presence).toBeLessThan(0.9);
-    expect(phaseAt(16.7).presence).toBe(0);
-    expect(phaseAt(17.5).presence).toBeGreaterThan(0.1);
-    expect(phaseAt(17.5).presence).toBeLessThan(0.9);
-    expect(phaseAt(17.5).bloom).toBe(0);
-    expect(phaseAt(LOOP_SECONDS + 3)).toEqual(phaseAt(3));
-    expect(orbToString(renderOrb(LOOP_SECONDS + 3, W, H))).toBe(orbToString(renderOrb(3, W, H)));
-    let last = 0;
-    for (let t = 0; t <= 10; t += 0.25) {
-      expect(phaseAt(t).bloom).toBeGreaterThanOrEqual(last);
-      last = phaseAt(t).bloom;
+    const starts: number[] = [];
+    for (let window = 0; window < 8; window++) {
+      const blooms = Array.from({ length: 32 }, (_, i) => phaseAt(12 + window * 32 + i).bloom);
+      starts.push(blooms.findIndex((b) => b < 0.99));
+      expect(blooms[0]).toBe(1);
+      expect(blooms[31]).toBe(1);
+      expect(Math.min(...blooms)).toBe(0);
+    }
+    expect(new Set(starts).size).toBeGreaterThan(2);
+    for (const seed of [0, 13, 997]) {
+      for (let t = 0; t < 600; t += 2) {
+        expect(phaseAt(t, seed).presence).toBe(1);
+        expect(orbToString(renderOrb(t, 21, 10, seed)).trim().length).toBeGreaterThan(10);
+        expect(Math.abs(phaseAt(t + 0.1, seed).bloom - phaseAt(t, seed).bloom)).toBeLessThan(0.04);
+      }
+    }
+  });
+
+  test("every seed visibly closes into a bud within 24 seconds and reopens", () => {
+    for (let seed = 0; seed < 30; seed++) {
+      const closedAt = Array.from({ length: 49 }, (_, i) => 12 + i / 4)
+        .find((t) => phaseAt(t, seed).bloom === 0);
+      expect(closedAt).toBeDefined();
+      const closed = box(orbToString(renderOrb(closedAt!, W, H, seed)).split("\n"));
+      const open = box(orbToString(renderOrb(FULL, W, H, seed)).split("\n"));
+      expect(closed.w).toBeLessThan(open.w * 0.5);
+      expect(closed.h).toBeLessThan(open.h * 0.5);
+      expect(phaseAt(38, seed).bloom).toBe(1);
+    }
+  });
+
+  test("does not repeat the old loop and is reproducible for a session seed", () => {
+    expect(renderOrb(33, W, H, 42)).toEqual(renderOrb(33, W, H, 42));
+    expect(renderOrb(33, W, H, 42)).not.toEqual(renderOrb(33, W, H, 43));
+    expect(phaseAt(20, 42)).not.toEqual(phaseAt(20, 43));
+    for (const t of [3, 12, 40, 80, 160]) {
+      expect(lines(t, W, H)).not.toEqual(lines(t + 18, W, H));
     }
   });
 
@@ -138,23 +168,14 @@ describe("flower loop", () => {
   test("opens steadily and never jumps between frames", () => {
     const inks = [2, 4, 6, 8, 10].map((t) => inkCount(lines(t, W, H)));
     for (let i = 1; i < inks.length; i++) expect(inks[i]!).toBeGreaterThan(inks[i - 1]! * 1.05);
-    for (let t = 0; t < LOOP_SECONDS; t += 0.1) {
-      expect(cellDelta(lines(t, W, H), lines(t + 0.1, W, H))).toBeLessThan(0.2);
+    for (let t = 0; t < 90; t += 0.1) {
+      expect(cellDelta(lines(t, W, H), lines(t + 0.1, W, H))).toBeLessThan(0.04);
     }
-    // Holding: the silhouette stays put while light and lean drift.
+    // Between rests, only the wind, petal flex and light change.
     const a = inkCount(lines(11, W, H));
     const b = inkCount(lines(14, W, H));
     expect(Math.max(a, b) / Math.min(a, b)).toBeLessThan(1.15);
     expect(orbToString(renderOrb(11, W, H))).not.toBe(orbToString(renderOrb(14, W, H)));
-  });
-
-  test("dissolves into scattered dots and comes back", () => {
-    const full = inkCount(lines(FULL, W, H));
-    const mid = inkCount(lines(15.4, W, H));
-    expect(mid).toBeGreaterThan(full * 0.2);
-    expect(mid).toBeLessThan(full * 0.8);
-    expect(inkCount(lines(16.7, W, H))).toBe(0);
-    expect(inkCount(lines(17.9, W, H))).toBeGreaterThan(0);
   });
 });
 
@@ -168,7 +189,7 @@ describe("lighting", () => {
       expect(Math.hypot(x, y, z)).toBeCloseTo(1, 6);
     }
     expect(lightDirection(4)).not.toEqual(lightDirection(8));
-    lightDirection(LOOP_SECONDS + 4).forEach((v, i) => expect(v).toBeCloseTo(lightDirection(4)[i]!, 6));
+    expect(lightDirection(22)).not.toEqual(lightDirection(4));
   });
 
   test("the lit side of the flower is brighter than the far side", () => {
@@ -192,6 +213,28 @@ describe("lighting", () => {
 });
 
 describe("flower frames", () => {
+  test("brightness alone selects characters from sparse to dense", () => {
+    expect(brightnessGlyph(0)).toBe(" ");
+    expect(brightnessGlyph(1)).toBe(GLYPH_RAMP.at(-1)!);
+    let previous = 0;
+    const chars = new Set<string>();
+    for (let i = 0; i <= 100; i++) {
+      const b = i / 100;
+      const ch = brightnessGlyph(b);
+      expect(GLYPH_RAMP.indexOf(ch)).toBeGreaterThanOrEqual(previous);
+      previous = GLYPH_RAMP.indexOf(ch);
+      chars.add(ch);
+    }
+    expect(chars.size).toBe(GLYPH_RAMP.length);
+    expect(brightnessGlyph(0.08)).toBe("·");
+    expect(brightnessGlyph(0.15)).toBe("░");
+    expect(brightnessGlyph(0.4)).toBe("▒");
+    expect(brightnessGlyph(0.65)).toBe("▓");
+    expect(brightnessGlyph(0.9)).toBe("█");
+    // Subtle differences still have distinct colour within each block density.
+    expect(brightnessColor(0.15)).not.toBe(brightnessColor(0.18));
+  });
+
   test("frames are deterministic, exactly sized, merged into runs and shaded in many levels", () => {
     const a = renderOrb(FULL, W, H);
     const b = renderOrb(FULL, W, H);
@@ -205,23 +248,27 @@ describe("flower frames", () => {
     }
     const colours = new Set(a.rows.flat().map((r) => r.color));
     expect(colours.has(palette.bg)).toBe(true);
-    expect(colours.size).toBeGreaterThan(8);
+    expect(colours.size).toBeGreaterThan(25);
     for (const c of colours) expect(/^#[0-9a-f]{6}$/.test(c)).toBe(true);
-    // Blank cells are spaces on the background, never empty Braille.
+    // Blank cells are spaces on the background, never invisible glyphs.
     for (const run of a.rows.flat()) {
       if (run.color === palette.bg) expect(run.text).toMatch(/^ +$/);
-      else expect(run.text).toMatch(/^[⠁-⣿]+$/);
+      else for (const ch of run.text) expect(GLYPH_RAMP.slice(1)).toContain(ch);
     }
   });
 
-  test("draws only Braille dots: no digits, letters or block glyphs", () => {
+  test("uses block shading with a faint step at the edges", () => {
     for (const t of [BUD, 5, FULL, 15.4]) {
       const text = lines(t, W, H).join("\n");
-      expect(text).toMatch(/^[⠁-⣿ \n]+$/);
+      for (const ch of text.replaceAll("\n", "")) expect(GLYPH_RAMP).toContain(ch);
+      expect(text).toMatch(/^[ ·░▒▓█\n]+$/);
+      expect(text).toContain("·");
+      expect(new Set(text.replaceAll("\n", "").trim()).size).toBeGreaterThanOrEqual(4);
+
     }
   });
 
-  test("dot density follows brightness", () => {
+  test("character density follows brightness", () => {
     const frame = renderOrb(FULL, W, H);
     const f = renderPixels(FULL, W, H);
     let bright = 0;
@@ -244,10 +291,10 @@ describe("flower frames", () => {
             }
           if (n === 8) {
             if (sum / n > 0.7) {
-              bright += dotCount(ch);
+              bright += GLYPH_RAMP.indexOf(ch);
               brightN++;
             } else if (sum / n < 0.3) {
-              dark += dotCount(ch);
+              dark += GLYPH_RAMP.indexOf(ch);
               darkN++;
             }
           }
@@ -285,7 +332,10 @@ describe("flower frames", () => {
     expect(Math.max(...leans)).toBeLessThanOrEqual(1);
     expect(Math.min(...leans)).toBeGreaterThanOrEqual(-1);
     expect(Math.max(...leans) - Math.min(...leans)).toBeGreaterThan(1);
-    expect(windLean(LOOP_SECONDS + 1)).toBeCloseTo(windLean(1), 6);
+    expect(windLean(19)).not.toBeCloseTo(windLean(1), 3);
+    for (let t = 0; t < 600; t += 0.1) {
+      expect(Math.abs(windLean(t + 0.1) - windLean(t))).toBeLessThan(0.05);
+    }
   });
 
   test("small and narrow sizes still draw a compact bloom inside bounds", () => {
@@ -297,23 +347,74 @@ describe("flower frames", () => {
       const rows = lines(FULL, w, h);
       expect(rows).toHaveLength(h);
       for (const r of rows) expect([...r].length).toBe(w);
-      expect(inkCount(rows)).toBeGreaterThan(w * h * 8 * 0.15);
+      expect(inkCount(rows)).toBeGreaterThan(w * h * 0.15);
       expect(rows[0]!.trim().length).toBeLessThan(rows[Math.floor(h / 2)]!.trim().length);
     }
   });
 });
 
 describe("Orb component", () => {
+  test("uses a denser image inside the same layout when graphics become available", async () => {
+    const setup = await testRender(createElement(Orb, { width: 60, height: 20, animate: false }), { width: 60, height: 20, exitOnCtrlC: false });
+    try {
+      await setup.renderOnce();
+      expect(setup.renderer.root.findDescendantById("flower-graphics")).toBeUndefined();
+      const capabilities = { ...setup.renderer.capabilities!, kitty_graphics: true, image_protocol: "kitty" as const };
+      Object.defineProperty(setup.renderer, "capabilities", { configurable: true, get: () => capabilities });
+      await act(async () => { setup.renderer.emit("capabilities", capabilities); });
+      await setup.renderOnce();
+      const graphic = setup.renderer.root.findDescendantById("flower-graphics") as ImageRenderable;
+      expect(graphic).toBeInstanceOf(ImageRenderable);
+      await graphic.loadPromise;
+      const size = orbSize(60, 20);
+      expect(graphic.width).toBe(size.width);
+      expect(graphic.height).toBe(size.height);
+      expect(graphic.image!.width).toBe(size.width * 8);
+      expect(graphic.image!.height).toBe(size.height * 16);
+      expect(graphic.loadError).toBeNull();
+      // A failed graphics transport must leave a visible text flower.
+      await act(async () => { graphic.onError?.(new Error("graphics unavailable")); });
+      await setup.renderOnce();
+      expect(setup.renderer.root.findDescendantById("flower-graphics")).toBeUndefined();
+      expect(setup.captureCharFrame()).toMatch(/[░▒▓█]{3,}/);
+    } finally {
+      setup.renderer.destroy();
+    }
+  });
+
   test("renders the flower only, with no captions", async () => {
     const setup = await testRender(createElement(Orb, { width: 60, height: 20, animate: false }), { width: 60, height: 20, exitOnCtrlC: false });
     try {
       await setup.renderOnce();
       const frame = setup.captureCharFrame();
-      expect(frame).not.toMatch(/[a-zA-Z0-9]/);
-      expect(frame).toMatch(/[⠁-⣿]{3,}/);
-      expect(frame).not.toMatch(/[▒▓█▌░╿┃]/);
+      for (const ch of frame.replaceAll("\n", "")) expect(GLYPH_RAMP).toContain(ch);
+      expect(frame.trim().length).toBeGreaterThan(20);
+      expect(frame).toMatch(/[░▒▓█]{3,}/);
     } finally {
       setup.renderer.destroy();
     }
+  });
+});
+
+describe("flower graphics", () => {
+  test("block bitmaps have the requested coverage and opaque backgrounds", () => {
+    const raster = rasterizeFlower({ width: 6, height: 1, rows: [[{ text: " ·░▒▓█", color: "#ffffff" }]] });
+    const counts = Array(6).fill(0);
+    for (let y = 0; y < raster.height; y++) {
+      for (let x = 0; x < raster.width; x++) {
+        const i = (y * raster.width + x) * 4;
+        if (raster.data[i] === 255) counts[Math.floor(x / 4)]++;
+        expect(raster.data[i + 3]).toBe(255);
+      }
+    }
+    expect(counts).toEqual([0, 4, 8, 16, 24, 32]);
+  });
+
+  test("samples four times as many glyphs instead of enlarging a low-resolution frame", () => {
+    const raster = renderFlowerRaster(FULL, 21, 10, 42);
+    expect(raster).toEqual(rasterizeFlower(renderOrb(FULL, 42, 20, 42)));
+    expect(raster.width).toBe(168);
+    expect(raster.height).toBe(160);
+    expect(raster.data).not.toEqual(renderFlowerRaster(FULL + 1, 21, 10, 42).data);
   });
 });
