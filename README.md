@@ -10,6 +10,12 @@ The agent should be able to do its hard reasoning using the power of modern LLMs
 
 **Jive** replaces "Tool Calls" with "Graph Calls", where each graph is a DAG-based workflow compromising of Tool Calls and Jev Calls. The agent can do bulk evaluation / analysis of datasets, multi-step profiling, repetitive tasks very efficiently with System One decisions sprinkled in between. 
 
+## Install
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/merijjeyn/jive/main/install.sh | sh
+```
+
 ## Benchmark results
 
 ![Jive, Codex, and Claude Code running the conversation_eval task side by side at 50x playback](docs/assets/conversation-eval-comparison.gif)
