@@ -16,7 +16,8 @@ test("graph construction stays visible while committed nodes are already running
   expect(graph.nodes.first?.status).toBe("running");
   expect(graph.nodes.second?.status).toBe("building");
   expect(graph.edges).toEqual([{from:"first",to:"second"}]);
-  expect(phaseCaption(graph,0)?.text).toContain("assembling");
+  expect(graph.building).toBe(true);
+  expect(phaseCaption(graph)).toBeNull();
   graph=reduceGraphs([...events,{sequence:5,time:5,graphId:"g",type:"graph.building.finished",data:{status:"interrupted"}}])[0]!;
   expect(graph.building).toBe(false);
   expect(graph.nodes.second?.status).toBe("cancelled");

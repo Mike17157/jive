@@ -1,5 +1,6 @@
 import { Fragment, useEffect, useMemo, useState, type ReactNode } from "react";
 import type { FileChangeSummary } from "../../core/file-changes.ts";
+import { BUILDING_LABEL } from "../../core/graph-stream.ts";
 import type { GraphModel, GraphNode } from "../graph/model.ts";
 import { countStatuses, statusTone, type StatusTone } from "../graph/model.ts";
 import { edgeCellState, formatDuration, groupSummary, layoutGraph, loopGlyph, revealActive, revealProgress, statusGlyph, sweepActive, type LaneCell, type LayoutRow } from "../graph/layout.ts";
@@ -8,6 +9,10 @@ import { dimHex, mixHex, palette } from "../theme.ts";
 const TICK_MS = 80;
 const BUILD_TICK_MS = 240;
 const BUILD_DOTS = ["   ", ".  ", ".. ", "..."];
+/** A graph under construction has no name yet, so the header turns these over instead. */
+export const BUILD_WORDS = ["Assembling", "Conducting", "Orchestrating", "Composing", "Arranging", "Wiring", "Plotting", "Weaving"];
+/** How long one word holds: long enough to read, short enough that the line keeps moving. */
+const BUILD_WORD_MS = 1600;
 /** Graphs of this many nodes or fewer are read directly; above it the progress counter earns its place. */
 const COUNTER_MIN_NODES = 5;
 
@@ -62,11 +67,11 @@ function graphStatusColor(status: string | undefined): string {
 }
 
 /** Construction remains visible when committed nodes already execute. */
-export function phaseCaption(graph: GraphModel, tick: number): { text: string; color: string } | null {
-  if (graph.building) return { text: `assembling${BUILD_DOTS[tick % BUILD_DOTS.length]}`, color: palette.accent };
+export function phaseCaption(graph: GraphModel): { text: string; color: string } | null {
+  if (graph.building) return null;
   switch (graph.phase) {
     case "building":
-      return { text: `assembling${BUILD_DOTS[tick % BUILD_DOTS.length]}`, color: palette.textDim };
+      return null;
     case "ready":
       return { text: "ready to run", color: palette.textDim };
     case "interrupted":
@@ -76,6 +81,15 @@ export function phaseCaption(graph: GraphModel, tick: number): { text: string; c
     default:
       return null;
   }
+}
+
+/**
+ * The stand-in header for a graph that has not streamed its own label yet. Both cycles
+ * run off the clock rather than the tick, so the words hold their pace whatever cadence
+ * the surrounding animation is running at.
+ */
+export function buildingTitle(now: number): string {
+  return BUILD_WORDS[Math.floor(now / BUILD_WORD_MS) % BUILD_WORDS.length]! + BUILD_DOTS[Math.floor(now / BUILD_TICK_MS) % BUILD_DOTS.length];
 }
 
 /** Header badge: how many files the run changed and by how much, e.g. "✎ 3 files +42 −7". */
@@ -180,7 +194,7 @@ export function GraphView(props: GraphViewProps) {
   const narrow = width < 70;
   const gutterWidth = layout.laneCount * 2;
   const labelBudget = Math.max(6, width - gutterWidth - (narrow ? 14 : 34));
-  const caption = phaseCaption(graph, tick);
+  const caption = phaseCaption(graph);
   // A handful of rows counts itself at a glance, so the progress counter — this graph's own
   // node executions, nothing from any other call — only appears once the graph outgrows that.
   const counted = counts.total > COUNTER_MIN_NODES;
@@ -195,7 +209,9 @@ export function GraphView(props: GraphViewProps) {
     .filter(Boolean)
     .join(" · ");
   const graphDuration = graph.startedAt !== undefined ? formatDuration((graph.finishedAt ?? now) - graph.startedAt) : "";
-  const title = truncate(graph.label, Math.max(8, width - 40));
+  // Until the stream names the graph, its header cycles a word rather than sitting on a placeholder.
+  const heading = building && graph.label === BUILDING_LABEL ? buildingTitle(now) : graph.label;
+  const title = truncate(heading, Math.max(8, width - 40));
   // Everything the title line carries after the title, measured so the badge can be the
   // first thing to go when the line is full: the files are named on the line below anyway.
   const tail = [
@@ -207,9 +223,9 @@ export function GraphView(props: GraphViewProps) {
   const badge = fittedBadge(graph.changes, width - 7 - title.length - tail.length);
   // A call that turned into one node needs no title above it: the row carries the title,
   // and the counts a header would add ("1/1 done") only repeat the row's own status.
-  const only = layout.rows.length === 1 && !layout.rows[0]!.group && !caption ? layout.rows[0]! : null;
+  const only = layout.rows.length === 1 && !layout.rows[0]!.group && !caption && !building ? layout.rows[0]! : null;
   // The same measurement for that row, which carries the title itself.
-  const soloTitle = only ? truncate(graph.label || only.node.label, labelBudget) : "";
+  const soloTitle = only ? truncate(heading || only.node.label, labelBudget) : "";
   const soloBadge = only ? fittedBadge(graph.changes, width - 7 - soloTitle.length) : null;
   const reasonShownOnNode = graph.reason !== undefined && Object.values(graph.nodes).some((node) => node.error === graph.reason);
 
@@ -291,7 +307,8 @@ export function GraphView(props: GraphViewProps) {
           <GraphRow graph={graph} row={row} now={now} tick={tick} selected={props.focused && props.selectedRow === i} narrow={narrow} labelBudget={labelBudget} width={width - 2} onCopyFailure={props.onCopyFailure} />
         </Fragment>
       ))}
-      {layout.rows.length === 0 ? <text fg={palette.textFaint}>{building ? "  waiting for the first node…" : "  waiting for nodes…"}</text> : null}
+      {/* A graph still assembling says so in its header; only a settled, empty one needs a line of its own. */}
+      {layout.rows.length === 0 && !building ? <text fg={palette.textFaint}>{"  waiting for nodes…"}</text> : null}
     </box>
   );
 }

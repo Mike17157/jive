@@ -1,6 +1,9 @@
 import { repairGraph, strayEntryTarget, validateGraph } from "./schema";
 import type { Graph } from "./types";
 
+/** The header a graph carries until the stream names it; the UI cycles a word over it. */
+export const BUILDING_LABEL = "Building graph";
+
 export interface GraphStreamUpdate {
   kind: "preview" | "commit";
   graph: Graph;
@@ -494,7 +497,7 @@ export class GraphStreamParser {
   #buildGraph(commit: boolean): Graph {
     const value: Record<string, unknown> = {
       version: this.#rootValues.has("version") ? this.#rootValues.get("version") : 1,
-      label: this.#rootValues.has("label") ? this.#rootValues.get("label") : "Building graph",
+      label: this.#rootValues.has("label") ? this.#rootValues.get("label") : BUILDING_LABEL,
       nodes: Object.fromEntries(this.#nodes),
     };
     for (const [key, entry] of this.#rootValues) {

@@ -495,9 +495,12 @@ describe("session controls", () => {
     await new Promise((resolve) => setTimeout(resolve, 5));
     expect(controller.getSnapshot().phase).toBe("thinking");
     expect(controller.getSnapshot().activityStartedAt).toBeNumber();
+    const thinkingStarted = controller.getSnapshot().activityStartedAt;
     release();
     await submitting;
     expect(phases.some((entry) => entry.phase === "responding" && typeof entry.started === "number")).toBe(true);
+    // The clock times the whole turn, so handing over to another phase does not restart it.
+    expect(phases.filter((entry) => entry.phase && entry.phase !== "idle").every((entry) => entry.started === thinkingStarted)).toBe(true);
     expect(controller.getSnapshot().phase).toBe("idle");
     expect(controller.getSnapshot().activityStartedAt).toBeUndefined();
   });

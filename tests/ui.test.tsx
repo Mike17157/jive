@@ -8,7 +8,8 @@ import { COMMANDS, filterCommands, parseComposerInput, slashQuery } from "../src
 import { EDGE_SWEEP_MS_PER_CELL, edgeCellState, foldableIds, groupSummary, gutterText, layoutGraph, layoutToText, sweepActive, visibleRows } from "../src/ui/graph/layout.ts";
 import { countStatuses, edgeReady, reduceGraphs, statusTone, type UIExecutionEvent } from "../src/ui/graph/model.ts";
 import { orbSize, orbToString, renderOrb } from "../src/ui/orb.ts";
-import { changeBadge, changeList, GraphView, toneColor } from "../src/ui/components/GraphView.tsx";
+import { BUILD_WORDS, changeBadge, changeList, GraphView, toneColor } from "../src/ui/components/GraphView.tsx";
+import { BUILDING_LABEL } from "../src/core/graph-stream.ts";
 import { palette } from "../src/ui/theme.ts";
 
 // ---------------------------------------------------------------------------
@@ -390,7 +391,19 @@ describe("graph presentation", () => {
       ev("graph.preview" as ExecutionEvent["type"], undefined, { graph: { label: "Inspect the manifest", nodes: { read: { type: "bash", label: "read" } } } }),
     ]);
     expect(lines.length).toBeGreaterThan(1);
-    expect(lines[0]).toContain("assembling");
+    expect(lines[0]).toContain("◌ Inspect the manifest");
+  });
+
+  test("an unnamed graph under construction cycles a word instead of a placeholder", async () => {
+    const ev = eventFactory("unnamed");
+    const lines = await view([
+      ev("graph.building" as ExecutionEvent["type"], undefined, { label: BUILDING_LABEL }),
+      ev("graph.preview" as ExecutionEvent["type"], undefined, { graph: { nodes: { read: { type: "bash", label: "read" } } } }),
+    ]);
+    expect(lines[0]).not.toContain(BUILDING_LABEL);
+    expect(lines[0]).toMatch(new RegExp(`◌ (${BUILD_WORDS.join("|")})`));
+    // The header carries the state on its own: no second line waiting on nodes.
+    expect(lines.join("\n")).not.toContain("waiting for");
   });
 
   test("several nodes keep the title line above them", async () => {
@@ -910,8 +923,7 @@ describe("App", () => {
       expect(lines[25]).toContain("Claude Sonnet 5");
       expect(f).not.toContain("graph · bash · jev");
       expect(f).not.toContain("Describe a task");
-      expect(f).toMatch(/[\u2801-\u28ff]{3,}/); // Braille-dot flower
-      expect(f).not.toMatch(/[▒▓█▌░╿┃]/); // no block glyphs
+      expect(f).toMatch(/[░▒▓█]{8,}/); // Block-shaded flower
     } finally {
       setup.renderer.destroy();
     }
@@ -1223,7 +1235,8 @@ describe("App", () => {
       c.update({ events: asCore(previewEvents(base)) });
       let f = await frame();
       expect(f).toContain("draft plan");
-      expect(f).toMatch(/assembling\.{0,3}/);
+      expect(f).toMatch(/[◆◌] draft plan/);
+      expect(f).not.toContain("assembling");
       // Three rows count themselves; the progress counter stays off below the threshold.
       expect(f).not.toContain("3 nodes");
       expect(f).toMatch(/· scan repo/);

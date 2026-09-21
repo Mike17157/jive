@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { join } from "node:path";
 import { AsyncQueue } from "../core/async-queue";
-import { GraphStreamParser } from "../core/graph-stream";
+import { BUILDING_LABEL, GraphStreamParser } from "../core/graph-stream";
 import type { ExecutionEvent, Graph, GraphReport } from "../core/types";
 import type { SessionStore } from "../session/store";
 import type { AgentOptions } from "./agent";
@@ -48,7 +48,7 @@ export class GraphBuildingRound {
       state = { id: randomUUID(), parser: new GraphStreamParser(), length: 0, sequence: 0,
         queue: new AsyncQueue(), abort: new AbortController() };
       this.states.set(delta.index, state);
-      this.emit(state, { time: Date.now(), type: "graph.building", data: { label: "Building graph" } });
+      this.emit(state, { time: Date.now(), type: "graph.building", data: { label: BUILDING_LABEL } });
     }
     if (state.error) return;
     const fresh = delta.arguments.slice(state.length);

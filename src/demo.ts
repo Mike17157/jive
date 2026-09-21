@@ -70,7 +70,7 @@ export function createDemoController(cwd:string):AgentController {
         execute:(graph,signal,onEvent,streaming)=>executeGraph(graph,{cwd,signal,onEvent,...streaming,jev:new FixtureJev()}),
         onEvent:event=>{
           const phase=event.type==="graph.building"?"building":event.type==="graph.building.finished"?"executing":snapshot.phase;
-          snapshot={...snapshot,phase,activityStartedAt:phase===snapshot.phase?snapshot.activityStartedAt:Date.now(),events:[...snapshot.events,event]};notify();
+          snapshot={...snapshot,phase,activityStartedAt:snapshot.activityStartedAt??Date.now(),events:[...snapshot.events,event]};notify();
         },
       });
       try {

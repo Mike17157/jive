@@ -1258,7 +1258,9 @@ export class GraphAgentController implements AgentController {
     if (this.#snapshot.phase === phase) return;
     this.#update({
       phase,
-      activityStartedAt: phase === "idle" ? undefined : Date.now(),
+      // The clock belongs to the turn, not to the phase within it: thinking handing over to
+      // building and back is one stretch of work, so it keeps running until the turn goes idle.
+      activityStartedAt: phase === "idle" ? undefined : this.#snapshot.activityStartedAt ?? Date.now(),
     });
   }
 
