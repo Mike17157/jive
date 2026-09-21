@@ -12,7 +12,7 @@ const dirs: string[] = [];
 async function directory() { const cwd = await mkdtemp(join(tmpdir(), "jev-eager-")); dirs.push(cwd); return cwd; }
 afterEach(async () => { await Promise.all(dirs.splice(0).map(path => rm(path, {recursive:true,force:true}))); });
 function latch() { let resolve!: () => void; const promise = new Promise<void>(done => {resolve=done;}); return {promise,resolve}; }
-const first: Graph = {eager:true,version:1,label:"stream",context:{},templates:{},limits:{},returns:["first"],nodes:{first:{type:"bash",script:"printf 'once\\n' >> count; printf 'hello'"}}};
+const first: Graph = {version:1,label:"stream",context:{},templates:{},limits:{},returns:["first"],nodes:{first:{type:"bash",script:"printf 'once\\n' >> count; printf 'hello'"}}};
 
 test("a completed prefix executes while more nodes are still being generated, without replay", async () => {
   const cwd = await directory(), done = latch(), updates = new AsyncQueue<Graph>();
@@ -33,7 +33,7 @@ test("a completed prefix executes while more nodes are still being generated, wi
 
 test("committed template groups expand before the producer closes", async () => {
   const cwd = await directory(), done = latch(), updates = new AsyncQueue<Graph>();
-  const graph: Graph = {version:1,label:"early group",eager:true,nodes:{},limits:{concurrency:1},templates:{
+  const graph: Graph = {version:1,label:"early group",nodes:{},limits:{concurrency:1},templates:{
     item:{nodes:{show:{type:"bash",env:{VALUE:{$ref:"/input"}},script:"printf '%s' \"$VALUE\""}},output:{$ref:"/nodes/show/output/stdout"}},
   },groups:{each:{kind:"foreach",items:["a","b"],template:"item",maxItems:2}},returns:["each"]};
   const running = executeGraph(graph,{cwd,updates,onEvent(event){if(event.type==="node.finished"&&event.nodeId==="each")done.resolve();}});

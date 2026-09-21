@@ -35,15 +35,7 @@ export const SEMANTIC_BRANCH_EXAMPLE: Graph = {
 };
 
 export const BATCH_EXAMPLE: Graph = {
-  version: 1, label: "Rate clarity and save results", limits: { maxNodes: 210, maxJevCalls: 100 },
-  nodes: {
-    load: { type: "bash", script: "cat items.json", outputFormat: "json" },
-    merge: {
-      type: "bash", stdin: { $ref: "/groups/ratings/output/items" },
-      script: `python3 -c 'import json,sys; items=json.load(sys.stdin); rows=[i["output"] for i in items if i["status"]=="done"]; open("ratings.json","w").write(json.dumps(rows)); print(json.dumps({"written":len(rows),"failed":len(items)-len(rows)}))'`,
-      outputFormat: "json",
-    },
-  },
+  version: 1, label: "Rate clarity and save results", limits: { maxJevCalls: 100 },
   templates: { rate: {
     nodes: {
       judge: { type: "jev", state: { $ref: "/item/text" }, questions: {
@@ -57,7 +49,20 @@ export const BATCH_EXAMPLE: Graph = {
       },
     },
     output: { $ref: "/nodes/save/output/json" },
+  }, mergeResults: {
+    nodes: {
+      write: {
+        type: "bash", stdin: { $ref: "/input" },
+        script: `python3 -c 'import json,sys; items=json.load(sys.stdin); rows=[i["output"] for i in items if i["status"]=="done"]; open("ratings.json","w").write(json.dumps(rows)); print(json.dumps({"written":len(rows),"failed":len(items)-len(rows)}))'`,
+        outputFormat: "json",
+      },
+    },
+    output: { $ref: "/nodes/write/output/json" },
   } },
-  groups: { ratings: { kind: "foreach", items: { $ref: "/nodes/load/output/json" }, template: "rate", maxItems: 100, concurrency: 6, onItemFailure: "continue" } },
+  nodes: { load: { type: "bash", script: "cat items.json", outputFormat: "json" } },
+  groups: {
+    ratings: { kind: "foreach", items: { $ref: "/nodes/load/output/json" }, template: "rate", maxItems: 100, concurrency: 6, onItemFailure: "continue" },
+    merge: { kind: "foreach", items: [{ $ref: "/groups/ratings/output/items" }], template: "mergeResults", maxItems: 1 },
+  },
   returns: ["merge"],
 };

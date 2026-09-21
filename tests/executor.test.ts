@@ -82,9 +82,24 @@ test("plugin-produced candidate IDs resolve to original records", async () => {
   expect((result.requested.read?.output as any).stdout).toBe("beta");
 });
 
-test("budget exhaustion drains work and emits graph.finished last", async () => {
+test("expanded graphs can exceed the former 300-entry cap", async () => {
+  const items = Array.from({ length: 301 }, (_, index) => index);
+  const graph: Graph = {
+    version: 1, label: "Uncapped expansion", nodes: {}, limits: { maxJevCalls: 400 },
+    groups: { batch: { kind: "foreach", items, template: "inspect", maxItems: items.length } },
+    templates: { inspect: { nodes: { j: { type: "jev", state: { $ref: "/input" }, questions } } } },
+    returns: ["batch"],
+  };
+  const result = await executeGraph(graph, { cwd: await cwd(), jev: judge() });
+  expect(result.status).toBe("done");
+  expect((result.requested.batch!.output as any).completed).toBe(301);
+  expect(result.previews).toHaveLength(302);
+  expect(result.previews.every(entry => entry.status === "done")).toBe(true);
+});
+
+test("Jev budget exhaustion drains work and emits graph.finished last", async () => {
   const events:ExecutionEvent[]=[];
-  const graph:Graph={version:1,label:"limit",nodes:{},limits:{maxNodes:3},groups:{batch:{kind:"foreach",items:[1,2,3,4],template:"t",maxItems:4}},templates:{t:{nodes:{j:{type:"jev",state:{$ref:"/input"},questions,accept}}}}};
+  const graph:Graph={version:1,label:"limit",nodes:{},limits:{maxJevCalls:3},groups:{batch:{kind:"foreach",items:[1,2,3,4],template:"t",maxItems:4}},templates:{t:{nodes:{j:{type:"jev",state:{$ref:"/input"},questions,accept}}}}};
   const result=await executeGraph(graph,{cwd:await cwd(),jev:judge(.95,30),onEvent:e=>events.push(e)});
   expect(result.status).toBe("cancelled");
   const length=events.length;await Bun.sleep(50);expect(events.length).toBe(length);expect(events.at(-1)?.type).toBe("graph.finished");

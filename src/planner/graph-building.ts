@@ -45,7 +45,7 @@ export class GraphBuildingRound {
     if (delta.name !== "execute_graph") return;
     let state = this.states.get(delta.index);
     if (!state) {
-      state = { id: randomUUID(), parser: new GraphStreamParser(), length: 0, sequence: 0,
+      state = { id: randomUUID(), parser: new GraphStreamParser(Boolean(this.options.supportsStreaming) && delta.index === 0), length: 0, sequence: 0,
         queue: new AsyncQueue(), abort: new AbortController() };
       this.states.set(delta.index, state);
       this.emit(state, { time: Date.now(), type: "graph.building", data: { label: BUILDING_LABEL } });

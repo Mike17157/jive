@@ -21,10 +21,10 @@ async function setup(mode:"success"|"truncated"|"renamed"|"broken"|"stray") {
   const bodies: any[] = [];
   const first = JSON.stringify({type:"bash",script:"echo once >> count; printf first"});
   const second = JSON.stringify({type:"bash",needs:["first"],script:"printf second"});
-  const prefix = `{"eager":true,"version":1,"label":"While writing","context":{},"templates":{},"limits":{},"returns":["first","second"],"nodes":{"first":${first}`;
+  const prefix = `{"version":1,"label":"While writing",${mode === "broken" ? '"returns":["first","second"],' : ""}"nodes":{"first":${first}`;
   const suffix = mode==="broken" ? `,"second":${second}},"output":null}`
-    : mode==="stray" ? `},"second":${second}}`
-    : `,"second":${second}}}`;
+    : mode==="stray" ? `},"second":${second},"returns":["first","second"]}`
+    : `,"second":${second}},"returns":["first","second"]}`;
   globalThis.fetch = (async (_input:unknown,init?:RequestInit) => {
     bodies.push(JSON.parse(String(init?.body)));
     if (++fetches > 1) return new Response(new Uint8Array([

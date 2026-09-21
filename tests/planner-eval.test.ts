@@ -37,6 +37,11 @@ test("behavior checks distinguish semantic continuations from judgments returned
   delete decisionOnly.nodes.review;
   expect(hasSemanticContinuation(decisionOnly)).toBe(false);
   const rootMerge = structuredClone(BATCH_EXAMPLE);
+  // Exercise a root bash continuation independently of the streaming example's group wrapper.
+  rootMerge.nodes.merge = {
+    type: "bash", script: "cat", stdin: { $ref: "/groups/ratings/output/items" },
+  };
+  delete rootMerge.groups!.merge;
   delete rootMerge.templates!.rate!.nodes.save;
   rootMerge.templates!.rate!.output = { $ref: "/nodes/judge/output/answers" };
   expect(hasSemanticContinuation(rootMerge)).toBe(true);

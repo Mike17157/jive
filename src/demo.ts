@@ -76,13 +76,13 @@ export function createDemoController(cwd:string):AgentController {
       try {
         add("assistant",`Building the ${scenario} fixture. Commands run as nodes arrive; graph generation and Jev answers are simulated.`);
         const graph = demoGraph(scenario);
-        // Put the final join in a complete subgraph so all eager root
+        // Put the final join in a complete subgraph so all streamed root
         // dependencies refer to previously committed nodes or groups.
         const {finish,...nodes}=graph.nodes;
         const {needs,...gather}=finish!;
         graph.templates!.gather = {nodes:{gather}};
         graph.groups!.finish = {kind:"foreach",label:"Gather findings",items:[null],maxItems:1,template:"gather",needs};
-        const header = JSON.stringify({eager:true,version:1,label:graph.label,context:graph.context??{},templates:graph.templates,limits:graph.limits??{},returns:graph.returns??[]});
+        const header = JSON.stringify({version:1,label:graph.label,context:graph.context??{},templates:graph.templates,limits:graph.limits??{},returns:graph.returns??[]});
         const chunks=[header.slice(0,-1)+',"nodes":{',
           ...Object.entries(nodes).map(([id,node],index)=>(index?',':'')+JSON.stringify(id)+':'+JSON.stringify(node)),
           '},"groups":{',...Object.entries(graph.groups!).map(([id,group],index)=>(index?',':'')+JSON.stringify(id)+':'+JSON.stringify(group)),'}}'];

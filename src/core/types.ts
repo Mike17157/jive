@@ -53,13 +53,12 @@ export interface GraphBody { nodes: Record<string, Node>; groups?: Record<string
 export interface Graph extends GraphBody {
   version: 1;
   label: string;
-  eager?: boolean;
   context?: unknown;
   templates?: Record<string, GraphBody>;
   limits?: Partial<Limits>;
   returns?: string[];
 }
-export interface Limits { maxNodes: number; concurrency: number; timeoutMs: number; maxJevCalls: number }
+export interface Limits { concurrency: number; timeoutMs: number; maxJevCalls: number }
 export type NodeStatus = "pending" | "running" | "done" | "failed" | "yielded" | "blocked" | "skipped" | "cancelled" | "exhausted";
 export interface NodeResult {
   id: string;

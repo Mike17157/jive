@@ -15,7 +15,7 @@ export function runtimeContext(cwd: string, demo = false, env: NodeJS.ProcessEnv
       availability: demo ? "local fixture" : "Configuration only; service availability is established by task calls.",
     },
     defaultGraphLimits: DEFAULT_GRAPH_LIMITS,
-    execution: { parallelNodes: true, serialToolInvocations: true, eagerGraphs: true },
+    execution: { parallelNodes: true, serialToolInvocations: true, streamingGraphs: true },
     savedGraphs: {
       directory: ".jev/runs/<graphId>/",
       unchanged: { tool: "execute_graph_mod", arguments: { base: "<graphId>" } },

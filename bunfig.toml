@@ -1,0 +1,3 @@
+[test]
+# Taskground fixtures and retained agent workspaces own their separate test suites.
+root = "./tests"

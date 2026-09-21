@@ -70,7 +70,7 @@ export async function executeGraph(input: unknown, options: ExecuteOptions): Pro
   const records = new Map<string, NodeResult>();
   const plugins = options.plugins ?? await ExtractorRegistry.load(options.cwd);
   const jev = options.jev ?? new JevClient();
-  let sequence = 0, totalNodes = 0, jevCalls = 0;
+  let sequence = 0, jevCalls = 0;
   let stoppingReason: string | undefined;
   const emit = (type: ExecutionEvent["type"], data: Record<string, unknown>, nodeId?: string) => {
     const event: ExecutionEvent = { sequence: ++sequence, time: Date.now(), graphId, type, nodeId, data };
@@ -97,7 +97,6 @@ export async function executeGraph(input: unknown, options: ExecuteOptions): Pro
     function register(definitions: Record<string, Node | Group>) {
     for (const [key, definition] of Object.entries(definitions)) {
       if (Object.hasOwn(entries, key)) continue;
-      if (++totalNodes > limits.maxNodes) { stop(`Graph node budget (${limits.maxNodes}) exhausted`); throw new Error(stoppingReason); }
       entries[key] = definition;
       const id = prefix + key;
       const record: NodeResult = { id, label: definition.label ?? key, type: "type" in definition ? definition.type : definition.kind, status: "pending" };

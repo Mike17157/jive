@@ -95,7 +95,7 @@ describe("crawl example execution", () => {
     } };
     const report = await executeGraph(BATCH_EXAMPLE, { cwd, jev, trackFileChanges: false });
     expect(report.status).toBe("done");
-    expect((report.requested.merge!.output as any).json).toEqual({ written: 2, failed: 1 });
+    expect((report.requested.merge!.output as any).items[0].output).toEqual({ written: 2, failed: 1 });
     const rows = JSON.parse(await readFile(join(cwd, "ratings.json"), "utf8"));
     expect(rows.map((r: any) => [r.id, r.rating])).toEqual([["a", 2], ["c", 2]]);
     expect(JSON.parse(await readFile(join(cwd, "evidence/2.json"), "utf8"))).toEqual(rows[1]);

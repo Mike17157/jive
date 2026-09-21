@@ -108,6 +108,13 @@ describe("tool parameter schema", () => {
     }
   });
 
+  test("maxNodes is no longer an execution option", () => {
+    const properties = graphToolParameters.properties as Record<string, any>;
+    expect(properties.limits.properties).not.toHaveProperty("maxNodes");
+    expect(rejection({ version: 1, label: "old option", nodes: {}, limits: { maxNodes: 300 } }))
+      .toContain('unknown property "maxNodes"');
+  });
+
   test("fixed values are enums with a type", () => {
     const root = graphToolParameters.properties as Record<string, any>;
     expect(root.version).toMatchObject({ type: "integer", enum: [1] });
@@ -136,8 +143,8 @@ describe("tool parameter schema", () => {
 
 describe("repairGraph shapes seen in sessions", () => {
   test("hoists root fields that were written inside the nodes map", () => {
-    const { value, repairs } = repairGraph({ version: 1, label: "x", nodes: { a: bash, returns: ["a"], limits: { maxNodes: 2 }, onError: "stop" } });
-    expect(value).toEqual({ version: 1, label: "x", nodes: { a: bash, onError: "stop" }, returns: ["a"], limits: { maxNodes: 2 } });
+    const { value, repairs } = repairGraph({ version: 1, label: "x", nodes: { a: bash, returns: ["a"], limits: { concurrency: 2 }, onError: "stop" } });
+    expect(value).toEqual({ version: 1, label: "x", nodes: { a: bash, onError: "stop" }, returns: ["a"], limits: { concurrency: 2 } });
     expect(repairs).toEqual([
       "/nodes/returns: moved to the top level; returns is a sibling of nodes, not a node",
       "/nodes/limits: moved to the top level; limits is a sibling of nodes, not a node",

@@ -820,7 +820,7 @@ export class GraphAgentController implements AgentController {
       const model = this.#snapshot.model;
       const contextLimit = this.#contextLimit(model, this.#snapshot.models);
       const capabilities = structuredClone(this.options.getRuntimeContext?.() ?? runtimeContext(requestStore.cwd, this.options.demo));
-      capabilities.execution.eagerGraphs = Boolean(this.options.supportsStreaming);
+      capabilities.execution.streamingGraphs = Boolean(this.options.supportsStreaming);
       const prefix: PlannerMessage[] = [
         { role: "system", content: plannerSystemPrompt(requestStore.cwd, this.#projectInstructions, this.#projectSkills) },
         { role: "system", content: runtimeContextMessage(capabilities) },
