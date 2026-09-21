@@ -4,6 +4,9 @@
 # Resolves this script through any symlinks (so it can be linked onto PATH), finds
 # a bun to run with, and executes the checkout's TypeScript sources directly. There
 # is no build artifact to go stale: every run compiles the current sources.
+#
+# `jive update` pulls the latest sources into this checkout and refreshes its
+# dependencies; it works for installs made by install.sh or a plain git clone.
 set -e
 
 script=$0
@@ -16,6 +19,22 @@ while [ -L "$script" ]; do
   esac
 done
 repo=$(cd -P "$(dirname "$script")/.." && pwd)
+
+if [ "${1:-}" = "update" ]; then
+  if [ ! -d "$repo/.git" ]; then
+    echo "jive: $repo is not a git checkout; update it with your package manager instead." >&2
+    exit 1
+  fi
+  branch=$(git -C "$repo" rev-parse --abbrev-ref HEAD)
+  git -C "$repo" pull --ff-only origin "$branch"
+  if command -v bun >/dev/null 2>&1; then
+    (cd "$repo" && bun install --production --silent)
+  else
+    (cd "$repo" && npm install --omit=dev --no-audit --no-fund --no-package-lock --silent)
+  fi
+  echo "jive is at $(git -C "$repo" rev-parse --short HEAD)"
+  exit 0
+fi
 
 if [ -x "$repo/node_modules/.bin/bun" ]; then
   bun=$repo/node_modules/.bin/bun

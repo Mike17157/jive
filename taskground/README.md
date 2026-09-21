@@ -8,7 +8,12 @@ bun run taskground list
 bun run taskground run intent_routing --agent jive
 bun run taskground run product_matching --agent codex
 bun run taskground run sembench_movie --agent claude
+bun run taskground run slow_trace_search --agent jive
+bun run taskground run search_results_race --agent jive
 bun run taskground run search_latency --agent jive
+bun run taskground run async_blocking_audit --agent jive
+bun run taskground run error_handling_audit --agent jive
+bun run taskground run retry_audit --agent jive
 ```
 
 Run `npm install --no-package-lock` first if dependencies are absent. If Bun is not
@@ -51,7 +56,12 @@ taskground/
 | `product_matching` | 120 test pairs and 20 dev pairs | 140 |
 | `intent_routing` | 154 test requests across 77 intents; labeled examples supplied for reference | 154 |
 | `conversation_eval` | Three dev rounds of 20 responses + 10 pairs, then 40 test responses + 20 pairs | 150 |
-| `search_latency` | Diagnose uneven latency across search, cache, storage, and audit components using workload profiles, traces, and controlled experiments | ~8 (investigation-dependent) |
+| `slow_trace_search` | Profile and optimize a local Python trace-query engine; same-machine performance and held-out correctness checks | 0 |
+| `search_latency` | Profile recurring, exploratory, and ingesting search traffic; choose experiments and reassess residual bottlenecks | ~12 (investigation-dependent) |
+| `search_results_race` | Debug a local browser search client; deterministic response-order checks and browser evidence | 0 |
+| `async_blocking_audit` | Explore a historical Home Assistant snapshot for blocking calls reachable from the event loop | Investigation-dependent |
+| `error_handling_audit` | Trace failure handling in a pinned Prefect source subset and distinguish hidden failures from valid fallbacks | Investigation-dependent |
+| `retry_audit` | Audit retry behavior in a pinned Airflow source subset, separating defective retries from polling and valid shared policies | Investigation-dependent |
 
 The first four are frozen **development adaptations**, not official full-benchmark scores.
 The counts leave room below 200 for retries/refinements; they assume all five
@@ -163,12 +173,24 @@ It makes no model calls. Downloads live in `taskground/.cache/` (ignored). Revie
 fixture changes before accepting new upstream content. Public dev scorers are
 generated copies of `_shared/score.py`; regenerate them after changing that helper.
 
-## Search latency investigation
+## Fast debugging demos
+
+The three coding tasks are original synthetic fixtures. They start with an intentional
+defect and keep maintainers' reference fixes and held-out checks outside the agent's
+workspace. No helper model calls are required. Start each attempt with a fresh run.
+
+`slow_trace_search` uses Python's standard library. Setup creates deterministic trace
+data. Its workspace README supplies correctness, quick workload, CPU profile, and
+benchmark commands. Verification compares the optimized implementation with the
+frozen starting implementation on the same machine; do not run performance grading
+concurrently with other CPU-heavy work.
 
 `search_latency` extends the profiling task to a local multi-tenant search endpoint
 with caching, batched audit receipts, ingestion, and concurrent callers. Its Python
 standard-library toolkit offers workload overviews, CPU profiles, structured event
-traces, component controls, and uninstrumented benchmarks. The agent designs its
+traces, investigator-selected comparisons, and uninstrumented benchmarks. Separate
+dashboard, exploratory, and ingesting-mixed performance gates reject partial
+reference repairs; construction and ingestion costs are also measured. The agent designs its
 own investigation; no graph or helper-call requirement is supplied. Bounded choices
 between available experiments can drive an adaptive execution graph. The helper
 estimate is an experiment-design expectation, not a quota or a measured result.
@@ -176,35 +198,64 @@ Held-out checks cover audit completeness, freshness, tenant isolation, concurren
 and same-machine speedup. A prepared diagnostic toolkit does not guarantee that an
 agent will use Jev; compare actual run traces to evaluate that behavior.
 
-This is an original synthetic coding task with a seeded performance defect.
-Maintainer reference fixes and held-out checks stay outside the agent workspace.
-Start each attempt with a fresh run. No helper model calls are required.
+`search_results_race` requires Node 20+ and npm. Preparation installs pinned
+Playwright and Chromium; the first setup may download them. On Linux, Chromium host
+libraries must also be installed. Setup is outside the agent's timed execution.
+After preparation, the app, browser commands, tests, and verifier run locally without
+network access. Use `node scripts/browser.mjs start --headed` inside the prepared
+workspace to show the demo, or omit `--headed` for headless operation. The CLI offers
+DOM snapshots, input, clear, reload, network/console events, screenshots, and trace
+capture through shell commands for all agent profiles. Run `node scripts/browser.mjs
+stop` to save the trace and close its processes; direct manual browser sessions are
+not managed by Taskground. The supplied `npm run check` intentionally fails on the
+starting client. See the workspace README for evidence and regression-test requirements.
 
 Maintainer validation (no agent/model calls):
 
 ```sh
+python3 taskground/task_definitions/slow_trace_search/maintainer/smoke.py
 python3 taskground/task_definitions/search_latency/maintainer/smoke.py
+# Install browser dependencies once before running its maintainer smoke test:
+node taskground/task_definitions/search_results_race/workspace/scripts/setup.mjs
+node taskground/task_definitions/search_results_race/verifier/smoke.mjs
 ```
 
-This checks that the baseline fails the performance target, the reference repair
-passes, and disabled auditing or stale cached results are rejected. Run performance
-validation without competing CPU-heavy workloads.
+These checks validate that the seeded implementation fails and a reference fix passes.
+They are fixture validation, not measured agent completion times. The data regeneration
+script above only updates the four dataset adaptations. `bunfig.toml` scopes the
+repository's `bun test` to `tests/`, so it does not discover task fixtures or retained
+agent tests.
 
-## Original task environments
+## Codebase exploration audits
 
-The original larger environments below remain available for manual experiments.
-They are not included in the five-task runner suite or its 200-call guidance.
+`async_blocking_audit`, `error_handling_audit`, and `retry_audit` ask for an
+evidence-backed audit in `work/findings.json` and `work/report.md`. Their workspaces
+contain scoped, pinned upstream source with real historical defects, supporting
+context, and legitimate lookalikes. Each workspace README defines its scope and
+output format. These are source-reading tasks; installing or running the entire
+upstream application is not required. Preparation and verification run locally
+without fetching upstream repositories or contacting external services.
 
-| folder               | task                                                                 | needs                     |
-| -------------------- | -------------------------------------------------------------------- | ------------------------- |
-| `wikipedia_crawl/`   | build the English-Wikipedia flower link graph via the `wikigraph` CLI | python3, network (rate-limited) |
-| `goldmark_profiling/` | profile the goldmark Markdown library (Go) and speed up a component with output-identical, test-green changes | go 1.26+, no network |
-| `conversation_eval/` | design a grading workflow for HelpSteer2 assistant responses, calibrate on labelled dev data, score agreement with human raters on a held-out test split | python3; dataset included; model calls may need network |
+The Prefect and Airflow tasks also include local examples of expected behavior.
+These teach the audit policy; they are identified separately from upstream code.
+Each task's `SOURCE.json` records provenance, licenses, and fixture checksums.
+Maintainer reference findings and grading data stay outside the prepared workspace.
 
-Conventions used by the original task folders:
+The tasks leave search and follow-up choices to the agent. A useful intermediate
+judgment can distinguish a genuine candidate from a lookalike, or identify the
+caller, wrapper, or dependency that needs further inspection. No particular graph
+or helper-call count is required. Evaluate Jev's contribution from execution traces,
+including whether decisions changed subsequent investigation, rather than counting
+calls alone.
 
-- Scripts run from any cwd and write bulky output to a `work/` directory inside the
-  task folder, keeping stdout concise.
-- Reference data (golden outputs, baselines, caches) lives inside the task folder, so
-  a task can be reset without touching the rest of the repo.
-- Paths in each task README are relative to that task folder unless specified otherwise.
+Automated grading checks the documented structured artifacts against a curated
+reference. Passing is evidence of performance on that scoped fixture, not a proof
+that an entire upstream repository is free of other defects. Explanation quality
+and investigation method still need review. Maintainer checks exercise reference
+submissions and invalid or misleading alternatives without model calls:
+
+```sh
+python3 taskground/task_definitions/async_blocking_audit/maintainer/smoke.py
+python3 taskground/task_definitions/error_handling_audit/maintainer/smoke.py
+python3 taskground/task_definitions/retry_audit/maintainer/smoke.py
+```

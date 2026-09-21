@@ -1,5 +1,9 @@
 # Jive vs Codex demos
 
+The recordings and rendered edits are not tracked in git (they are gigabytes of
+video); only the render scripts and this description are. Drop the source
+recordings into `source/` to re-render.
+
 - `source/`: original, unmodified screen recording.
 - `edits/Jive vs Codex - conversation_eval v3.mp4`: current edit.
 - `edits/Jive vs Codex - sembench_movie.mp4`: movie-review task, matching current styling.

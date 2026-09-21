@@ -7,11 +7,15 @@ node_modules/
 coverage/
 dist/
 *.log
+.DS_Store
+__pycache__/
 
-# Upstream clones used as task fixtures (re-clone: lukeed/clsx, yuin/goldmark)
+# Screen recordings and rendered demo videos are too large for git.
+demos/source/
+demos/edits/
+
+# Upstream clones used as task fixtures (re-clone: lukeed/clsx)
 graph-tests/clsx/
-taskground/goldmark_profiling/goldmark/
 taskground/task_runs/*
 !taskground/task_runs/.gitkeep
 taskground/.cache/
-__pycache__/

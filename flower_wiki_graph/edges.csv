@@ -1,7 +1,0 @@
-id,source,target,undirected,wikipedia_link_evidence,source_record
-e1,Nanohana,ISBN (identifier),True,Nanohana -> ISBN (identifier),Q16730268_neighbors.json
-e2,Hops,ISBN (identifier),True,Hops -> ISBN (identifier),Q3214940_neighbors.json
-e3,Banana flower,Banana,True,Banana flower -> Banana,Q31830399_neighbors.json
-e4,Banana,ISBN (identifier),True,Banana -> ISBN (identifier),hub_Banana.json
-e5,Ray florets,Asteraceae,True,Ray florets -> Asteraceae,Q4536561_neighbors.json
-e6,Asteraceae,ISBN (identifier),True,Asteraceae -> ISBN (identifier),hub_Asteraceae.json

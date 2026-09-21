@@ -1,11 +1,39 @@
 {
-  "name": "jive",
+  "name": "@merijjeyn/jive",
   "version": "0.1.0",
-  "private": true,
+  "description": "A terminal coding agent that plans work as executable graphs: bash commands and bounded model decisions run locally as branches, loops, and parallel batches between planner turns.",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/merijjeyn/jive.git"
+  },
+  "homepage": "https://github.com/merijjeyn/jive#readme",
+  "bugs": "https://github.com/merijjeyn/jive/issues",
+  "keywords": [
+    "agent",
+    "cli",
+    "terminal",
+    "llm",
+    "openrouter",
+    "bun",
+    "tui",
+    "graph"
+  ],
   "type": "module",
   "bin": {
     "jive": "./bin/jive"
   },
+  "files": [
+    "bin/jive",
+    "bin/jive.ts",
+    "bin/install.sh",
+    "src",
+    "examples",
+    "docs",
+    "DESIGN.md",
+    "README.md",
+    "LICENSE"
+  ],
   "scripts": {
     "start": "bun src/cli.tsx",
     "demo": "bun src/cli.tsx --demo",
@@ -20,11 +48,11 @@
     "@opentui/core": "0.5.11",
     "@opentui/react": "0.5.11",
     "ajv": "8.20.0",
+    "bun": "1.4.2",
     "marked": "17.0.1",
     "react": "19.3.0"
   },
   "devDependencies": {
-    "bun": "1.4.2",
     "@types/bun": "1.4.2",
     "@types/react": "19.3.0",
     "typescript": "5.9.3"
