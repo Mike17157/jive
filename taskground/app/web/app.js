@@ -388,8 +388,12 @@
     append(task, glyph, taskText);
 
     const agent = node("span", "agent-name", run.agent || "Unknown");
-    if (run.model) agent.append(node("small", "agent-model", run.model));
-    const status = node("span", `status-badge status-${run.status || "unknown"}`, statusLabel(run.status));
+    const status = node("span", "run-status");
+    const model = node("span", "status-model", run.model || "Agent default");
+    model.title = `Model: ${run.model || "Agent default"}`;
+    const effort = node("span", "status-effort", `Effort: ${run.effort || "default"}`);
+    effort.title = `Reasoning effort: ${run.effort || "Agent default"}`;
+    append(status, node("span", `status-badge status-${run.status || "unknown"}`, statusLabel(run.status)), model, effort);
     const elapsed = node("span", "run-time", formatDuration(runElapsed(run), ACTIVE_STATUSES.has(run.status)));
     const date = node("span", "run-date", formatDate(run.createdAt));
     date.append(node("small", "", formatTime(run.createdAt)));
