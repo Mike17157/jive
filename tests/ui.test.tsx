@@ -8,7 +8,7 @@ import { COMMANDS, filterCommands, parseComposerInput, slashQuery } from "../src
 import { EDGE_SWEEP_MS_PER_CELL, edgeCellState, foldableIds, groupSummary, gutterText, layoutGraph, layoutToText, sweepActive, visibleRows } from "../src/ui/graph/layout.ts";
 import { countStatuses, edgeReady, reduceGraphs, statusTone, type UIExecutionEvent } from "../src/ui/graph/model.ts";
 import { orbSize, orbToString, renderOrb } from "../src/ui/orb.ts";
-import { BUILD_WORDS, buildingTitle, changeBadge, changeList, GraphView, toneColor } from "../src/ui/components/GraphView.tsx";
+import { BUILD_WORDS, buildingTitle, changeBadge, changeLines, GraphView, toneColor } from "../src/ui/components/GraphView.tsx";
 import { BUILDING_LABEL } from "../src/core/graph-stream.ts";
 import { palette } from "../src/ui/theme.ts";
 
@@ -416,7 +416,7 @@ describe("graph presentation", () => {
     expect(lines.length).toBeGreaterThan(Object.keys(g!.nodes).length);
   });
 
-  test("changed files are summarised in the title and named on one line", async () => {
+  test("changed files are summarised in the title and named one per line", async () => {
     const changes = {
       total: 3, added: 42, removed: 7,
       files: [
@@ -433,16 +433,17 @@ describe("graph presentation", () => {
       ev("graph.finished", undefined, { status: "done", changes }),
     ]);
     expect(lines[0]).toContain("✎ 3 files +42 −7");
-    expect(lines[1]).toContain("src/core/graph-stream.ts +31 −5");
-    expect(lines[1]).toContain("notes.md +11");
-    expect(lines[1]).toContain("old.txt deleted");
+    expect(lines[1]).toContain("✎ src/core/graph-stream.ts +31 −5");
+    expect(lines[2]).toContain("notes.md +11");
+    expect(lines[2]).not.toContain("✎");
+    expect(lines[3]).toContain("old.txt deleted");
 
     // A single-node call carries the same badge on its one row.
     const solo = await view(single({ status: "done", changes }));
     expect(solo[0]).toContain("✎ 3 files +42 −7");
   });
 
-  test("the named files are capped by the width, and the count says how many were left out", () => {
+  test("the named files stack one per line, capped, with a count for the rest", () => {
     const changes = {
       total: 9, added: 12, removed: 3,
       files: [
@@ -453,12 +454,18 @@ describe("graph presentation", () => {
     };
     expect(changeBadge(changes)).toBe("✎ 9 files +12 −3");
     expect(changeBadge(undefined)).toBeNull();
-    const wide = changeList(changes, 120);
-    expect(wide).toContain("third.ts");
-    expect(wide.endsWith("+6 more")).toBe(true);
-    const narrow = changeList(changes, 44);
-    expect(narrow.length).toBeLessThanOrEqual(44);
-    expect(narrow).toContain("more");
+    const wide = changeLines(changes, 120);
+    // One file per line, in the order the summary gives them, and the rest as a count.
+    expect(wide).toEqual(["a/very/long/path/to/a/file.ts +8 −1", "another/long/path/second.ts +4 −2", "third.ts", "+6 more"]);
+    const narrow = changeLines(changes, 24);
+    expect(narrow.every((line) => line.length <= 24)).toBe(true);
+    // A path that cannot fit gives up its leading directories, never its counts.
+    expect(narrow[0]).toBe("…path/to/a/file.ts +8 −1");
+    expect(narrow.at(-1)).toBe("+6 more");
+    // A long changeset stops at the cap and says how many it left out.
+    const many = { total: 12, added: 0, removed: 0, files: Array.from({ length: 12 }, (_, i) => ({ path: `f${i}.ts`, kind: "modified" as const, added: 1, removed: 0 })) };
+    expect(changeLines(many, 40)).toHaveLength(7);
+    expect(changeLines(many, 40).at(-1)).toBe("+6 more");
   });
 });
 

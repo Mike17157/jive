@@ -13,6 +13,8 @@ const BUILD_DOTS = ["   ", ".  ", ".. ", "..."];
 export const BUILD_WORDS = ["Assembling", "Conducting", "Composing", "Arranging", "Wiring", "Plotting", "Weaving"];
 /** Graphs of this many nodes or fewer are read directly; above it the progress counter earns its place. */
 const COUNTER_MIN_NODES = 5;
+/** Beyond this the file list is a wall of text, and the badge's total covers the rest. */
+const MAX_CHANGE_LINES = 6;
 
 export function toneColor(tone: StatusTone, type?: GraphNode["type"]): string {
   switch (tone) {
@@ -117,26 +119,25 @@ function changeEntry(file: FileChangeSummary["files"][number]): string {
   return file.kind === "deleted" ? `${file.path} deleted` : file.path;
 }
 
+/** A path too long for the line loses its leading directories: the name and counts say more. */
+function fittedEntry(file: FileChangeSummary["files"][number], width: number): string {
+  const entry = changeEntry(file);
+  if (entry.length <= width) return entry;
+  const counts = entry.slice(file.path.length);
+  const room = Math.max(1, width - counts.length);
+  return (file.path.length <= room ? file.path : "…" + file.path.slice(file.path.length - room + 1)) + counts;
+}
+
 /**
- * The named files, as many as fit, closing with how many were left out. The badge
- * already carries the total, so a truncated list still tells the whole count.
+ * One line per changed file, closing with how many were left out. The badge already
+ * carries the total, so a shortened list still tells the whole count.
  */
-export function changeList(changes: FileChangeSummary, width: number): string {
-  const shown: string[] = [];
-  let used = 0;
-  for (const [index, file] of changes.files.entries()) {
-    const entry = changeEntry(file);
-    const cost = (shown.length ? 3 : 0) + entry.length;
-    const remaining = changes.total - (index + 1);
-    const reserve = remaining > 0 ? 3 + `+${remaining} more`.length : 0;
-    if (shown.length && used + cost + reserve > width) break;
-    shown.push(entry);
-    used += cost;
-  }
+export function changeLines(changes: FileChangeSummary, width: number, max = MAX_CHANGE_LINES): string[] {
+  const shown = changes.files.slice(0, Math.max(1, max));
+  const lines = shown.map((file) => fittedEntry(file, width));
   const rest = changes.total - shown.length;
-  // The count of what is missing survives a narrow terminal; a path may lose its tail.
-  const suffix = rest > 0 ? `${shown.length ? " · " : ""}+${rest} more` : "";
-  return truncate(shown.join(" · "), Math.max(1, width - suffix.length)) + suffix;
+  if (rest > 0) lines.push(`+${rest} more`);
+  return lines;
 }
 
 export interface GraphViewProps {
@@ -291,11 +292,14 @@ export function GraphView(props: GraphViewProps) {
           {"  " + graph.reason}
         </text>
       ) : null}
-      {graph.changes ? (
-        <text fg={palette.textFaint} wrapMode="none">
-          {"  ✎ " + changeList(graph.changes, Math.max(12, width - 5))}
-        </text>
-      ) : null}
+      {/* One file per line: a row of paths separated by dots reads as prose, a column reads as a list. */}
+      {graph.changes
+        ? changeLines(graph.changes, Math.max(12, width - 5)).map((line, i) => (
+            <text key={`change:${i}`} fg={palette.textFaint} wrapMode="none">
+              {(i === 0 ? "  ✎ " : "    ") + line}
+            </text>
+          ))
+        : null}
       {only ? null : layout.rows.map((row, i) => (
         <Fragment key={row.id}>
           {i > 0 && row.node.needs.includes(layout.rows[i-1]!.id) ? (
