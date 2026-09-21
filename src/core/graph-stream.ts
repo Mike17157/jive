@@ -1,8 +1,8 @@
-import { repairGraph, strayEntryTarget, validateGraph } from "./schema";
+import { BUILDING_LABEL, defaultGraphLabel, repairGraph, strayEntryTarget, validateGraph } from "./schema";
 import type { Graph } from "./types";
 
 /** The header a graph carries until the stream names it; the UI cycles a word over it. */
-export const BUILDING_LABEL = "Building graph";
+export { BUILDING_LABEL } from "./schema";
 
 export interface GraphStreamUpdate {
   kind: "preview" | "commit";
@@ -36,8 +36,9 @@ type NumberState = "start" | "sign" | "zero" | "integer" | "dot" | "fraction" | 
 
 const MAX_BYTES = 4 * 1024 * 1024;
 const MAX_DEPTH = 256;
-const EAGER_HEADERS = ["version", "label", "context", "templates", "limits", "returns"] as const;
-const ROOT_HEADERS = new Set(["eager", ...EAGER_HEADERS, "output"]);
+const ROOT_HEADERS = new Set(["version", "label", "context", "templates", "limits", "output"]);
+/** Root fields that name the graph rather than shape its execution; they may arrive at any point. */
+const NAMING_HEADERS = new Set(["version", "label"]);
 
 function isWhitespace(character: string): boolean {
   return character === " " || character === "\n" || character === "\r" || character === "\t";
@@ -74,14 +75,13 @@ export class GraphStreamParser {
   #repairs = new Set<string>();
 
   #rootValues = new Map<string, unknown>();
-  #completedHeaders = new Set<string>();
   #nodes = new Map<string, unknown>();
   #groups = new Map<string, unknown>();
   #workMaps = new Set<"nodes" | "groups">();
-  #workStarted = false;
   #headerLocked = false;
   #headerValidated = false;
-  #eager = false;
+  // Hosts without streaming support (and later serial tool calls) only need previews.
+  constructor(private readonly commitEntries = true) {}
 
   push(delta: string): GraphStreamUpdate[] {
     this.#assertUsable();
@@ -386,17 +386,18 @@ export class GraphStreamParser {
     // A settings field really cannot be applied once work is committed. An unknown key is
     // decided by its value in #adoptStray, because a node written past a prematurely closed
     // nodes map is recoverable and arrives here indistinguishable from a late header.
-    if (this.#headerLocked && ROOT_HEADERS.has(key)) {
-      throw new Error(`Eager graph header is frozen; late root field ${JSON.stringify(key)} is not allowed.`);
+    if (this.#headerLocked && ROOT_HEADERS.has(key) && !NAMING_HEADERS.has(key)) {
+      throw new Error(`Streamed graph header is frozen; late root field ${JSON.stringify(key)} is not allowed.`);
     }
   }
 
   /** A definition written beside the map it belongs in is moved into it rather than rejected. */
   #adoptStray(key: string, value: unknown): boolean {
+    if (key === "returns") return false;
     const target = strayEntryTarget(key, value);
     if (!target) {
-      if (!this.#headerLocked) return false;
-      throw new Error(`Eager graph header is frozen; late root field ${JSON.stringify(key)} is not allowed.`);
+      if (!this.#headerLocked || NAMING_HEADERS.has(key)) return false;
+      throw new Error(`Streamed graph header is frozen; late root field ${JSON.stringify(key)} is not allowed.`);
     }
     const entries = target === "nodes" ? this.#nodes : this.#groups;
     if (entries.has(key)) throw new Error(`Duplicate ${target} entry ${JSON.stringify(key)} at ${pathLabel([key])}.`);
@@ -407,15 +408,10 @@ export class GraphStreamParser {
   }
 
   #beginWorkMap(key: "nodes" | "groups", valueKind: "object" | "array" | "primitive"): void {
-    this.#workStarted = true;
     this.#workMaps.add(key);
-    if (!this.#eager) return;
+    if (!this.commitEntries) return;
     this.#headerLocked = true;
-    const missing = EAGER_HEADERS.filter((header) => !this.#completedHeaders.has(header));
-    if (missing.length) {
-      throw new Error(`Eager graph is missing completed header fields before ${key}: ${missing.join(", ")}.`);
-    }
-    if (valueKind !== "object") throw new Error(`Eager graph ${key} must be an object.`);
+    if (valueKind !== "object") throw new Error(`Streamed graph ${key} must be an object.`);
     this.#validateHeader();
   }
 
@@ -427,19 +423,12 @@ export class GraphStreamParser {
         if (this.#adoptStray(key, value)) {
           // Only work that arrives after the frozen header is a commitment; a stray entry
           // written before nodes begins stays a preview until the header is complete.
-          const commit = this.#eager && this.#headerLocked;
+          const commit = this.commitEntries && this.#headerLocked;
           const graph = commit ? this.#commitGraph() : this.#previewGraph();
           this.#updates.push({ kind: commit ? "commit" : "preview", graph: structuredClone(graph) });
           return;
         }
         this.#rootValues.set(key, value);
-        if (ROOT_HEADERS.has(key)) this.#completedHeaders.add(key);
-        if (key === "eager") {
-          if (value === true && this.#workStarted) {
-            throw new Error("eager:true must be fully declared before nodes or groups begins.");
-          }
-          this.#eager = value === true;
-        }
       }
       return;
     }
@@ -451,9 +440,9 @@ export class GraphStreamParser {
       const value = this.#parseSlice(start, end, path);
       const entries = path[0] === "nodes" ? this.#nodes : this.#groups;
       entries.set(path[1], value);
-      const graph = this.#eager ? this.#commitGraph() : this.#previewGraph();
+      const graph = this.commitEntries ? this.#commitGraph() : this.#previewGraph();
       this.#updates.push({
-        kind: this.#eager ? "commit" : "preview",
+        kind: this.commitEntries ? "commit" : "preview",
         graph: structuredClone(graph),
       });
     }
@@ -497,9 +486,12 @@ export class GraphStreamParser {
   #buildGraph(commit: boolean): Graph {
     const value: Record<string, unknown> = {
       version: this.#rootValues.has("version") ? this.#rootValues.get("version") : 1,
-      label: this.#rootValues.has("label") ? this.#rootValues.get("label") : BUILDING_LABEL,
       nodes: Object.fromEntries(this.#nodes),
     };
+    // A graph the model never named takes its title from its first node; until one arrives the
+    // preview keeps the placeholder the UI animates. The commit path repairs this the same way.
+    const label = this.#rootValues.get("label");
+    value.label = typeof label === "string" && label.trim() ? label : commit || this.#nodes.size ? defaultGraphLabel(value.nodes) : BUILDING_LABEL;
     for (const [key, entry] of this.#rootValues) {
       if (key !== "version" && key !== "label" && key !== "returns") value[key] = entry;
     }

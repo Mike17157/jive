@@ -10,12 +10,12 @@ const positive = { type: "integer", minimum: 1 };
 export const graphSchema: Record<string, any> = {
   type: "object", additionalProperties: false, required: ["version", "label", "nodes"],
   properties: {
-    version: { const: 1 }, label: { type: "string", minLength: 1, maxLength: 200 }, eager: { type: "boolean" }, context: {},
+    version: { const: 1 }, label: { type: "string", minLength: 1, maxLength: 200 }, context: {},
     nodes: { $ref: "#/$defs/nodes" }, groups: { $ref: "#/$defs/groups" }, output: {},
     templates: { type: "object", maxProperties: 100, additionalProperties: { $ref: "#/$defs/body" } },
     returns: { type: "array", items: { type: "string" }, uniqueItems: true },
     limits: { type: "object", additionalProperties: false, properties: {
-      maxNodes: { ...positive, maximum: 5000 }, concurrency: { ...positive, maximum: 32 },
+      concurrency: { ...positive, maximum: 32 },
       timeoutMs: { ...positive, maximum: 3600000 }, maxJevCalls: { type: "integer", minimum: 0, maximum: 1000 },
     } },
   },
@@ -149,7 +149,7 @@ export function formatValidationErrors(root: unknown, errors: AjvError[]): strin
 }
 
 /** Root fields that models sometimes write inside the nodes map after closing it late. */
-const HOISTABLE_ROOT_KEYS = ["returns", "limits", "context", "templates", "groups", "eager", "output"] as const;
+const HOISTABLE_ROOT_KEYS = ["returns", "limits", "context", "templates", "groups", "output"] as const;
 /** Every field the root object defines; anything else there is a mistake, not a setting. */
 const ROOT_FIELDS: ReadonlySet<string> = new Set(Object.keys(graphSchema.properties));
 const ENTRY_ID = /^[a-zA-Z][a-zA-Z0-9_-]*$/;
@@ -186,6 +186,29 @@ function repairExpressions(value: unknown, path: string, repairs: string[]): unk
   return Object.fromEntries(keys.map(key => [key, repairExpressions(record[key], `${path}/${key}`, repairs)]));
 }
 
+/** Label shown for a graph while it has no label and no node to name it after yet. */
+export const BUILDING_LABEL = "Building graph";
+const LABEL_MAX = 60;
+
+/**
+ * A short title for a graph the model did not name: the first node's own label, else the first
+ * line of its script, else its id. Falls back to BUILDING_LABEL when there is nothing to name it after.
+ */
+export function defaultGraphLabel(nodes: unknown): string {
+  if (!nodes || typeof nodes !== "object" || Array.isArray(nodes)) return BUILDING_LABEL;
+  for (const [id, entry] of Object.entries(nodes as Record<string, unknown>)) {
+    const node = entry && typeof entry === "object" && !Array.isArray(entry) ? entry as Record<string, unknown> : {};
+    const candidates = [node.label, typeof node.script === "string" ? node.script.trim().split("\n")[0] : undefined, id];
+    for (const candidate of candidates) {
+      if (typeof candidate !== "string") continue;
+      const text = candidate.trim().replace(/\s+/g, " ");
+      if (!text) continue;
+      return text.length > LABEL_MAX ? `${text.slice(0, LABEL_MAX - 1)}…` : text;
+    }
+  }
+  return BUILDING_LABEL;
+}
+
 /**
  * Normalize the mistakes that models on loosely-typed tool schemas make most: version sent as the
  * string "1", nodes/groups/templates/context sent as JSON-encoded strings, root fields written
@@ -197,6 +220,7 @@ export function repairGraph(value: unknown): { value: unknown; repairs: string[]
   const repairs: string[] = [];
   const graph: Record<string, unknown> = { ...(value as Record<string, unknown>) };
   if (graph.version === "1") { graph.version = 1; repairs.push('/version: coerced the string "1" to the number 1'); }
+  if (graph.version === undefined) { graph.version = 1; repairs.push("/version: missing; assumed the only contract version, 1"); }
   const parseEmbedded = (target: Record<string, unknown>, key: string, path: string) => {
     const raw = target[key];
     if (typeof raw !== "string") return;
@@ -241,6 +265,10 @@ export function repairGraph(value: unknown): { value: unknown; repairs: string[]
   }
   // context is data and may legitimately hold {path: ...}; only program text is rewritten.
   for (const key of ["nodes", "groups", "templates"]) if (graph[key] !== undefined) graph[key] = repairExpressions(graph[key], `/${key}`, repairs);
+  if (typeof graph.label !== "string" || graph.label.trim() === "") {
+    graph.label = defaultGraphLabel(graph.nodes);
+    repairs.push(`/label: missing; named the graph ${JSON.stringify(graph.label)} after its first node`);
+  }
   return { value: graph, repairs };
 }
 

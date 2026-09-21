@@ -605,9 +605,8 @@ describe("OpenRouter planner", () => {
   test("schema rejections carry a readable message, a hint, and a minimal example", async () => {
     const { toolResult } = await runOneGraph("{}", async () => { throw new Error("must not execute"); });
     expect(toolResult.status).toBe("error");
-    expect(toolResult.error).toBe(
-      'Invalid graph: / is missing required property "version"; / is missing required property "label"; / is missing required property "nodes"',
-    );
+    // A missing version or label is repaired, not rejected; only the work itself is required.
+    expect(toolResult.error).toBe('Invalid graph: / is missing required property "nodes"');
     expect(toolResult.hint).toContain("version is the JSON number 1");
     expect(toolResult.example).toEqual({ version: 1, label: "List files", nodes: { list: { type: "bash", script: "ls -la" } }, returns: ["list"] });
   });
