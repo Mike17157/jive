@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import argparse
 import json
 import os
 import shutil
@@ -76,8 +77,7 @@ def public_tests(workspace: Path) -> None:
 
 
 def generate_evidence(workspace: Path, label: str) -> None:
-    # These commands intentionally run serially. Benchmark fixture load is
-    # outside the scripts' measurements by contract.
+    # All timing commands run serially; artifacts expose construction separately.
     run(
         [sys.executable, "scripts/diagnose.py", "profile", "--workload", "mixed", "--requests", "72", "--output", "work"],
         workspace,
@@ -93,6 +93,9 @@ def generate_evidence(workspace: Path, label: str) -> None:
         workspace,
         timeout=240,
     )
+    for workload in ("dashboard", "exploratory"):
+        run([sys.executable, "scripts/diagnose.py", "benchmark", "--workload", workload,
+             "--output", f"work/{workload}"], workspace, timeout=240)
     benchmark = json.loads((workspace / "work/benchmark.json").read_text(encoding="utf-8"))
     (workspace / "work/report.md").write_text(
         "# Search latency investigation\n\n"
@@ -100,7 +103,7 @@ def generate_evidence(workspace: Path, label: str) -> None:
         "The trace evidence includes cache outcomes, storage scans, and audit commits, while the profile shows "
         "where request time was spent. The controlled workload keeps caching and auditing enabled.\n\n"
         "Correctness was checked with the public unit suite and the held-out verifier. The benchmark excludes "
-        "service construction and fixture loading.\n\n"
+        "service construction, which is reported separately along with lifecycle costs.\n\n"
         f"The observed local benchmark median was {benchmark.get('medianSeconds')} seconds.\n",
         encoding="utf-8",
     )
@@ -150,6 +153,9 @@ def assert_correctness_negative(report: dict[str, Any], label: str) -> None:
 
 
 def main() -> None:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--output", type=Path, help="retain full verifier reports as calibration evidence")
+    args = parser.parse_args()
     with tempfile.TemporaryDirectory(prefix="search-latency-smoke-") as temporary_name:
         temporary = Path(temporary_name)
         workspace = temporary / "workspace"
@@ -162,25 +168,37 @@ def main() -> None:
         public_tests(workspace)
         generate_evidence(workspace, "seeded baseline")
 
+        print("checking baseline", flush=True)
         baseline = verify(workspace, temporary / "baseline.json", "failed", 1)
         baseline_failures = failed_check_names(baseline)
-        if "calibrated mixed-workload speedup" not in baseline_failures:
-            raise RuntimeError(
-                "seeded baseline unexpectedly met the performance target: "
-                + repr(sorted(baseline_failures))
-            )
-        forbidden = baseline_failures - {"calibrated mixed-workload speedup"}
-        if forbidden:
-            raise RuntimeError(
-                "seeded baseline should pass correctness, integrity, and evidence checks; also failed: "
-                + repr(sorted(forbidden))
-            )
+        performance_checks = {f"performance: {name}" for name in ("dashboard", "exploratory", "mixed")}
+        if baseline_failures != performance_checks:
+            raise RuntimeError(f"baseline should fail only all performance gates: {sorted(baseline_failures)}")
+
+        partials = {}
+        for variant, required_failure, required_pass in (
+            ("invalidation_only", "exploratory", "dashboard"),
+            ("selective_only", "dashboard", "exploratory"),
+        ):
+            print(f"checking {variant}", flush=True)
+            partial = temporary / variant
+            shutil.copytree(workspace, partial, ignore=shutil.ignore_patterns("__pycache__", "*.pyc"))
+            run(["patch", "-p1", "-i", str(DEFINITION / f"maintainer/{variant}.patch")], partial)
+            generate_evidence(partial, variant)
+            report = verify(partial, temporary / f"{variant}.json", "failed", 1)
+            failures = failed_check_names(report)
+            if f"performance: {required_failure}" not in failures or failures - performance_checks:
+                raise RuntimeError(f"{variant} rejected for wrong reasons: {sorted(failures)}")
+            if f"performance: {required_pass}" in failures:
+                raise RuntimeError(f"{variant} should pass its isolated workload: {sorted(failures)}")
+            partials[variant] = report["metrics"]["workloads"]
 
         run(
             ["patch", "-p1", "-i", str(DEFINITION / "maintainer/reference_fix.patch")],
             workspace,
             timeout=30,
         )
+        print("checking full reference and correctness mutations", flush=True)
         public_tests(workspace)
         generate_evidence(workspace, "reference-fixed")
         fixed = verify(workspace, temporary / "fixed.json", "passed", 0)
@@ -197,11 +215,35 @@ def main() -> None:
         stale_report = verify(stale_negative, temporary / "stale-ingest.json", "failed", 1)
         assert_correctness_negative(stale_report, "stale-ingest")
 
+        index_negatives = {}
+        for label, old, new in (
+            ("timestamp-order", "positions = sorted(position for _, position in entries[lower:upper])",
+             "positions = [position for _, position in entries[lower:upper]]"),
+            ("stale-index", "self._time_index[tenant] = updated_index", "pass  # do not publish index changes"),
+        ):
+            negative = temporary / label
+            shutil.copytree(workspace, negative, ignore=shutil.ignore_patterns("__pycache__", "*.pyc"))
+            storage = negative / "searchapp/storage.py"
+            source = storage.read_text()
+            if source.count(old) != 1:
+                raise RuntimeError(f"reference changed: cannot apply {label} mutation")
+            storage.write_text(source.replace(old, new))
+            report = verify(negative, temporary / f"{label}.json", "failed", 1)
+            assert_correctness_negative(report, label)
+            index_negatives[label] = report["status"]
+
+        if args.output:
+            args.output.mkdir(parents=True, exist_ok=True)
+            for path in temporary.glob("*.json"):
+                shutil.copy2(path, args.output / path.name)
+
         print(json.dumps({
             "baselineStatus": baseline["status"],
             "baselineFailures": sorted(baseline_failures),
             "referenceStatus": fixed["status"],
-            "referenceSpeedup": fixed["metrics"]["speedup"],
+            "referenceSpeedups": {k: v["speedup"] for k, v in fixed["metrics"]["workloads"].items()},
+            "partialSpeedups": {name: {k: v["speedup"] for k, v in workloads.items()} for name, workloads in partials.items()},
+            "indexNegativeStatuses": index_negatives,
             "auditNegativeStatus": audit_report["status"],
             "staleIngestNegativeStatus": stale_report["status"],
         }, indent=2, sort_keys=True))

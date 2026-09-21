@@ -1,52 +1,51 @@
 # Maintaining search_latency
 
-This is a fixture for evaluating adaptive investigation, not a prescribed graph
-or a claim that helper calls improve every run. Its workspace is deliberately
-agent-neutral. The task runner copies only `workspace/` to the agent's repository;
-this directory and `verifier/` remain outside it.
+Version 2 evaluates iterative profiling across recurring dashboard searches,
+exploratory time windows, and mixed traffic with ingestion. The original fixture
+was solved by one global-to-tenant revision change. That repair must now fail the
+exploratory gate; the selective-access-only repair must fail the dashboard gate.
+See DESIGN.md for the complete contract and reference implementation rationale,
+and CALIBRATION.md for measured partial/full repair results.
 
-The application exposes several plausible first explanations for mixed-traffic
-latency: decoding/filtering cost, cache reuse, serialized access, response copies,
-and audit work. Profiling shows where time goes; a controlled experiment plus
-event/source relationships explains why that work recurs. Baseline public tests
-pass. The intended repair changes the catalog token from the global commit
-revision to the tenant's searchable-data revision. Audit writes still persist,
-and ingestion still invalidates results. See `reference_fix.patch`.
-
-Run the fixture validation without any model calls:
+Run validation without agent/model calls:
 
 ```sh
-python3 taskground/task_definitions/search_latency/maintainer/smoke.py
 python3 -m unittest discover -s taskground/task_definitions/search_latency/maintainer -p 'test_*.py' -v
+python3 taskground/task_definitions/search_latency/maintainer/smoke.py --output /tmp/search-latency-calibration
 ```
 
-The smoke check uses temporary workspaces, verifies that the starting application
-fails the speed requirement, applies the reference repair, and checks that it
-passes. Deliberately disabling auditing or breaking ingestion must be rejected.
-Benchmark samples are serial and service construction is excluded. Do not run this
-alongside other CPU-heavy checks. Exact ratios depend on the machine.
+Smoke uses temporary workspaces, checks baseline and both partial repairs, checks
+the full reference, and rejects disabled auditing, stale ingestion, timestamp-sorted
+responses, and stale timestamp indexes. Optional
+output retains complete verifier reports (samples, per-workload speedups,
+construction/ingestion/lifecycle costs, correctness and evidence results).
+All timings run serially; avoid competing CPU-heavy jobs. Exact ratios vary by
+machine. When changing workload sizes, schedules, or thresholds, recalibrate all
+four variants; full-reference success alone is insufficient.
 
-For agent trials, start a fresh Taskground run:
+Reference patches modify only searchapp/. Seeded and repaired implementations
+must pass public correctness tests. The timestamp reference preserves original
+arrival order and duplicates, handles bounds and out-of-order ingestion, and
+maintains the existing locking and response-copy semantics. Alternative repairs
+are accepted if they meet the same public contract and performance gates.
+
+For fresh agent trials:
 
 ```sh
 bun run taskground run search_latency --agent jive
 bun run taskground verify RUN_ID --json
 ```
 
-Useful investigation graph decisions could route from workload observations to
-cache, storage, or contention evidence; choose controlled experiments; and decide
-whether another prepared probe is needed. Jev should receive the relevant source,
-observations, candidate explanations, and task constraints. It does not generate
-the repair. Raw counts, digests, and timing comparisons belong in code. There is
-no requirement to use Jev, and no supplied graph to replay.
+Existing task runs contain frozen definitions and are not updated by these edits.
+The agent workspace contains no supplied graph or Jev quota. A harder task cannot
+guarantee helper use. For a showcase, encourage evidence-based probe selection in
+agent execution guidance; for evaluation, retain neutral task instructions and
+compare planner-only and Jev-enabled runs.
 
-Compare planner-only and graph/Jev trials using diagnosis correctness, unnecessary
-probes, planner round trips, tokens/cost, elapsed time, and final behavior. A call
-only demonstrates useful delegation if its result leads to meaningful work before
-the planner resumes, or avoids substantial evidence interpretation by the planner.
-Do not score an arbitrary call quota as success. Record full graph and model
-traces; the automated verifier cannot establish causal reasoning quality.
-
-The initial version contains one reproducible defect. Data, tenants, query shapes,
-and ingestion sequences differ in hidden validation. Randomly selecting among
-multiple defect families is a possible later extension, not implemented here.
+A useful Jev decision receives source excerpts, profiles, grouped telemetry,
+previous experiments, and a bounded set of candidate probes. The selected probe
+must run before the planner resumes. A later decision can reassess residual cost
+after the first fix. Deterministic calculations stay in code; original repair
+implementation stays with the planner. Track useful branch decisions, planner
+round trips, unnecessary probes, final correctness, performance, elapsed time,
+and tokens/cost. Mere call count or post-hoc hypothesis labeling is not success.

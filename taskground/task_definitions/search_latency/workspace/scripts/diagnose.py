@@ -23,6 +23,8 @@ if str(ROOT) not in sys.path:
 
 from support import (  # noqa: E402
     EventRecorder,
+    group_summaries,
+    phase_summaries,
     WORKLOADS,
     build_workload,
     execute_profiled_workers,
@@ -59,6 +61,10 @@ def add_common_options(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--audit-batch-size", type=int, default=4)
     parser.add_argument("--output", type=Path, default=ROOT / "work")
     parser.add_argument("--data", type=Path, default=ROOT / "data" / "traces.jsonl")
+    parser.add_argument("--query-reuse", type=positive_integer, default=6, help="number of recurring dashboard keys")
+    parser.add_argument("--window-width", type=positive_integer, default=64, help="inclusive exploratory window width")
+    parser.add_argument("--ingest-every", type=int, default=None, help="request interval; 0 disables (default: mixed 24, others 0)")
+    parser.add_argument("--ingest-batch-size", type=positive_integer, default=24)
 
 
 def parse_args() -> argparse.Namespace:
@@ -67,6 +73,9 @@ def parse_args() -> argparse.Namespace:
     for command in ("overview", "profile", "trace", "compare", "benchmark"):
         child = subparsers.add_parser(command)
         add_common_options(child)
+        if command == "compare":
+            child.add_argument("--vary", required=True, choices=("audit", "cache", "audit-batch-size", "query-reuse", "window-width", "ingest-every", "ingest-batch-size"))
+            child.add_argument("--values", nargs="+", required=True, help="two or more values for the chosen variable")
     return parser.parse_args()
 
 
@@ -82,9 +91,19 @@ def validate_args(args: argparse.Namespace) -> None:
         raise SystemExit("--workers must be positive")
     if args.audit_batch_size < 1:
         raise SystemExit("--audit-batch-size must be positive")
+    if args.ingest_every is not None and args.ingest_every < 0:
+        raise SystemExit("--ingest-every must be nonnegative")
     if not args.data.is_file():
         raise SystemExit(f"data file not found: {args.data}")
     args.output.mkdir(parents=True, exist_ok=True)
+
+
+def workload_options(args: argparse.Namespace) -> dict[str, Any]:
+    return {key: getattr(args, key) for key in ("query_reuse", "window_width", "ingest_every", "ingest_batch_size")}
+
+
+def ingestion_interval(args: argparse.Namespace) -> int:
+    return (24 if args.workload == "mixed" else 0) if args.ingest_every is None else args.ingest_every
 
 
 def measured(args: argparse.Namespace, workload: str | None = None) -> tuple[dict[str, Any], list[dict[str, Any]]]:
@@ -99,6 +118,7 @@ def measured(args: argparse.Namespace, workload: str | None = None) -> tuple[dic
         cache_enabled=args.cache,
         audit_batch_size=args.audit_batch_size,
         recorder=recorder,
+        **workload_options(args),
     )
     events = recorder.snapshot()
     summary["metrics"] = summarize_events(events)
@@ -138,33 +158,25 @@ def trace(args: argparse.Namespace) -> dict[str, Any]:
 
 
 def compare(args: argparse.Namespace) -> dict[str, Any]:
-    configurations = (
-        ("default", args.audit, args.cache),
-        ("auditOff", False, args.cache),
-        ("cacheOff", args.audit, False),
-    )
-    results: dict[str, Any] = {}
-    for name, audit_enabled, cache_enabled in configurations:
-        recorder = EventRecorder()
-        summary, _ = run_measurement(
-            args.data,
-            workload=args.workload,
-            requests=args.requests,
-            workers=resolved_workers(args),
-            audit_enabled=audit_enabled,
-            cache_enabled=cache_enabled,
-            audit_batch_size=args.audit_batch_size,
-            recorder=recorder,
-        )
-        summary["metrics"] = summarize_events(recorder.snapshot())
-        results[name] = summary
-    artifact = {"schemaVersion": 1, "command": "compare", "configurations": results}
+    if len(args.values) < 2 or len(set(args.values)) != len(args.values):
+        raise ValueError("compare requires at least two distinct values")
+    results = {}
+    field = args.vary.replace("-", "_")
+    for value in args.values:
+        selected = argparse.Namespace(**vars(args))
+        parsed = on_off(value) if field in ("audit", "cache") else int(value)
+        if field not in ("audit", "cache") and (parsed < 0 or (parsed == 0 and field != "ingest_every")):
+            raise ValueError("comparison values must be positive (ingest-every also accepts 0)")
+        setattr(selected, field, parsed)
+        result, _ = measured(selected)
+        results[value] = result
+    artifact = {"schemaVersion": 1, "command": "compare", "variable": args.vary,
+                "configurations": results,
+                "sameResponseDigest": len({r["responseDigest"] for r in results.values()}) == 1}
     write_json(args.output / "compare.json", artifact)
-    return {
-        "artifact": str(args.output / "compare.json"),
-        "elapsedSeconds": {name: value["elapsedSeconds"] for name, value in results.items()},
-        "responseDigests": {name: value["responseDigest"] for name, value in results.items()},
-    }
+    return {"artifact": str(args.output / "compare.json"), "variable": args.vary,
+            "elapsedSeconds": {name: value["elapsedSeconds"] for name, value in results.items()},
+            "sameResponseDigest": artifact["sameResponseDigest"]}
 
 
 def benchmark(args: argparse.Namespace) -> dict[str, Any]:
@@ -179,6 +191,7 @@ def benchmark(args: argparse.Namespace) -> dict[str, Any]:
             cache_enabled=args.cache,
             audit_batch_size=args.audit_batch_size,
             recorder=None,
+            **workload_options(args),
         )
         sample_results.append(summary)
     samples = [sample["elapsedSeconds"] for sample in sample_results]
@@ -196,6 +209,11 @@ def benchmark(args: argparse.Namespace) -> dict[str, Any]:
         "command": "benchmark",
         "workload": args.workload,
         "requestsPerSample": args.requests,
+        "parameters": {**workload_options(args), "ingest_every": ingestion_interval(args)},
+        "loadSamplesSeconds": [s["loadSeconds"] for s in sample_results],
+        "lifecycleSamplesSeconds": [s["lifecycleSeconds"] for s in sample_results],
+        "groupSamples": [s["groups"] for s in sample_results],
+        "phaseSamples": [s["phases"] for s in sample_results],
         "workers": resolved_workers(args),
         "auditEnabled": args.audit,
         "cacheEnabled": args.cache,
@@ -227,13 +245,13 @@ def profile(args: argparse.Namespace) -> dict[str, Any]:
         cache_capacity=64,
         recorder=recorder,
     )
-    payloads = build_workload(args.workload, args.requests)
+    payloads = build_workload(args.workload, args.requests, query_reuse=args.query_reuse, window_width=args.window_width)
     workers = resolved_workers(args)
     try:
         if workers == 1:
             profiler = cProfile.Profile()
             responses, latencies, elapsed = profiler.runcall(
-                execute_workload, service, payloads, workers
+                execute_workload, service, payloads, workers, ingestion_interval(args), args.ingest_batch_size
             )
             profilers = [profiler]
             profile_mode = "serial-main-thread"
@@ -243,13 +261,14 @@ def profile(args: argparse.Namespace) -> dict[str, Any]:
             )
         else:
             responses, latencies, elapsed, profilers = execute_profiled_workers(
-                service, payloads, workers
+                service, payloads, workers, ingestion_interval(args), args.ingest_batch_size
             )
             profile_mode = "per-request-worker-aggregate"
             timing_explanation = (
                 "Each request task is profiled in its executing worker thread. Function "
                 "times in profile.pstats are summed across task profiles and can exceed "
-                "wall elapsed time when worker execution overlaps."
+                "wall elapsed time when worker execution overlaps. Ingestion at batch barriers is included "
+                "in wall time and telemetry but not worker CPU profiles."
             )
     finally:
         service.close()
@@ -275,6 +294,9 @@ def profile(args: argparse.Namespace) -> dict[str, Any]:
         "command": "profile",
         "workload": args.workload,
         "requests": args.requests,
+        "parameters": {**workload_options(args), "ingest_every": ingestion_interval(args)},
+        "groups": group_summaries(payloads, latencies, events),
+        "phases": phase_summaries(payloads, latencies, events, ingestion_interval(args)),
         "workers": workers,
         "auditEnabled": args.audit,
         "cacheEnabled": args.cache,

@@ -2,8 +2,9 @@
 
 `searchapp` is a local multi-tenant trace search endpoint. It has request planning,
 a bounded result cache, a document store, response serialization, and batched audit
-receipts. The endpoint returns correct results, but latency under recurring mixed
-traffic is unexpectedly high. Investigate the cause and make a maintainable fix.
+receipts. The endpoint returns correct results, but dashboard searches, exploratory
+time-window searches, and mixed traffic with ingestion are unexpectedly expensive.
+Investigate the causes and make maintainable improvements.
 
 This environment uses Python 3.10+ and the standard library. There is no server to
 start, network service, or dependency installation. The endpoint is exercised
@@ -52,7 +53,8 @@ these keys, in this order: `id`, `timestamp`, `service`, `level`, `message`, `ta
 Text fields and tags are strings; timestamp is an integer. Tags keep their order
 and duplicates. Records retain insertion order and duplicate records stay
 duplicated. Unknown query/record fields are ignored. Required fields are present
-in valid input. Blank lines in the seed file are ignored.
+in valid input. Blank lines in the seed file are ignored. Arrival order is
+independent of timestamp order, including within ingestion batches.
 
 Every successful request, including a cached result or an empty result, produces
 one audit receipt containing `request_id`, `tenant`, and `row_count`. Receipts are
@@ -70,70 +72,116 @@ with concurrent requests must be thread-safe.
 
 ## Diagnostic tools
 
-Setup runs automatically when Taskground prepares a workspace. To reproduce the
-same seed inputs manually, run `python3 scripts/setup.py`. Do not change supplied
-inputs. Experiments with different generated data must use a separate output path.
+Setup runs automatically. To reproduce the supplied inputs, run
+`python3 scripts/setup.py`. Preserve these inputs. For size/seed experiments,
+use another directory, for example:
+
+```sh
+python3 scripts/setup.py --records-per-tenant 12000 --seed 917 --output-dir work/large/data
+python3 scripts/diagnose.py benchmark --workload exploratory --data work/large/data/traces.jsonl --output work/large
+```
+
+Start with the public tests and an overview; select subsequent probes based on
+what the evidence leaves unresolved:
 
 ```sh
 python3 -m unittest discover -s tests -v
 python3 scripts/diagnose.py overview --output work/before
-python3 scripts/diagnose.py profile --workload mixed --output work/before
-python3 scripts/diagnose.py trace --workload mixed --output work/before
-python3 scripts/diagnose.py compare --workload mixed --output work/experiments
-python3 scripts/diagnose.py benchmark --workload mixed --output work/before
+python3 scripts/diagnose.py profile --workload mixed --output work/before/mixed
+python3 scripts/diagnose.py trace --workload mixed --output work/before/mixed
 ```
 
-Use `python3 scripts/diagnose.py --help` and command `--help` for options.
-Commands persist JSON artifacts and print a concise JSON result. Profiling also
-saves `profile.pstats` and `profile.txt`; tracing saves individual JSONL events.
-Output directories let you preserve observations before modifying code.
+Workloads:
 
-The four workload shapes are `warm` (one recurring query), `mixed` (several
-recurring tenant/query combinations), `cold` (unique queries), and `concurrent`
-(recurring requests sharing one service across worker threads). Options include
-request count, worker count, audit batch size, `--audit on|off`, `--cache on|off`,
-and an alternate `--data` file. `compare` runs component controls serially.
+| Name | Request mix | Default ingestion |
+| --- | --- | --- |
+| `dashboard` | Six recurring tenant/query combinations, without timestamp bounds | None |
+| `exploratory` | Distinct bounded windows, cycling tenants | None |
+| `mixed` | Alternating dashboard and exploratory requests | 24 records every 24 requests |
+| `warm` | One recurring query | None |
+| `concurrent` | Dashboard queries shared across four worker threads | None |
 
-Each measurement begins with a fresh service and excludes seed loading from
-request timing. Benchmarks use at least three serial samples and no event
-recorder. Trace timings include instrumentation overhead and are diagnostic, not
-substitutes for an uninstrumented benchmark. Span durations are inclusive and may
-overlap: a storage iterator can remain open while its caller filters records.
-Do not sum nested spans as independent costs. Run timing experiments serially,
-without other CPU-heavy tasks competing for the same machine.
+All commands accept `--requests`, `--workers`, `--audit on|off`,
+`--cache on|off`, `--audit-batch-size`, and `--data`. Workload controls are:
+
+- `--query-reuse N`: number of recurring dashboard keys (default 6; larger means
+  less reuse). This does not affect exploratory requests.
+- `--window-width N`: inclusive exploratory timestamp range width (default 64).
+  Window positions stay fixed when varying width.
+- `--ingest-every N`: ingest between batches of N requests (0 disables).
+- `--ingest-batch-size N`: records per ingestion batch (default 24).
+
+Ingestion happens at batch barriers, including with multiple workers. New records
+may have older timestamps. `overview` runs workloads serially. `profile` saves
+`profile.pstats`, `profile.txt`, and JSON metadata. `trace` saves timed JSONL events
+and summaries. Request groups have separate latency, cache, and scan summaries;
+phases separate batches before and after ingestion. Ingestion spans and commits
+remain visible in overall telemetry.
+
+`compare` requires an explicit variable and two or more values. It runs each
+configuration serially, with a fresh service:
+
+```sh
+python3 scripts/diagnose.py compare --workload exploratory --vary window-width --values 32 256 2048 --output work/window-experiment
+```
+
+Available variables: `audit`, `cache`, `audit-batch-size`, `query-reuse`,
+`window-width`, `ingest-every`, and `ingest-batch-size`. Boolean values are `on`
+and `off`; other values are integers. Changes to query shape or ingestion can
+legitimately change response digests. Disabling a component is only a diagnostic
+control. The comparison tool reports observations without choosing a diagnosis.
+
+Each benchmark uses three serial samples with no event recorder. Request workload
+time includes scheduled ingestion and the final audit flush. Group telemetry
+metrics are null in uninstrumented benchmarks; use trace/profile for scan counts. Construction is
+measured separately; `loadSamplesSeconds` and `lifecycleSamplesSeconds` expose
+cost moved into startup. Per-group request latencies exclude ingestion, whereas
+total workload elapsed time includes it. Instrumented timings are diagnostic,
+not substitutes for benchmarks. Nested spans overlap; do not sum them as
+independent costs. Concurrent CPU profiles merge worker request profiles;
+ingestion at barriers appears in telemetry/wall time, not worker CPU profiles.
+Run timing experiments serially without competing CPU-heavy tasks.
 
 ## Deliverables and evaluation
 
 Change `searchapp/` and add regression tests as needed. Preserve `scripts/`,
 `tests/test_public.py`, and `data/`. Do not substitute precomputed answers or
-special-case known fixtures. Keep the documented constructor controls operational.
-Put additional investigation scripts under `work/`; the supplied `scripts/`
-directory is checked for additions as well as edits.
+special-case fixtures. Keep constructor controls operational. Put new diagnostic
+scripts under `work/`; additions to the supplied `scripts/` are also checked.
 
-Preserve baseline evidence in a separate directory. After the fix, run the public
-tests and the diagnostic tools with normal component settings, writing final
-artifacts to `work/`:
+Preserve before-change evidence in separate directories. Re-profile remaining
+cost after improvements. Final artifacts use the default parameters, at least
+72 requests, one worker, and cache/audit enabled:
 
 ```sh
 python3 scripts/diagnose.py profile --output work
-python3 scripts/diagnose.py benchmark --output work
 python3 scripts/diagnose.py trace --output work
+python3 scripts/diagnose.py benchmark --output work
+python3 scripts/diagnose.py benchmark --workload dashboard --output work/dashboard
+python3 scripts/diagnose.py benchmark --workload exploratory --output work/exploratory
 ```
 
-The final benchmark must use the mixed workload with at least 72 requests, one
-worker, and caching and auditing enabled. These are the command defaults.
+Deliver `work/report.md`, `work/profile.pstats`, `work/profile.txt`, all three
+benchmarks above, and trace or controlled-comparison evidence. Explain hypotheses,
+why each experiment distinguished them, remaining bottlenecks after changes,
+before/after results for every evaluated workload, correctness checks, and
+reproduction commands.
 
-Deliver `work/report.md`, `work/profile.pstats`, `work/profile.txt`,
-`work/benchmark.json`, and trace or controlled-comparison evidence. The report
-should explain the causal mechanism, competing explanations and experiments,
-correctness checks, before/after performance across workloads, and reproduction
-commands. Profiling alone may identify expensive work without explaining why it
-recurs.
+The verifier requires **at least 3× speedup independently on dashboard,
+exploratory, and mixed traffic**. It uses three serial samples of original and
+candidate implementations, alternating order on the same machine, with unseen
+records, tenants, queries, and ingestion schedules. Responses must match an
+independent oracle and audit receipts must be complete.
 
-The performance target is at least **3× faster total elapsed time** on recurring
-mixed traffic with auditing enabled. The verifier compares the frozen starting
-implementation with yours using three serial samples on the same machine and
-unseen data. It checks Unicode/query semantics, isolation, duplicates, ingestion
-freshness, mutable response independence, audit completeness, and concurrency.
-Diagnosis quality and efficient investigation require separate run-trace review;
-passing a timing threshold alone does not establish the cause.
+For each workload, candidate construction must take no more than 2.5× original
+construction plus 20 ms; total ingestion time must not exceed the larger of 5×
+original ingestion time or 25 ms; construction plus workload time must not exceed
+1.25× the original lifecycle time. These allowances permit index maintenance but
+limit improvements obtained solely by shifting excessive work outside timing.
+Correctness covers Unicode/query semantics, exact tenant isolation, duplicate
+and insertion-order preservation, out-of-order arrivals, freshness, independent
+responses, and concurrency. Evaluation accepts alternative implementations that
+meet the contract; it does not require a particular data structure.
+
+Investigation quality and efficient experiment selection require separate run
+review. A passing benchmark alone does not establish a causal diagnosis.

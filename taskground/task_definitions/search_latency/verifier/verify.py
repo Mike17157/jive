@@ -97,11 +97,11 @@ def oracle(
     for raw in records:
         if raw["tenant"] != tenant:
             continue
+        if "min_timestamp" in query and int(raw["timestamp"]) < int(query["min_timestamp"]):
+            continue
+        if "max_timestamp" in query and int(raw["timestamp"]) > int(query["max_timestamp"]):
+            continue
         row = output_row(raw)
-        if "min_timestamp" in query and row["timestamp"] < int(query["min_timestamp"]):
-            continue
-        if "max_timestamp" in query and row["timestamp"] > int(query["max_timestamp"]):
-            continue
         if levels and row["level"] not in levels:
             continue
         if services and row["service"] not in services:
@@ -227,6 +227,10 @@ def check_behavior(Service: Any, temporary: Path) -> tuple[bool, str]:
             ("zero", "Amber", {"services": ["search"], "limit": 0}),
             ("missing", "missing", {"terms": ["ready"]}),
             ("tenant-exact", "amber", {}),
+            ("max-only", "Amber", {"max_timestamp": 1_830_000_020}),
+            ("equal-bounds", "Amber", {"min_timestamp": 1_830_000_017, "max_timestamp": 1_830_000_017}),
+            ("reversed", "Amber", {"min_timestamp": 1_830_000_040, "max_timestamp": 1_830_000_020}),
+            ("bounded-order", "Amber", {"min_timestamp": 1_830_000_010, "max_timestamp": 1_830_000_060, "limit": 11}),
         ]
         for request_id, tenant, query in varied:
             request(request_id, tenant, query)
@@ -266,6 +270,13 @@ def check_behavior(Service: Any, temporary: Path) -> tuple[bool, str]:
         service.ingest("Amber", added)
         records.extend(added)
         request("fresh-alpha", "Amber", fresh_query)
+        request("fresh-bounded", "Amber", {"min_timestamp": 1_930_000_001, "max_timestamp": 1_930_000_001})
+        # Ingest older timestamps after newer ones, preserving append order and duplicates.
+        late = [{**added[0], "id": "late-old", "timestamp": 1_830_000_017}]
+        service.ingest("Amber", late)
+        records.extend(late)
+        request("late-bounded", "Amber", {"min_timestamp": 1_830_000_017, "max_timestamp": 1_830_000_017})
+        request("late-limit", "Amber", {"max_timestamp": 1_830_000_030, "limit": 4})
         request("fresh-isolation", "tenant-β", {"terms": ["just ingested"]})
 
         try:
@@ -366,7 +377,7 @@ def perf_records(count_per_tenant: int = 7_000) -> list[dict[str, Any]]:
                 "tags": ["prod", f"zone-{index % 5}", "trace"],
                 "context": {"request": f"req-{value:08x}", "nested": ["payload", {"part": value % 17}]},
             })
-    return rows
+    return sorted(rows, key=lambda row: hashlib.sha256((row["id"] + "arrival-917").encode()).digest())
 
 
 def perf_queries() -> list[tuple[str, dict[str, Any]]]:
@@ -380,101 +391,122 @@ def perf_queries() -> list[tuple[str, dict[str, Any]]]:
     ]
 
 
-def run_perf_sample(
-    Service: Any,
-    data_path: Path,
-) -> tuple[float, str, int]:
-    service = Service(
-        data_path,
-        cache_enabled=True,
-        audit_enabled=True,
-        audit_batch_size=4,
-        cache_capacity=64,
-        recorder=None,
-    )
-    responses: list[dict[str, Any]] = []
-    enabled = gc.isenabled()
+def perf_operations(workload: str) -> list[dict[str, Any]]:
+    """Held-out replay, independent of workspace diagnostic workload builders."""
+    operations = []
+    for index in range(PERF_REQUESTS):
+        if workload == "mixed" and index and index % 28 == 0:
+            tenant = ("perf-amber", "perf-blue", "perf-紫")[(index // 28) % 3]
+            records = [{"tenant": tenant, "id": f"late-{index}-{offset}",
+                        "timestamp": 1_950_000_000 + 300 + index * 41 + offset % 9,
+                        "service": "api", "level": "warn", "message": "needle operation completed",
+                        "tags": ["prod", "trace", "zone-3"]} for offset in range(32)]
+            operations.append({"ingest": tenant, "records": records})
+        exploratory = workload == "exploratory" or (workload == "mixed" and index % 2)
+        sequence = index // 2 if workload == "mixed" else index
+        if exploratory:
+            tenant = ("perf-amber", "perf-blue", "perf-紫")[sequence % 3]
+            lower = 1_950_000_000 + 300 + sequence * 41
+            query = {"min_timestamp": lower, "max_timestamp": lower + 43 + sequence % 17,
+                     "tags": ["prod"], "limit": 9 + sequence % 4}
+        else:
+            tenant, query = perf_queries()[sequence % 6]
+        operations.append({"request_id": f"perf-{index:03d}", "tenant": tenant, "query": query})
+        if workload == "mixed" and index and index % 28 == 0:
+            # Immediately observe the just-ingested interval; equality and append order matter.
+            operations.append({"request_id": f"fresh-{index}", "tenant": operations[-2]["ingest"],
+                               "query": {"min_timestamp": records[0]["timestamp"],
+                                         "max_timestamp": records[0]["timestamp"] + 8}})
+    return operations
+
+
+def digest_responses(responses: list[dict[str, Any]]) -> str:
+    return hashlib.sha256(json.dumps(responses, ensure_ascii=False, separators=(",", ":")).encode()).hexdigest()
+
+
+def run_perf_sample(Service: Any, data_path: Path, operations: list[dict[str, Any]]) -> dict[str, Any]:
     gc.collect()
+    started = time.perf_counter()
+    service = Service(data_path, cache_enabled=True, audit_enabled=True,
+                      audit_batch_size=4, cache_capacity=64, recorder=None)
+    load_seconds = time.perf_counter() - started
+    responses, latencies = [], []
+    ingest_seconds = 0.0
+    enabled = gc.isenabled()
     gc.disable()
     started = time.perf_counter()
     try:
-        for index in range(PERF_REQUESTS):
-            tenant, query = perf_queries()[index % 6]
-            request = {
-                "request_id": f"perf-{index:03d}",
-                "tenant": tenant,
-                "query": query,
-            }
-            responses.append(service.handle(request))
+        for operation in operations:
+            before = time.perf_counter()
+            if "ingest" in operation:
+                service.ingest(operation["ingest"], operation["records"])
+                ingest_seconds += time.perf_counter() - before
+            else:
+                responses.append(service.handle(operation))
+                latencies.append(time.perf_counter() - before)
+        service.flush_audit()
     finally:
         elapsed = time.perf_counter() - started
         if enabled:
             gc.enable()
         service.close()
-    digest = hashlib.sha256()
-    row_count = 0
-    for response in responses:
-        row_count += len(response["rows"])
-        digest.update(json.dumps(response, ensure_ascii=False, separators=(",", ":")).encode("utf-8"))
-    return elapsed, digest.hexdigest(), row_count
+    expected_audit = [{"request_id": r["request_id"], "tenant": r["tenant"], "row_count": len(r["rows"])} for r in responses]
+    return {"elapsedSeconds": elapsed, "loadSeconds": load_seconds,
+            "ingestSeconds": ingest_seconds, "lifecycleSeconds": load_seconds + elapsed,
+            "responseDigest": digest_responses(responses),
+            "auditMatches": service.audit_records() == expected_audit,
+            "rows": sum(len(r["rows"]) for r in responses)}
 
 
-def check_performance(
-    Candidate: Any, Original: Any, temporary: Path
-) -> tuple[bool, str, dict[str, Any]]:
+def check_performance(Candidate: Any, Original: Any, temporary: Path) -> tuple[bool, str, dict[str, Any]]:
     records = perf_records()
-    expected_rows = [oracle(records, tenant, query) for tenant, query in perf_queries()]
-    if any(not rows for rows in expected_rows):
-        raise RuntimeError("internal performance workload unexpectedly has an empty query")
-
-    paths: dict[tuple[str, int], Path] = {}
-    for implementation in ("original", "candidate"):
+    paths = {}
+    for name in ("original", "candidate"):
+        paths[name] = temporary / f"perf-{name}.jsonl"
+        write_records(paths[name], records)
+    workloads = {}
+    all_passed = True
+    for workload in ("dashboard", "exploratory", "mixed"):
+        operations = perf_operations(workload)
+        current = list(records)
+        expected = []
+        for operation in operations:
+            if "ingest" in operation:
+                current.extend(operation["records"])
+            else:
+                expected.append(expected_response(operation["request_id"], operation["tenant"], current, operation["query"]))
+        expected_digest = digest_responses(expected)
+        samples = {"original": [], "candidate": []}
         for sample_index in range(SAMPLES):
-            sample_dir = temporary / f"perf-{implementation}-{sample_index}"
-            sample_dir.mkdir()
-            path = sample_dir / "traces.jsonl"
-            write_records(path, records)
-            paths[(implementation, sample_index)] = path
-
-    samples: dict[str, list[float]] = {"original": [], "candidate": []}
-    digests: dict[str, list[str]] = {"original": [], "candidate": []}
-    row_counts: dict[str, list[int]] = {"original": [], "candidate": []}
-    services = {"original": Original, "candidate": Candidate}
-    for sample_index in range(SAMPLES):
-        order = ("original", "candidate") if sample_index % 2 == 0 else ("candidate", "original")
-        for implementation in order:
-            elapsed, digest, count = run_perf_sample(
-                services[implementation], paths[(implementation, sample_index)]
-            )
-            samples[implementation].append(elapsed)
-            digests[implementation].append(digest)
-            row_counts[implementation].append(count)
-
-    expected_total = sum(len(expected_rows[index % 6]) for index in range(PERF_REQUESTS))
-    responses_match = (
-        len(set(digests["original"] + digests["candidate"])) == 1
-        and all(count == expected_total for counts in row_counts.values() for count in counts)
-    )
-    original_median = statistics.median(samples["original"])
-    candidate_median = statistics.median(samples["candidate"])
-    speedup = original_median / candidate_median if candidate_median > 0 else 0.0
-    passed = responses_match and speedup >= MIN_SPEEDUP
-    detail = (
-        f"{speedup:.2f}x across {PERF_REQUESTS} requests "
-        f"(original {original_median:.4f}s, candidate {candidate_median:.4f}s; "
-        f"responses {'matched' if responses_match else 'differed'})"
-    )
-    metrics = {
-        "originalMedianSeconds": round(original_median, 6),
-        "candidateMedianSeconds": round(candidate_median, 6),
-        "speedup": round(speedup, 3),
-        "originalSamplesSeconds": [round(value, 6) for value in samples["original"]],
-        "candidateSamplesSeconds": [round(value, 6) for value in samples["candidate"]],
-        "performanceRequests": PERF_REQUESTS,
-        "performanceRowsPerSample": expected_total,
-        "responseDigest": digests["original"][0],
-    }
-    return passed, detail, metrics
+            order = ("original", "candidate") if sample_index % 2 == 0 else ("candidate", "original")
+            for name in order:
+                samples[name].append(run_perf_sample(Original if name == "original" else Candidate, paths[name], operations))
+        medians = {name: {key: statistics.median(s[key] for s in values)
+                          for key in ("elapsedSeconds", "loadSeconds", "ingestSeconds", "lifecycleSeconds")}
+                   for name, values in samples.items()}
+        original, candidate = medians["original"], medians["candidate"]
+        speedup = original["elapsedSeconds"] / candidate["elapsedSeconds"]
+        responses_match = all(s["responseDigest"] == expected_digest and s["auditMatches"]
+                              for values in samples.values() for s in values)
+        # Allow reasonable index construction/maintenance, but catch work shifted out of request timing.
+        load_limit = original["loadSeconds"] * 2.5 + .020
+        ingest_limit = max(original["ingestSeconds"] * 5, .025)
+        costs_ok = (candidate["loadSeconds"] <= load_limit
+                    and candidate["ingestSeconds"] <= ingest_limit
+                    and candidate["lifecycleSeconds"] <= original["lifecycleSeconds"] * 1.25)
+        passed = speedup >= MIN_SPEEDUP and responses_match and costs_ok
+        all_passed = all_passed and passed
+        workloads[workload] = {"passed": passed, "speedup": round(speedup, 3),
+                               "responsesMatch": responses_match, "costsPassed": costs_ok,
+                               "minimumSpeedup": MIN_SPEEDUP,
+                               "loadLimitSeconds": load_limit, "ingestLimitSeconds": ingest_limit,
+                               "medians": medians, "samples": samples,
+                               "requests": len(expected), "ingestions": sum("ingest" in op for op in operations),
+                               "expectedRows": sum(len(r["rows"]) for r in expected),
+                               "expectedDigest": expected_digest}
+    detail = "; ".join(f"{name}: {value['speedup']:.2f}x, responses={value['responsesMatch']}, costs={value['costsPassed']}"
+                       for name, value in workloads.items())
+    return all_passed, detail, {"workloads": workloads}
 
 
 def check_sealed(workspace: Path, frozen_workspace: Path, temporary: Path) -> tuple[bool, str]:
@@ -570,9 +602,9 @@ def validate_trace_or_compare(work: Path) -> str:
                 return path.relative_to(work).as_posix()
             if value.get("command") == "compare":
                 configurations = value.get("configurations")
-                if not isinstance(configurations, dict) or not {"default", "auditOff", "cacheOff"}.issubset(configurations):
+                if not isinstance(configurations, dict) or len(configurations) < 2 or not isinstance(value.get("variable"), str):
                     raise ValueError("compare configurations are incomplete")
-                for name in ("default", "auditOff", "cacheOff"):
+                for name in configurations:
                     result = configurations[name]
                     if not isinstance(result, dict) or not finite_positive(result.get("elapsedSeconds")):
                         raise ValueError(f"compare {name} measurement is invalid")
@@ -604,44 +636,58 @@ def check_evidence(workspace: Path) -> tuple[bool, str, dict[str, Any]]:
             raise ValueError("profile.txt is empty")
         if not paths["report"].read_text(encoding="utf-8").strip():
             raise ValueError("report.md is empty")
-        benchmark = json.loads(paths["benchmark"].read_text(encoding="utf-8"))
-        if (
-            not isinstance(benchmark, dict)
-            or benchmark.get("schemaVersion") != 1
-            or benchmark.get("command") != "benchmark"
-        ):
-            raise ValueError("benchmark schemaVersion must be 1")
-        if benchmark.get("workload") != "mixed":
-            raise ValueError("benchmark workload must be mixed")
-        if type(benchmark.get("requestsPerSample")) is not int or benchmark["requestsPerSample"] < 72:
-            raise ValueError("benchmark must include at least 72 requests per sample")
-        if benchmark.get("workers") != 1:
-            raise ValueError("benchmark samples must be serial")
-        if benchmark.get("auditEnabled") is not True or benchmark.get("cacheEnabled") is not True:
-            raise ValueError("benchmark must keep audit and cache enabled")
-        samples = benchmark["samplesSeconds"]
-        median = benchmark["medianSeconds"]
-        if not isinstance(samples, list) or len(samples) < 3 or not all(finite_positive(item) for item in samples):
-            raise ValueError("benchmark needs at least three positive finite samplesSeconds")
-        if not finite_positive(median):
-            raise ValueError("benchmark medianSeconds must be positive and finite")
-        if not math.isclose(float(median), statistics.median(samples), rel_tol=0.05, abs_tol=1e-6):
-            raise ValueError("benchmark medianSeconds does not match samplesSeconds")
-        p50 = benchmark.get("p50RequestSeconds", benchmark.get("p50Seconds"))
-        p95 = benchmark.get("p95RequestSeconds", benchmark.get("p95Seconds"))
-        if not finite_positive(p50) or not finite_positive(p95) or p95 < p50:
-            raise ValueError("benchmark needs valid p50/p95 request latency")
-        digest = benchmark.get("responseDigest")
-        if not isinstance(digest, str) or len(digest) < 16:
-            raise ValueError("benchmark responseDigest is missing")
-        digests = benchmark.get("responseDigests")
-        if not isinstance(digests, list) or len(digests) < 3 or set(digests) != {digest}:
-            raise ValueError("benchmark response digests must agree across samples")
+        reported = {}
+        for workload, benchmark_path in (("mixed", paths["benchmark"]),
+                                         ("dashboard", work / "dashboard/benchmark.json"),
+                                         ("exploratory", work / "exploratory/benchmark.json")):
+            benchmark = json.loads(benchmark_path.read_text(encoding="utf-8"))
+            if (
+                not isinstance(benchmark, dict)
+                or benchmark.get("schemaVersion") != 1
+                or benchmark.get("command") != "benchmark"
+            ):
+                raise ValueError("benchmark schemaVersion must be 1")
+            if benchmark.get("workload") != workload:
+                raise ValueError(f"benchmark workload must be {workload}")
+            if type(benchmark.get("requestsPerSample")) is not int or benchmark["requestsPerSample"] < 72:
+                raise ValueError("benchmark must include at least 72 requests per sample")
+            if benchmark.get("workers") != 1:
+                raise ValueError("benchmark samples must be serial")
+            if benchmark.get("auditEnabled") is not True or benchmark.get("cacheEnabled") is not True:
+                raise ValueError("benchmark must keep audit and cache enabled")
+            samples = benchmark["samplesSeconds"]
+            median = benchmark["medianSeconds"]
+            if not isinstance(samples, list) or len(samples) < 3 or not all(finite_positive(item) for item in samples):
+                raise ValueError("benchmark needs at least three positive finite samplesSeconds")
+            if not finite_positive(median):
+                raise ValueError("benchmark medianSeconds must be positive and finite")
+            if not math.isclose(float(median), statistics.median(samples), rel_tol=0.05, abs_tol=1e-6):
+                raise ValueError("benchmark medianSeconds does not match samplesSeconds")
+            p50 = benchmark.get("p50RequestSeconds", benchmark.get("p50Seconds"))
+            p95 = benchmark.get("p95RequestSeconds", benchmark.get("p95Seconds"))
+            if not finite_positive(p50) or not finite_positive(p95) or p95 < p50:
+                raise ValueError("benchmark needs valid p50/p95 request latency")
+            digest = benchmark.get("responseDigest")
+            if not isinstance(digest, str) or len(digest) < 16:
+                raise ValueError("benchmark responseDigest is missing")
+            digests = benchmark.get("responseDigests")
+            if not isinstance(digests, list) or len(digests) < 3 or set(digests) != {digest}:
+                raise ValueError("benchmark response digests must agree across samples")
+            parameters = benchmark.get("parameters", {})
+            if parameters.get("query_reuse") != 6 or parameters.get("window_width") != 64:
+                raise ValueError("final benchmarks must use default recurring keys and window width")
+            if parameters.get("ingest_every") != (24 if workload == "mixed" else 0) or parameters.get("ingest_batch_size") != 24:
+                raise ValueError("final benchmarks must use the default ingestion schedule")
+            for key in ("loadSamplesSeconds", "lifecycleSamplesSeconds"):
+                values = benchmark.get(key)
+                if not isinstance(values, list) or len(values) != len(samples) or not all(finite_positive(v) for v in values):
+                    raise ValueError(f"benchmark requires {key}")
+            reported[workload] = median
         evidence_name = validate_trace_or_compare(work)
     except (OSError, ValueError, KeyError, TypeError, json.JSONDecodeError) as error:
         return False, f"invalid evidence: {error}", {}
     return True, f"profile, benchmark, report, and {evidence_name} are structurally valid", {
-        "reportedMedianSeconds": float(median),
+        "reportedMedianSeconds": reported,
     }
 
 
@@ -683,11 +729,14 @@ def main() -> int:
 
             if sealed_ok and tests_ok and correct:
                 perf_ok, perf_detail, perf_metrics = check_performance(Candidate, Original, temporary)
-                add("calibrated mixed-workload speedup", perf_ok, perf_detail)
+                for name, measurement in perf_metrics["workloads"].items():
+                    add(f"performance: {name}", measurement["passed"],
+                        f"{measurement['speedup']:.2f}x (minimum {MIN_SPEEDUP}x); "
+                        f"oracle/audit match={measurement['responsesMatch']}; construction/ingestion/lifecycle costs={measurement['costsPassed']}")
                 metrics.update(perf_metrics)
             else:
                 add(
-                    "calibrated mixed-workload speedup",
+                    "workload performance gates",
                     False,
                     "not run because integrity or correctness prerequisites failed",
                 )

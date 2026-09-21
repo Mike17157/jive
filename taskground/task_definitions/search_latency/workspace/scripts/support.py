@@ -19,7 +19,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 BASE_TIMESTAMP = 1_720_000_000
-WORKLOADS = ("warm", "mixed", "cold", "concurrent")
+WORKLOADS = ("dashboard", "exploratory", "mixed", "warm", "concurrent")
 
 
 class EventRecorder:
@@ -51,33 +51,74 @@ def _mixed_query(index: int) -> tuple[str, dict[str, Any]]:
     return tenant, dict(query)
 
 
-def build_workload(name: str = "mixed", requests: int = 72) -> list[dict[str, Any]]:
-    """Create deterministic request payloads for a named workload."""
-    if name not in WORKLOADS:
-        raise ValueError(f"unknown workload: {name}")
-    if requests < 0:
-        raise ValueError("requests must be nonnegative")
-    payloads: list[dict[str, Any]] = []
+def build_workload(name: str = "mixed", requests: int = 72, *,
+                   query_reuse: int = 6, window_width: int = 64) -> list[dict[str, Any]]:
+    """Prepare recurring queries and distinct, bounded exploratory windows.
+
+    query_reuse is the number of recurring keys (larger means less reuse).
+    Window positions are independent of width, permitting selectivity sweeps.
+    """
+    if name not in WORKLOADS or requests < 0 or query_reuse < 1 or window_width < 1:
+        raise ValueError("invalid workload, request count, recurring key count, or window width")
+    payloads = []
     for index in range(requests):
-        if name == "warm":
-            tenant = "alpha"
-            query: dict[str, Any] = {"terms": ["needle"], "limit": 12}
-        elif name == "cold":
-            tenant_index = index % 3
+        group = "exploratory" if name == "exploratory" or (name == "mixed" and index % 2) else "dashboard"
+        sequence = index // 2 if name == "mixed" else index
+        if group == "exploratory":
+            tenant_index = sequence % 3
             tenant = ("alpha", "beta", "gamma")[tenant_index]
-            query = {
-                "terms": ["needle"],
-                "min_timestamp": BASE_TIMESTAMP + tenant_index * 100_000 + index,
-                "limit": 12,
-            }
+            lower = BASE_TIMESTAMP + tenant_index * 100_000 + 200 + sequence * 37
+            query = {"min_timestamp": lower, "max_timestamp": lower + window_width - 1,
+                     "tags": ["prod"], "limit": 12}
+        elif name == "warm":
+            tenant, query = "alpha", {"terms": ["needle"], "limit": 12}
         else:
-            tenant, query = _mixed_query(index)
-        payloads.append({
-            "request_id": f"{name}-{index:04d}",
-            "tenant": tenant,
-            "query": query,
-        })
+            key = sequence % query_reuse
+            tenant, query = _mixed_query(key)
+            query["limit"] = 12 + key // 6
+        payloads.append({"request_id": f"{name}-{group}-{index:04d}",
+                         "tenant": tenant, "query": query})
     return payloads
+
+
+def ingest_before(service: Any, index: int, every: int, batch_size: int) -> None:
+    """Deterministic out-of-order arrivals at barriers between request batches."""
+    if not every or not index or index % every:
+        return
+    tenant_index = (index // every) % 3
+    tenant = ("alpha", "beta", "gamma")[tenant_index]
+    records = [{"id": f"arrival-{index}-{offset}",
+                "timestamp": BASE_TIMESTAMP + tenant_index * 100_000 + 200 + (index * 37 + offset * 13) % 3000,
+                "service": "api", "level": "warn", "message": "needle arrival café",
+                "tags": ["prod", "zone-0"]} for offset in range(batch_size)]
+    service.ingest(tenant, records)
+
+
+def group_summaries(payloads: list[dict[str, Any]], latencies: list[float],
+                    events: Iterable[dict[str, Any]] = ()) -> dict[str, Any]:
+    events = list(events)
+    result = {}
+    for group in ("dashboard", "exploratory"):
+        indexes = [i for i, payload in enumerate(payloads) if f"-{group}-" in payload["request_id"]]
+        if not indexes:
+            continue
+        identities = {payloads[i]["request_id"] for i in indexes}
+        values = [latencies[i] for i in indexes]
+        result[group] = {"requests": len(values), "totalRequestSeconds": sum(values),
+                         "p50RequestSeconds": percentile(values, .5),
+                         "p95RequestSeconds": percentile(values, .95),
+                         "metrics": summarize_events(e for e in events if e.get("request_id") in identities) if events else None}
+    return result
+
+
+def phase_summaries(payloads: list[dict[str, Any]], latencies: list[float],
+                    events: Iterable[dict[str, Any]], ingest_every: int) -> list[dict[str, Any]]:
+    events = list(events)
+    stride = ingest_every or max(1, len(payloads))
+    return [{"phase": start // stride, "startRequest": start,
+             "afterIngestion": start > 0 and bool(ingest_every),
+             "groups": group_summaries(payloads[start:start + stride], latencies[start:start + stride], events)}
+            for start in range(0, len(payloads), stride)]
 
 
 def response_digest(responses: Iterable[dict[str, Any]]) -> str:
@@ -152,6 +193,8 @@ def execute_workload(
     service: Any,
     payloads: list[dict[str, Any]],
     workers: int = 1,
+    ingest_every: int = 0,
+    ingest_batch_size: int = 24,
 ) -> tuple[list[dict[str, Any]], list[float], float]:
     """Execute prepared payloads against an already-loaded service."""
     if workers < 1:
@@ -159,18 +202,22 @@ def execute_workload(
     responses: list[dict[str, Any] | None] = [None] * len(payloads)
     latencies: list[float] = [0.0] * len(payloads)
     started = time.perf_counter()
-    if workers > 1:
-        with ThreadPoolExecutor(max_workers=workers) as executor:
-            futures = {
-                executor.submit(_call_timed, service, payload): index
-                for index, payload in enumerate(payloads)
-            }
-            for future in as_completed(futures):
-                index = futures[future]
-                responses[index], latencies[index] = future.result()
-    else:
-        for index, payload in enumerate(payloads):
-            responses[index], latencies[index] = _call_timed(service, payload)
+    # Concurrency happens within each batch; ingestion is an explicit barrier.
+    stride = ingest_every or max(1, len(payloads))
+    for start in range(0, len(payloads), stride):
+        ingest_before(service, start, ingest_every, ingest_batch_size)
+        batch = payloads[start:start + stride]
+        if workers > 1:
+            with ThreadPoolExecutor(max_workers=workers) as executor:
+                futures = {executor.submit(_call_timed, service, payload): start + offset
+                           for offset, payload in enumerate(batch)}
+                for future in as_completed(futures):
+                    index = futures[future]
+                    responses[index], latencies[index] = future.result()
+        else:
+            for offset, payload in enumerate(batch):
+                responses[start + offset], latencies[start + offset] = _call_timed(service, payload)
+    service.flush_audit()
     elapsed = time.perf_counter() - started
     return [response for response in responses if response is not None], latencies, elapsed
 
@@ -186,7 +233,7 @@ def _call_profiled(
     return response, time.perf_counter() - started, profiler
 
 
-def execute_profiled_workers(
+def _profiled_batch(
     service: Any,
     payloads: list[dict[str, Any]],
     workers: int,
@@ -219,6 +266,21 @@ def execute_profiled_workers(
     )
 
 
+def execute_profiled_workers(service: Any, payloads: list[dict[str, Any]], workers: int,
+                             ingest_every: int = 0, ingest_batch_size: int = 24):
+    responses, latencies, profilers = [], [], []
+    started = time.perf_counter()
+    stride = ingest_every or max(1, len(payloads))
+    for start in range(0, len(payloads), stride):
+        ingest_before(service, start, ingest_every, ingest_batch_size)
+        rows, times, _, profiles = _profiled_batch(service, payloads[start:start + stride], workers)
+        responses.extend(rows)
+        latencies.extend(times)
+        profilers.extend(profiles)
+    service.flush_audit()
+    return responses, latencies, time.perf_counter() - started, profilers
+
+
 def run_measurement(
     data_path: Path,
     workload: str = "mixed",
@@ -228,6 +290,10 @@ def run_measurement(
     cache_enabled: bool = True,
     audit_batch_size: int = 4,
     recorder: Callable[[dict[str, Any]], None] | None = None,
+    query_reuse: int = 6,
+    window_width: int = 64,
+    ingest_every: int | None = None,
+    ingest_batch_size: int = 24,
 ) -> tuple[dict[str, Any], list[dict[str, Any]]]:
     """Run one fresh-service measurement, excluding service construction."""
     from searchapp import SearchService
@@ -236,7 +302,9 @@ def run_measurement(
         workers = 4 if workload == "concurrent" else 1
     if workers < 1:
         raise ValueError("workers must be positive")
-    payloads = build_workload(workload, requests)
+    ingest_every = (24 if workload == "mixed" else 0) if ingest_every is None else ingest_every
+    payloads = build_workload(workload, requests, query_reuse=query_reuse, window_width=window_width)
+    load_started = time.perf_counter()
     service = SearchService(
         data_path,
         cache_enabled=cache_enabled,
@@ -245,13 +313,19 @@ def run_measurement(
         cache_capacity=64,
         recorder=recorder,
     )
+    load_seconds = time.perf_counter() - load_started
     try:
-        complete_responses, latencies, elapsed = execute_workload(service, payloads, workers)
+        complete_responses, latencies, elapsed = execute_workload(service, payloads, workers, ingest_every, ingest_batch_size)
     finally:
         service.close()
 
     summary = {
         "workload": workload,
+        "queryReuse": query_reuse, "windowWidth": window_width,
+        "ingestEvery": ingest_every, "ingestBatchSize": ingest_batch_size,
+        "loadSeconds": load_seconds, "lifecycleSeconds": load_seconds + elapsed,
+        "groups": group_summaries(payloads, latencies, recorder.snapshot() if isinstance(recorder, EventRecorder) else ()),
+        "phases": phase_summaries(payloads, latencies, recorder.snapshot() if isinstance(recorder, EventRecorder) else (), ingest_every),
         "requests": requests,
         "workers": workers,
         "auditEnabled": audit_enabled,

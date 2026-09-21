@@ -48,8 +48,9 @@ class SearchService:
     def ingest(self, tenant, records):
         if not isinstance(tenant, str) or not tenant:
             raise ValueError("tenant must be a nonempty string")
-        with self.store.transaction():
-            self.store.append(tenant, records)
+        with self.telemetry.span("ingest", tenant=tenant):
+            with self.store.transaction():
+                self.store.append(tenant, records)
 
     def flush_audit(self):
         with self.store.transaction():

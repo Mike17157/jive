@@ -62,7 +62,9 @@ def generate(output_dir: Path, seed: int, records_per_tenant: int) -> dict[str, 
     rng = random.Random(seed)
     with trace_path.open("w", encoding="utf-8", newline="\n") as handle:
         for tenant_index, tenant in enumerate(TENANTS):
-            for index in range(records_per_tenant):
+            arrival_order = list(range(records_per_tenant))
+            rng.shuffle(arrival_order)
+            for index in arrival_order:
                 record = build_record(rng, tenant, tenant_index, index)
                 handle.write(json.dumps(record, ensure_ascii=False, separators=(",", ":")) + "\n")
 

@@ -1,105 +1,115 @@
-# Search latency fixture contract
+# Search latency fixture contract, version 2
 
-Maintainer-only coordination document. Do not copy this file into the workspace.
+Maintainer-only. Do not copy this file, the verifier, or reference repairs into the
+agent workspace. The public application stays agent-neutral and uses only Python
+3.10+ standard-library code. No model calls are needed to validate the fixture.
 
-This task is an original Python-standard-library in-process search endpoint. The
-agent must investigate uneven latency across workloads, repair the implementation,
-and retain profiling/benchmark/controlled-experiment evidence. No supplied graph,
-Jev instruction, or root-cause label belongs in the workspace.
+## Investigation shape
 
-The seeded defect is cache invalidation coupled to the store's global commit
-revision: batched audit writes advance it, even though searchable records have
-not changed. A tenant's data revision is already available, and the reference fix
-changes the catalog cache token to that revision. Queries span enough cache keys
-that audit flushes erase reuse in mixed traffic. Disabling audit is a diagnostic
-control, never an acceptable production fix. Ingestion must still invalidate the
-affected tenant. CPU profiles show scanning/decoding; cache events, commit events,
-and controlled experiments are needed to explain why scans keep happening.
+Two interacting performance problems replace the original one-step task:
 
-## Stable interfaces (shared with implementation agents)
+1. Catalog cache tokens use the store's global revision. Audit batches advance
+   that revision, making unchanged recurring dashboard results miss the cache.
+2. Selective time-window queries decode records in arrival order and filter their
+   timestamps afterwards. Each distinct exploratory query repeats that work.
 
-Workspace package `searchapp`, exported `SearchService`:
+Both appear as storage/decoding work in an initial profile. Fixing invalidation
+alone helps dashboards but leaves exploratory traffic slow. Selective access alone
+helps exploratory requests but leaves unbounded recurring dashboard scans intact.
+Mixed traffic includes out-of-order ingestion and exercises both improvements.
 
-```python
-service = SearchService(data_path, cache_enabled=True, audit_enabled=True,
-                        audit_batch_size=4, cache_capacity=64, recorder=None)
-response = service.handle({"request_id": "r1", "tenant": "alpha", "query": {...}})
-service.ingest("alpha", [record, ...])
-service.flush_audit()
-service.audit_records()  # persisted records, after explicit flush
-service.close()          # flushes audit
-```
+The full reference repair switches to per-tenant trace revisions and maintains a
+sorted (timestamp, insertion-position) index. Bounds select candidates with
+bisect; selected positions are restored to insertion order before decoding.
+Ingestion merges a sorted batch into the affected tenant's index while holding the
+existing transaction lock. This is an example repair, not a mandated algorithm.
 
-Data is UTF-8 JSONL, each object has `tenant`, `id`, `timestamp`, `service`,
-`level`, `message`, `tags`, optional ignored `context`. Required textual fields
-and tags are strings, timestamp is an integer. Query semantics match
-slow_trace_search: NFKC/casefold/strip, levels/services accepted sets, tags/terms
-all-of, inclusive timestamp bounds, nonnegative limit; unknown query fields
-ignored. Tenant and request_id are exact nonempty strings (not normalized).
-Missing tenants return no rows. Return exactly `request_id`, `tenant`, `rows`;
-each row has exactly id,timestamp,service,level,message,tags in that order.
-Preserve insertion order and duplicates. Responses are independent mutable copies.
-Every successful handle call creates exactly one audit entry (when enabled),
-including cache hits, with request_id,tenant,row_count. Flush persists pending
-entries without duplication. Concurrent calls on the SAME service are supported;
-ingest is atomic and searches begun after it returns see its data. No network.
+`reference_fix.patch` contains both changes. `invalidation_only.patch` and
+`selective_only.patch` isolate them for calibration. Each partial repair must pass
+its corresponding standalone workload and fail the other. The complete repair
+must pass all gates with margin. No artificial sleeps, dummy CPU work, hidden
+root-cause labels, or required helper-call counts belong in the application.
 
-Optional recorder is callable: `recorder(event_dict)`; events contain `event`
-and monotonic `time_ns`, request_id for request work, and operation-specific
-metadata. Span events use `event="span"`, `operation`, `duration_ns`.
-Operations: `request`, `lock.wait`, `query.plan`, `cache.lookup`, `storage.scan`,
-`filter`, `serialize`, `audit.flush`. Instant events: `cache` with hit(bool),
-tenant, token, key; `commit` with collection (`audit` or `traces`), revision,
-tenant (null for audit); `scan` with tenant, records count. Recorder must be
-thread-safe if diagnostic harness uses concurrency. No shared global recorder.
+## Semantics
 
-## Harness owned by scripts/tests agent
+Keep the existing SearchService constructor and methods, query normalization,
+exact tenant/request identity, inclusive timestamp bounds, limit behavior,
+insertion ordering, duplicates, independent response objects, complete audit
+receipts, and atomic ingestion. Timestamps can arrive in arbitrary order at load
+and ingestion. Searches begun after ingestion returns see its results. Calls on
+one service remain thread-safe. All seeded public correctness tests pass.
 
-`scripts/setup.py`: deterministic generator, produces data/traces.jsonl and
-data/MANIFEST.json with SHA256; seed 731 default, 6000 records per tenant across
-alpha/beta/gamma; CLI --seed, --records-per-tenant, --output-dir. Use records
-containing `needle` every 211th row, other varied messages, Unicode text,
-services api/worker/search, levels info/warn/error and tags prod/zone-N.
+Telemetry keeps request/span/cache/scan/commit events, plus an ingestion span.
+Request-group summaries separate recurring and exploratory traffic. Nested span
+durations overlap and cannot be added as independent costs. Request timings
+exclude construction; workload totals include ingestion barriers and final flush.
+Construction and total lifecycle costs are recorded separately.
 
-`scripts/diagnose.py`: argparse CLI with commands overview, profile, trace,
-compare, benchmark. --workload warm|mixed|cold|concurrent (default mixed),
---requests (default 72), --workers (default 1 except concurrent 4), --audit on|off,
---cache on|off, --audit-batch-size (default 4), --output DIR (default work),
---data PATH. Each measurement creates a fresh service and excludes fixture load.
-Warm: one repeated query; mixed: six recurring tenant/query combinations; cold:
-unique queries; concurrent: same combinations through ThreadPoolExecutor. Queries
-use terms needle and e.g. service/level filters, limit 12 (or no limit). Avoid
-queries that all return empty rows. Mixed six keys MUST cycle across flushes of 4.
-Plain benchmark has no recorder, >=3 serial samples, records samplesSeconds,
-medianSeconds, p50/p95 request latency, response digest. Profile saves valid
-profile.pstats and profile.txt; trace writes JSONL events and aggregate stats;
-overview runs each workload serially; compare runs defaults, audit off, cache off
-serially with output/digests and cache/scan/commit metrics. Every command saves
-machine-readable JSON under output, stdout concise JSON. Diagnostics do not print
-root cause or recommendations. Expose workload builder/helpers in scripts/support.py
-for smoke use; avoid external dependencies. Never run competing benchmarks.
-Public tests test query semantics, isolation, audit on cache hits/flush, ingestion,
-mutable response copies, concurrency correctness. They PASS seeded implementation.
+## Diagnostics
 
-## Verifier owned by verifier agent
+The three evaluated workloads are dashboard, exploratory, and mixed. Warm and
+concurrent controls remain available. Dashboard keys are unbounded; exploratory
+queries use distinct narrow windows. Mixed alternates both, with default ingestion
+every 24 requests. Input generation shuffles arrival order deterministically.
 
-Use existing Taskground env contract/result format. Load candidate and frozen
-searchapp with importlib aliases. Generate held-out data independently (new seeds,
-tenant names, Unicode, duplicates); independent oracle checks queries and sequence
-of ingestion/audit/cache mutations, response aliasing, concurrent requests.
-Audit data must remain complete with default audit enabled. Performance: three
-serial samples each, fresh service, exclude load; 72-96 mixed requests cycling six
-keys, sufficient data; >=3x candidate vs frozen with matching responses. No
-artificial sleeps. Protect scripts/ and tests/test_public.py by comparing frozen
-definition bytes; compare generated input hashes against a fresh default setup
-in a temp directory (never trust workspace manifest alone). Require nonempty
-work/report.md, work/profile.pstats, work/profile.txt, work/benchmark.json and
-at least one trace/compare evidence file; structurally validate machine artifacts.
-Reference fix is maintainer/reference_fix.patch, generated by root agent after
-package is ready. Smoke copies clean workspace to temp, setup, public tests,
-diagnostics evidence, baseline verifier fails performance, apply reference patch,
-same evidence commands, fixed verifier passes. Keep runtimes modest. Additional
-negative checks disabling audit or ignoring data invalidation should fail.
+Controls: recurring key count (`query-reuse`), window width, ingestion interval
+and batch size, audit batching, cache/audit toggles, workers, request count, and
+alternate generated data. Tenant-size experiments use setup's existing
+records-per-tenant and output-dir controls. Changing query/data controls can
+change response digests; component controls should preserve them.
 
-No agent calls are necessary to build or smoke-test the fixture. Model behavior
-and report reasoning quality are separately evaluated through run trace review.
+`compare` requires an investigator-selected variable and at least two distinct
+values. It does not automatically run the audit-off/cache-off experiments.
+Overview, profile, trace, compare, and benchmark persist structured evidence.
+Benchmark takes three fresh-service samples without instrumentation, serially.
+Concurrent CPU profiling still aggregates per-request worker profiles; ingestion
+at barriers is included in wall time and telemetry, but not those CPU profiles.
+
+## Held-out verification
+
+Generate independent tenant names, data, queries, shuffled arrivals, duplicate
+records/timestamps, and out-of-order ingestion. Oracle checks bounded searches,
+one-sided bounds, reversed bounds, limits, Unicode, isolation, response mutation,
+audit accounting, and concurrent requests. Performance replays also check every
+response against an independent oracle and every audit receipt, including explicit
+queries immediately after ingestion.
+
+Three serial samples per implementation, alternating execution order, for EACH:
+
+- dashboard: 84 requests cycling six unbounded keys;
+- exploratory: 84 distinct bounded windows with varying widths and limits;
+- mixed: alternating requests, two 32-record arrivals at 28-request boundaries,
+  and explicit bounded freshness probes after each arrival.
+
+Each workload must achieve >=3x original/candidate median elapsed speedup.
+Construction <=2.5x original +20ms, total ingestion <=max(5x original,25ms),
+and construction+workload <=1.25x original lifecycle. These bounds allow index
+construction/maintenance but reject excessive work moved out of request timing.
+Correctness and integrity prerequisites gate performance evaluation. No algorithm
+or internal event count is mandated as a performance solution.
+
+Protect scripts, public tests, and regenerated default inputs. Evidence requires
+mixed profile/text/report/trace-or-compare and three default-parameter benchmarks:
+work/benchmark.json, work/dashboard/benchmark.json, work/exploratory/benchmark.json.
+Reports and reasoning quality still require separate review.
+
+## Validation and Jev evaluation
+
+Smoke must reject the baseline and both partial repairs, accept the complete
+reference, and reject disabled audits, stale ingestion, timestamp-sorted responses,
+and stale timestamp indexes. Maintainer unit tests
+check diagnostic provenance, selected comparisons, group evidence, ingestion
+barriers, and performance/evidence gates. Retain calibration reports with smoke's
+--output option; do not ship generated data or timing artifacts in workspace/.
+
+Useful semantic delegation selects the next distinguishing probe from evidence,
+then executes that probe before the planner resumes. Reassessing remaining cost
+after a first improvement provides a second opportunity. Counts, digests, timing
+ratios, and simple numerical branches stay in code. Low-confidence/unsupported
+choices yield to the planner. Never put a root-cause-specific graph in the task.
+
+For an explicit showcase, agent execution guidance can encourage this bounded
+probe-selection workflow; keep it separate from neutral task instructions.
+Measure decisions that cause useful downstream work, planner turns avoided,
+unnecessary probes, diagnosis accuracy, correctness, latency, and tokens/cost.
+More Jev calls alone do not establish a better investigation.
