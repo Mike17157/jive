@@ -1,0 +1,33 @@
+{
+  "schemaVersion": 1,
+  "task": "retry_audit",
+  "kind": "source-code audit adaptation",
+  "upstream": {
+    "name": "Apache Airflow",
+    "repository": "https://github.com/apache/airflow",
+    "commit": "ecfa5a139c35f365836c0f462029537023d0357e",
+    "license": "Apache-2.0",
+    "licenseFile": "workspace/corpus/LICENSE",
+    "noticeFile": "workspace/corpus/NOTICE"
+  },
+  "selection": "A coherent source slice around retry, polling, deferred execution, queue ownership, provider SDK delegation, and their existing tests. It contains Amazon, Google, HTTP, Databricks, Livy, Kubernetes, SFTP, Slack, and core sensor examples so an audit must distinguish defects from legitimate alternatives.",
+  "files": {
+    "manifest": "workspace/corpus/MANIFEST.json",
+    "manifestSha256": "d16b5b0b5e2d33f79668c88107697133b198b38d4ef59671e401f1cb63391a62",
+    "upstreamFileCount": 65,
+    "upstreamBytes": 1714002,
+    "description": "The manifest records the immutable raw URL, byte length, and SHA-256 for every selected upstream file."
+  },
+  "adaptations": [
+    "Selected files retain their upstream paths beneath workspace/corpus and are otherwise byte-for-byte copies.",
+    "workspace/POLICY.md, workspace/README.md, and workspace/examples/retry_contract_examples.py are original local task material, not Apache Airflow files.",
+    "Later upstream fixes inform maintainer-only calibration; they are not copied into the workspace and are not disclosed in the task prompt."
+  ],
+  "maintainerCalibration": [
+    {"pullRequest": "https://github.com/apache/airflow/pull/38118", "purpose": "ECS retry lifecycle and delayed-queue regression"},
+    {"pullRequest": "https://github.com/apache/airflow/pull/39823", "purpose": "sensor reschedule exponential-backoff regression"},
+    {"pullRequest": "https://github.com/apache/airflow/pull/39608", "purpose": "BatchOperator retry-strategy default regression"},
+    {"pullRequest": "https://github.com/apache/airflow/pull/41008", "purpose": "EMR deferred wait-bound parity"},
+    {"pullRequest": "https://github.com/apache/airflow/pull/38961", "purpose": "optional credential-refresh resilience comparison"}
+  ]
+}

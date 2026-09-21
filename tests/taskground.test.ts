@@ -45,13 +45,17 @@ if (process.argv.includes('--hold')) {
   return path;
 }
 
-test("five checked-in tasks fit the allowance; dataset adaptations hide answer fields", async () => {
+test("bundled tasks fit the allowance; dataset adaptations hide answer fields", async () => {
   const tasks = await listTasks();
-  expect(tasks.map(t => t.id)).toEqual(["conversation_eval", "intent_routing", "product_matching", "search_latency", "sembench_movie"]);
+  expect(tasks.map(t => t.id)).toEqual(expect.arrayContaining(["async_blocking_audit", "conversation_eval", "error_handling_audit", "intent_routing", "product_matching", "retry_audit", "search_latency", "sembench_movie"]));
   for (const task of tasks) {
     expect(task.estimatedCalls).toBeLessThanOrEqual(200);
     const source = await json(join(DEFINITIONS, task.id, "SOURCE.json"));
-    if (task.id === "search_latency") {
+    if (["async_blocking_audit", "error_handling_audit", "retry_audit"].includes(task.id)) {
+      expect(task.verify).toBeDefined();
+      continue;
+    }
+    if (task.setup) {
       expect(task.setup).toBeDefined();
       expect(task.verify).toBeDefined();
       continue;
@@ -198,7 +202,7 @@ async function oracle(run: RunRecord) {
 }
 
 test("all four verifiers accept correct artifacts and reject incomplete, duplicate, or modified-reference submissions", async () => {
-  for (const task of (await listTasks()).filter(task => task.id !== "search_latency")) {
+  for (const task of (await listTasks()).filter(task => ["conversation_eval", "intent_routing", "product_matching", "sembench_movie"].includes(task.id))) {
     const run = await fixture({ task: task.id });
     expect((await verifyRun(run.id, resolve(run.directory, ".."))).grading.status).toBe("failed");
     await oracle(run);
@@ -234,7 +238,7 @@ test("the real Jive launcher executes its offline demo through the headless adap
 test("CLI JSON output is parseable and invalid run paths are rejected", async () => {
   const cli = resolve(import.meta.dir, "../bin/taskground.ts");
   const result = await capture([process.execPath, cli, "list", "--json"], resolve(import.meta.dir, ".."));
-  expect(JSON.parse(result!)).toHaveLength(5);
+  expect(JSON.parse(result!)).toHaveLength((await listTasks()).length);
   await expect(readRun("../escape")).rejects.toThrow("Invalid run ID");
 });
 

@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "id": "async_blocking_audit",
+  "title": "Audit async setup paths for blocking work",
+  "description": "Explore a pinned Home Assistant source snapshot, distinguish event-loop blockers from safe lookalikes, and leave an evidence-backed async blocking audit.",
+  "estimatedCalls": 18,
+  "verify": ["python3", "{definition}/verifier/verify.py"]
+}

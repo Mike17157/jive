@@ -1,0 +1,95 @@
+{
+  "schemaVersion": 1,
+  "task": "error_handling_audit",
+  "broadHandlerCount": 35,
+  "boundaryApiMinimum": 2,
+  "maxFindings": 8,
+  "primaryScope": [
+    "prefect/src/prefect/server/utilities/user_templates.py",
+    "prefect/src/prefect/server/events/actions.py",
+    "prefect/src/prefect/server/events/models/automations.py",
+    "prefect/src/prefect/server/orchestration/core_policy.py",
+    "prefect/src/prefect/server/orchestration/rules.py",
+    "prefect/src/prefect/utilities/schema_tools/hydration.py",
+    "prefect/src/prefect/task_runners.py",
+    "prefect/src/prefect/futures.py",
+    "prefect/src/prefect/events/utilities.py",
+    "prefect/src/prefect/_internal/analytics/client.py",
+    "prefect/src/prefect/utilities/filesystem.py",
+    "prefect/src/integrations/prefect-docker/prefect_docker/worker.py"
+  ],
+  "expected": [
+    {
+      "key": "async-template-false-success",
+      "path": "prefect/src/prefect/server/utilities/user_templates.py",
+      "symbol": "render_user_template",
+      "lineMin": 132,
+      "lineMax": 140,
+      "mechanism": "exception-returned-as-data",
+      "failureMode": "false-success",
+      "requiredCallPath": [
+        ["prefect/src/prefect/server/events/actions.py", "JinjaTemplateAction._render"],
+        ["prefect/src/prefect/server/events/actions.py", "consumer.message_handler"]
+      ]
+    },
+    {
+      "key": "sync-template-invalid-value",
+      "path": "prefect/src/prefect/server/utilities/user_templates.py",
+      "symbol": "render_user_template_sync",
+      "lineMin": 147,
+      "lineMax": 155,
+      "mechanism": "exception-returned-as-data",
+      "failureMode": "invalid-value-propagation",
+      "requiredCallPath": [
+        ["prefect/src/prefect/utilities/schema_tools/hydration.py", "jinja_handler"]
+      ]
+    },
+    {
+      "key": "docker-pull-stream-discard",
+      "path": "prefect/src/integrations/prefect-docker/prefect_docker/worker.py",
+      "symbol": "DockerWorker._pull_image",
+      "lineMin": 899,
+      "lineMax": 907,
+      "mechanism": "dependency-stream-discard",
+      "failureMode": "stale-resource-use",
+      "requiredCallPath": [
+        ["third_party/docker_py_7_1_0/docker/models/images.py", "ImageCollection.pull"],
+        ["prefect/src/integrations/prefect-docker/prefect_docker/worker.py", "DockerWorker._create_and_start_container"]
+      ]
+    },
+    {
+      "key": "unpickling-callback-notification",
+      "path": "prefect/src/prefect/task_runners.py",
+      "symbol": "_UnpicklingFuture.add_done_callback",
+      "lineMin": 638,
+      "lineMax": 647,
+      "mechanism": "callback-notification-lost",
+      "failureMode": "stalled-completion",
+      "requiredCallPath": [
+        ["prefect/src/prefect/task_runners.py", "ProcessPoolTaskRunner.submit"],
+        ["prefect/src/prefect/futures.py", "as_completed"],
+        ["third_party/cpython_3_12_10/Lib/concurrent/futures/_base.py", "Future._invoke_callbacks"]
+      ]
+    },
+    {
+      "key": "task-concurrency-cleanup",
+      "path": "prefect/src/prefect/server/orchestration/core_policy.py",
+      "symbol": "SecureTaskConcurrencySlots.cleanup",
+      "lineMin": 423,
+      "lineMax": 442,
+      "mechanism": "cleanup-failure-suppressed",
+      "failureMode": "leaked-capacity",
+      "requiredCallPath": [
+        ["prefect/src/prefect/server/orchestration/rules.py", "BaseOrchestrationRule.__aexit__"]
+      ]
+    }
+  ],
+  "knownExpectedBehavior": [
+    ["prefect/src/prefect/events/utilities.py", "emit_event"],
+    ["prefect/src/prefect/_internal/analytics/client.py", "_initialize_client"],
+    ["prefect/src/prefect/_internal/analytics/client.py", "_shutdown_client"],
+    ["prefect/src/prefect/_internal/analytics/client.py", "track_event"],
+    ["prefect/src/prefect/_internal/analytics/client.py", "flush"],
+    ["prefect/src/prefect/utilities/filesystem.py", "get_open_file_limit"]
+  ]
+}

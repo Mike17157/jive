@@ -1,0 +1,398 @@
+{
+  "commit": "ecfa5a139c35f365836c0f462029537023d0357e",
+  "files": [
+    {
+      "bytes": 13569,
+      "path": "LICENSE",
+      "sha256": "cb0501a4a65cec96fdeab56de48dc80db83b7482406d448792ea03705de36c7e",
+      "source": "https://raw.githubusercontent.com/apache/airflow/ecfa5a139c35f365836c0f462029537023d0357e/LICENSE"
+    },
+    {
+      "bytes": 789,
+      "path": "NOTICE",
+      "sha256": "37fc7a1b73823530b39776d5913379f7ada95335f4d37ddf9c08979c79be7100",
+      "source": "https://raw.githubusercontent.com/apache/airflow/ecfa5a139c35f365836c0f462029537023d0357e/NOTICE"
+    },
+    {
+      "bytes": 16679,
+      "path": "airflow/sensors/base.py",
+      "sha256": "d4b375bfec0415e77f3889587614decc6c0865712b7f49b7ecba6fef6051f02a",
+      "source": "https://raw.githubusercontent.com/apache/airflow/ecfa5a139c35f365836c0f462029537023d0357e/airflow/sensors/base.py"
+    },
+    {
+      "bytes": 37801,
+      "path": "tests/sensors/test_base.py",
+      "sha256": "19866c170064224ede363f7a9f2c25534acaa1e4156e01e92c71d9e8f6efc254",
+      "source": "https://raw.githubusercontent.com/apache/airflow/ecfa5a139c35f365836c0f462029537023d0357e/tests/sensors/test_base.py"
+    },
+    {
+      "bytes": 23670,
+      "path": "airflow/providers/amazon/aws/executors/ecs/ecs_executor.py",
+      "sha256": "74bf4f04873f7801021401cfef5d49d317cbe0056b28cf038f7d5bf6d23b793c",
+      "source": "https://raw.githubusercontent.com/apache/airflow/ecfa5a139c35f365836c0f462029537023d0357e/airflow/providers/amazon/aws/executors/ecs/ecs_executor.py"
+    },
+    {
+      "bytes": 9477,
+      "path": "airflow/providers/amazon/aws/executors/ecs/utils.py",
+      "sha256": "44bb263cde4ca4ba5741fb64ca821bf22f07c40c36477bd058ad7333f3395c38",
+      "source": "https://raw.githubusercontent.com/apache/airflow/ecfa5a139c35f365836c0f462029537023d0357e/airflow/providers/amazon/aws/executors/ecs/utils.py"
+    },
+    {
+      "bytes": 3100,
+      "path": "airflow/providers/amazon/aws/executors/utils/exponential_backoff_retry.py",
+      "sha256": "14377155f76208165188a41761d8d4a77de161aa07bce499e078d9033a4bf0d6",
+      "source": "https://raw.githubusercontent.com/apache/airflow/ecfa5a139c35f365836c0f462029537023d0357e/airflow/providers/amazon/aws/executors/utils/exponential_backoff_retry.py"
+    },
+    {
+      "bytes": 67833,
+      "path": "tests/providers/amazon/aws/executors/ecs/test_ecs_executor.py",
+      "sha256": "2980724a858e12e54b5be7b0ec4a0a63f8f19f1dcae972bbb60d594b178812c4",
+      "source": "https://raw.githubusercontent.com/apache/airflow/ecfa5a139c35f365836c0f462029537023d0357e/tests/providers/amazon/aws/executors/ecs/test_ecs_executor.py"
+    },
+    {
+      "bytes": 10766,
+      "path": "tests/providers/amazon/aws/executors/utils/test_exponential_backoff_retry.py",
+      "sha256": "0dffd00898ab6a872fae35e1123235405e50f7af907e614f41ee51499b15de74",
+      "source": "https://raw.githubusercontent.com/apache/airflow/ecfa5a139c35f365836c0f462029537023d0357e/tests/providers/amazon/aws/executors/utils/test_exponential_backoff_retry.py"
+    },
+    {
+      "bytes": 18487,
+      "path": "airflow/providers/amazon/aws/executors/batch/batch_executor.py",
+      "sha256": "91d1f726daa5005c79ad29be58abb1b5e85d4fa43eae488b9d109e5e7488328c",
+      "source": "https://raw.githubusercontent.com/apache/airflow/ecfa5a139c35f365836c0f462029537023d0357e/airflow/providers/amazon/aws/executors/batch/batch_executor.py"
+    },
+    {
+      "bytes": 5286,
+      "path": "airflow/providers/amazon/aws/executors/batch/utils.py",
+      "sha256": "26e82cf25befb567b2fc27303241e74557bd1b44a7f30c9599b44e56b8e093d0",
+      "source": "https://raw.githubusercontent.com/apache/airflow/ecfa5a139c35f365836c0f462029537023d0357e/airflow/providers/amazon/aws/executors/batch/utils.py"
+    },
+    {
+      "bytes": 34483,
+      "path": "tests/providers/amazon/aws/executors/batch/test_batch_executor.py",
+      "sha256": "8293add3613cc071d75f3a5d5a9c200fc1786634d1e3cc40917750be68b9e5ef",
+      "source": "https://raw.githubusercontent.com/apache/airflow/ecfa5a139c35f365836c0f462029537023d0357e/tests/providers/amazon/aws/executors/batch/test_batch_executor.py"
+    },
+    {
+      "bytes": 22374,
+      "path": "airflow/providers/amazon/aws/operators/batch.py",
+      "sha256": "9daa941a0595f58921a0d00b7f971223e707134a2263381330e054243c1e92b3",
+      "source": "https://raw.githubusercontent.com/apache/airflow/ecfa5a139c35f365836c0f462029537023d0357e/airflow/providers/amazon/aws/operators/batch.py"
+    },
+    {
+      "bytes": 16305,
+      "path": "tests/providers/amazon/aws/operators/test_batch.py",
+      "sha256": "1f71c53ce0502948bf0663f8dbca84933396bab54a305f1ce776dd7df1ffc50a",
+      "source": "https://raw.githubusercontent.com/apache/airflow/ecfa5a139c35f365836c0f462029537023d0357e/tests/providers/amazon/aws/operators/test_batch.py"
+    },
+    {
+      "bytes": 85611,
+      "path": "airflow/providers/amazon/aws/operators/emr.py",
+      "sha256": "0cbf6e4871794f3a503a60fbc83863d44d2b14f7874b0f47f0b28fefd1433a7f",
+      "source": "https://raw.githubusercontent.com/apache/airflow/ecfa5a139c35f365836c0f462029537023d0357e/airflow/providers/amazon/aws/operators/emr.py"
+    },
+    {
+      "bytes": 17987,
+      "path": "airflow/providers/amazon/aws/triggers/emr.py",
+      "sha256": "38535b173495c946101b55a0dc6a27d94e3de85a3c9c2c58175b52c4d1651f0b",
+      "source": "https://raw.githubusercontent.com/apache/airflow/ecfa5a139c35f365836c0f462029537023d0357e/airflow/providers/amazon/aws/triggers/emr.py"
+    },
+    {
+      "bytes": 25923,
+      "path": "airflow/providers/amazon/aws/sensors/emr.py",
+      "sha256": "022c9adb65720be640a023a2d02176fe46c48f51e7d0e5746c96053341233504",
+      "source": "https://raw.githubusercontent.com/apache/airflow/ecfa5a139c35f365836c0f462029537023d0357e/airflow/providers/amazon/aws/sensors/emr.py"
+    },
+    {
+      "bytes": 21380,
+      "path": "airflow/providers/amazon/aws/hooks/emr.py",
+      "sha256": "10af7dae5731fea2a30b6d2b9b24d5c4e03213b9979024035fa6bbdd93c93074",
+      "source": "https://raw.githubusercontent.com/apache/airflow/ecfa5a139c35f365836c0f462029537023d0357e/airflow/providers/amazon/aws/hooks/emr.py"
+    },
+    {
+      "bytes": 14509,
+      "path": "tests/providers/amazon/aws/hooks/test_emr.py",
+      "sha256": "f0db5af50e8852f8eaf0c3c9d899a600bb62500a2ea456f222476e584d31805f",
+      "source": "https://raw.githubusercontent.com/apache/airflow/ecfa5a139c35f365836c0f462029537023d0357e/tests/providers/amazon/aws/hooks/test_emr.py"
+    },
+    {
+      "bytes": 4545,
+      "path": "tests/providers/amazon/aws/hooks/test_emr_containers.py",
+      "sha256": "9e885ee4703c14948bd18267ca500fe38ccbcd148a76cdc6a448f9dad48da1e4",
+      "source": "https://raw.githubusercontent.com/apache/airflow/ecfa5a139c35f365836c0f462029537023d0357e/tests/providers/amazon/aws/hooks/test_emr_containers.py"
+    },
+    {
+      "bytes": 7394,
+      "path": "tests/providers/amazon/aws/operators/test_emr_containers.py",
+      "sha256": "de2290dff418b92b36b32600ee9978127aa33fc4a5f90f9f66d46ddde837266b",
+      "source": "https://raw.githubusercontent.com/apache/airflow/ecfa5a139c35f365836c0f462029537023d0357e/tests/providers/amazon/aws/operators/test_emr_containers.py"
+    },
+    {
+      "bytes": 3792,
+      "path": "tests/providers/amazon/aws/sensors/test_emr_containers.py",
+      "sha256": "2db02cc56d1ab5636dc3ab9d641de296b395d78f5ae99dca69d08d1c20d80791",
+      "source": "https://raw.githubusercontent.com/apache/airflow/ecfa5a139c35f365836c0f462029537023d0357e/tests/providers/amazon/aws/sensors/test_emr_containers.py"
+    },
+    {
+      "bytes": 14698,
+      "path": "tests/providers/amazon/aws/triggers/test_serialization.py",
+      "sha256": "fccb8590af4c4a8eddd03b36aac6ebdc990d9b8534deeceb65eb0dd691aee084",
+      "source": "https://raw.githubusercontent.com/apache/airflow/ecfa5a139c35f365836c0f462029537023d0357e/tests/providers/amazon/aws/triggers/test_serialization.py"
+    },
+    {
+      "bytes": 21348,
+      "path": "airflow/providers/amazon/aws/hooks/batch_client.py",
+      "sha256": "3e2ff3a5d9f68d82a6742465c57092122a302ad7293d35cdebdbd36cf7d47461",
+      "source": "https://raw.githubusercontent.com/apache/airflow/ecfa5a139c35f365836c0f462029537023d0357e/airflow/providers/amazon/aws/hooks/batch_client.py"
+    },
+    {
+      "bytes": 21306,
+      "path": "tests/providers/amazon/aws/hooks/test_batch_client.py",
+      "sha256": "5e2801dad5d6803f5300b604e14e36063c1f8a28788020067505787281bb6ec8",
+      "source": "https://raw.githubusercontent.com/apache/airflow/ecfa5a139c35f365836c0f462029537023d0357e/tests/providers/amazon/aws/hooks/test_batch_client.py"
+    },
+    {
+      "bytes": 49223,
+      "path": "airflow/providers/amazon/aws/hooks/base_aws.py",
+      "sha256": "8a7430e9c9ee1ddf015574f3785ff25d85639011bd5b1e3ed470ea85c4499df9",
+      "source": "https://raw.githubusercontent.com/apache/airflow/ecfa5a139c35f365836c0f462029537023d0357e/airflow/providers/amazon/aws/hooks/base_aws.py"
+    },
+    {
+      "bytes": 51931,
+      "path": "tests/providers/amazon/aws/hooks/test_base_aws.py",
+      "sha256": "a7984878e73e6b68c988e4155d0e74e9fda5d15e0f52a252eaf9cca51fdfc075",
+      "source": "https://raw.githubusercontent.com/apache/airflow/ecfa5a139c35f365836c0f462029537023d0357e/tests/providers/amazon/aws/hooks/test_base_aws.py"
+    },
+    {
+      "bytes": 3509,
+      "path": "airflow/providers/amazon/aws/utils/waiter.py",
+      "sha256": "14ed56ba974aed9f40a27ac2f30fd7711a5013b03ea3856581aa90c55eb975b9",
+      "source": "https://raw.githubusercontent.com/apache/airflow/ecfa5a139c35f365836c0f462029537023d0357e/airflow/providers/amazon/aws/utils/waiter.py"
+    },
+    {
+      "bytes": 5892,
+      "path": "airflow/providers/amazon/aws/utils/waiter_with_logging.py",
+      "sha256": "636c8a032eafeb8923e26883bc2e5b70ad233fc183c960f3cbe8d4688f4e34c3",
+      "source": "https://raw.githubusercontent.com/apache/airflow/ecfa5a139c35f365836c0f462029537023d0357e/airflow/providers/amazon/aws/utils/waiter_with_logging.py"
+    },
+    {
+      "bytes": 11730,
+      "path": "tests/providers/amazon/aws/utils/test_waiter_with_logging.py",
+      "sha256": "76b8148db4964ba87a3a44d7e3c29dd4736ff58bd8653d54045459c353c96a16",
+      "source": "https://raw.githubusercontent.com/apache/airflow/ecfa5a139c35f365836c0f462029537023d0357e/tests/providers/amazon/aws/utils/test_waiter_with_logging.py"
+    },
+    {
+      "bytes": 32739,
+      "path": "airflow/providers/amazon/aws/operators/ecs.py",
+      "sha256": "6fbca2e1c1e732d8f1777046c4011dd6109066448ab1d864dd3d64c21c4ac3ec",
+      "source": "https://raw.githubusercontent.com/apache/airflow/ecfa5a139c35f365836c0f462029537023d0357e/airflow/providers/amazon/aws/operators/ecs.py"
+    },
+    {
+      "bytes": 9131,
+      "path": "airflow/providers/amazon/aws/triggers/ecs.py",
+      "sha256": "c1d1c2aa14df3940ec7f73115a5c109b167e8f180620ddae83d240d5b6621bd9",
+      "source": "https://raw.githubusercontent.com/apache/airflow/ecfa5a139c35f365836c0f462029537023d0357e/airflow/providers/amazon/aws/triggers/ecs.py"
+    },
+    {
+      "bytes": 35379,
+      "path": "tests/providers/amazon/aws/operators/test_ecs.py",
+      "sha256": "60963a317b1795c7d2aa5628ab5e941b637b06a0d4d8581269cfb2a2d0a692ef",
+      "source": "https://raw.githubusercontent.com/apache/airflow/ecfa5a139c35f365836c0f462029537023d0357e/tests/providers/amazon/aws/operators/test_ecs.py"
+    },
+    {
+      "bytes": 3890,
+      "path": "tests/providers/amazon/aws/triggers/test_ecs.py",
+      "sha256": "0e7ea88dc9b0568b4e3b75a32f81fd1209cb350f47a7217392e048694f154686",
+      "source": "https://raw.githubusercontent.com/apache/airflow/ecfa5a139c35f365836c0f462029537023d0357e/tests/providers/amazon/aws/triggers/test_ecs.py"
+    },
+    {
+      "bytes": 7957,
+      "path": "airflow/providers/amazon/aws/hooks/quicksight.py",
+      "sha256": "3054e5ad657cf302e4cb6b30a3e6f97c54032db3100b0eb0ea572002f26abde5",
+      "source": "https://raw.githubusercontent.com/apache/airflow/ecfa5a139c35f365836c0f462029537023d0357e/airflow/providers/amazon/aws/hooks/quicksight.py"
+    },
+    {
+      "bytes": 17230,
+      "path": "airflow/providers/amazon/aws/hooks/glue.py",
+      "sha256": "5aa4f4caff64db88d95b69022936d913f04a6352f62b5ce7207830e4ddbcb831",
+      "source": "https://raw.githubusercontent.com/apache/airflow/ecfa5a139c35f365836c0f462029537023d0357e/airflow/providers/amazon/aws/hooks/glue.py"
+    },
+    {
+      "bytes": 13566,
+      "path": "airflow/providers/amazon/aws/hooks/athena.py",
+      "sha256": "ca56e9beaf1ba1cdfe115a3d656e44d7ae2baf634b3e938c10884a428ff1d123",
+      "source": "https://raw.githubusercontent.com/apache/airflow/ecfa5a139c35f365836c0f462029537023d0357e/airflow/providers/amazon/aws/hooks/athena.py"
+    },
+    {
+      "bytes": 30063,
+      "path": "airflow/providers/google/common/hooks/base_google.py",
+      "sha256": "95de3c72bfe27fd13a8b733de1afb3d4e0afc3a82799de54375895fa77491162",
+      "source": "https://raw.githubusercontent.com/apache/airflow/ecfa5a139c35f365836c0f462029537023d0357e/airflow/providers/google/common/hooks/base_google.py"
+    },
+    {
+      "bytes": 40109,
+      "path": "tests/providers/google/common/hooks/test_base_google.py",
+      "sha256": "02b1c147ca9b77080ca6bfbee091beb77b0b18285e8675c3a8c9bbddfc1184b6",
+      "source": "https://raw.githubusercontent.com/apache/airflow/ecfa5a139c35f365836c0f462029537023d0357e/tests/providers/google/common/hooks/test_base_google.py"
+    },
+    {
+      "bytes": 148922,
+      "path": "airflow/providers/google/cloud/hooks/bigquery.py",
+      "sha256": "57f044e562d4b4da99cf38b0b1ba9f4830b9dbfd9bbc1b37afa0d81ff3b7b0c8",
+      "source": "https://raw.githubusercontent.com/apache/airflow/ecfa5a139c35f365836c0f462029537023d0357e/airflow/providers/google/cloud/hooks/bigquery.py"
+    },
+    {
+      "bytes": 102876,
+      "path": "tests/providers/google/cloud/hooks/test_bigquery.py",
+      "sha256": "0dfd64a6c05cb6e10d86ed21b2c33365b2459c5d8d28d5c2c27867231fc6db3d",
+      "source": "https://raw.githubusercontent.com/apache/airflow/ecfa5a139c35f365836c0f462029537023d0357e/tests/providers/google/cloud/hooks/test_bigquery.py"
+    },
+    {
+      "bytes": 58317,
+      "path": "airflow/providers/google/cloud/hooks/gcs.py",
+      "sha256": "51c13beb900665aa9461aacfcd19e0fbbf6891de96ac5e5b3dbed6a9e7462012",
+      "source": "https://raw.githubusercontent.com/apache/airflow/ecfa5a139c35f365836c0f462029537023d0357e/airflow/providers/google/cloud/hooks/gcs.py"
+    },
+    {
+      "bytes": 40672,
+      "path": "airflow/providers/google/cloud/hooks/compute.py",
+      "sha256": "b4ed0e48f79789f977c8ce70b65dea6b102287ddbc70e52a63b1a1d5e50c192d",
+      "source": "https://raw.githubusercontent.com/apache/airflow/ecfa5a139c35f365836c0f462029537023d0357e/airflow/providers/google/cloud/hooks/compute.py"
+    },
+    {
+      "bytes": 18407,
+      "path": "airflow/providers/http/hooks/http.py",
+      "sha256": "e0d93b184a6e52f0c1c179f0bdd641f9069adda772c92379bf926a8025e9108d",
+      "source": "https://raw.githubusercontent.com/apache/airflow/ecfa5a139c35f365836c0f462029537023d0357e/airflow/providers/http/hooks/http.py"
+    },
+    {
+      "bytes": 7702,
+      "path": "airflow/providers/http/triggers/http.py",
+      "sha256": "f00403e688d10ad2e7a331504dd1b12ff206a1165874cc3cc61664807f1a8495",
+      "source": "https://raw.githubusercontent.com/apache/airflow/ecfa5a139c35f365836c0f462029537023d0357e/airflow/providers/http/triggers/http.py"
+    },
+    {
+      "bytes": 30372,
+      "path": "tests/providers/http/hooks/test_http.py",
+      "sha256": "f4a62a7a2414ba6bfc5951860f80366016e6bb5b83bfb9d9b64b8da927a25008",
+      "source": "https://raw.githubusercontent.com/apache/airflow/ecfa5a139c35f365836c0f462029537023d0357e/tests/providers/http/hooks/test_http.py"
+    },
+    {
+      "bytes": 5153,
+      "path": "tests/providers/http/triggers/test_http.py",
+      "sha256": "58555d24c977b8fc65f9cadc9db7ce2a3156128f2a7f8ed8f94afea3c4b84e37",
+      "source": "https://raw.githubusercontent.com/apache/airflow/ecfa5a139c35f365836c0f462029537023d0357e/tests/providers/http/triggers/test_http.py"
+    },
+    {
+      "bytes": 30591,
+      "path": "airflow/providers/databricks/hooks/databricks_base.py",
+      "sha256": "9d7fb8d0fd17299c85c9a8646db226bd69a8090e22737e6f880625148ba95071",
+      "source": "https://raw.githubusercontent.com/apache/airflow/ecfa5a139c35f365836c0f462029537023d0357e/airflow/providers/databricks/hooks/databricks_base.py"
+    },
+    {
+      "bytes": 23018,
+      "path": "airflow/providers/databricks/hooks/databricks.py",
+      "sha256": "023d044881aa2863c09c20888c144cba2e8c9507bc697d259ef91a07de773882",
+      "source": "https://raw.githubusercontent.com/apache/airflow/ecfa5a139c35f365836c0f462029537023d0357e/airflow/providers/databricks/hooks/databricks.py"
+    },
+    {
+      "bytes": 3997,
+      "path": "airflow/providers/databricks/triggers/databricks.py",
+      "sha256": "423f660746cd61163fb683c4535ee0c5bc663e4913dcfefcf64087bbf4fae010",
+      "source": "https://raw.githubusercontent.com/apache/airflow/ecfa5a139c35f365836c0f462029537023d0357e/airflow/providers/databricks/triggers/databricks.py"
+    },
+    {
+      "bytes": 74971,
+      "path": "tests/providers/databricks/hooks/test_databricks.py",
+      "sha256": "233da7bb08a049c52280ae6f1f0eb69ed36b1f2aee09aa6a489f429b4cb79de6",
+      "source": "https://raw.githubusercontent.com/apache/airflow/ecfa5a139c35f365836c0f462029537023d0357e/tests/providers/databricks/hooks/test_databricks.py"
+    },
+    {
+      "bytes": 5475,
+      "path": "tests/providers/databricks/triggers/test_databricks.py",
+      "sha256": "4797691f34efc9bb7b4db48b3109ceee0029c8e3f40e3ad6a050717889e523a2",
+      "source": "https://raw.githubusercontent.com/apache/airflow/ecfa5a139c35f365836c0f462029537023d0357e/tests/providers/databricks/triggers/test_databricks.py"
+    },
+    {
+      "bytes": 31501,
+      "path": "airflow/providers/apache/livy/hooks/livy.py",
+      "sha256": "a9df3169c6664c70176887e756e508c367595e44ea092995074fe144db48acd0",
+      "source": "https://raw.githubusercontent.com/apache/airflow/ecfa5a139c35f365836c0f462029537023d0357e/airflow/providers/apache/livy/hooks/livy.py"
+    },
+    {
+      "bytes": 6245,
+      "path": "airflow/providers/apache/livy/triggers/livy.py",
+      "sha256": "1fc538a6f2ff516a9f28ab6c49f758fccafb3d3aa20d3afed2f6de306f74498d",
+      "source": "https://raw.githubusercontent.com/apache/airflow/ecfa5a139c35f365836c0f462029537023d0357e/airflow/providers/apache/livy/triggers/livy.py"
+    },
+    {
+      "bytes": 33176,
+      "path": "tests/providers/apache/livy/hooks/test_livy.py",
+      "sha256": "bb9a8592d194577a634e07e72a25052b949efd5f488fcf3679d85d3daa61c3ba",
+      "source": "https://raw.githubusercontent.com/apache/airflow/ecfa5a139c35f365836c0f462029537023d0357e/tests/providers/apache/livy/hooks/test_livy.py"
+    },
+    {
+      "bytes": 8390,
+      "path": "tests/providers/apache/livy/triggers/test_livy.py",
+      "sha256": "058f1942206e4c407f1627b43d15ad8b40c9f2ea5a5c5bc4d69f087778d48c9a",
+      "source": "https://raw.githubusercontent.com/apache/airflow/ecfa5a139c35f365836c0f462029537023d0357e/tests/providers/apache/livy/triggers/test_livy.py"
+    },
+    {
+      "bytes": 33321,
+      "path": "airflow/providers/cncf/kubernetes/utils/pod_manager.py",
+      "sha256": "a26eea17414c6b1dac4bc84009d8100836ade7a02181cdbaa4c2a661e4158c6f",
+      "source": "https://raw.githubusercontent.com/apache/airflow/ecfa5a139c35f365836c0f462029537023d0357e/airflow/providers/cncf/kubernetes/utils/pod_manager.py"
+    },
+    {
+      "bytes": 49792,
+      "path": "airflow/providers/cncf/kubernetes/operators/pod.py",
+      "sha256": "8d08c7280c757c000c0fc79e1740b83b2be70bf40f67138bdb9029271cf638ac",
+      "source": "https://raw.githubusercontent.com/apache/airflow/ecfa5a139c35f365836c0f462029537023d0357e/airflow/providers/cncf/kubernetes/operators/pod.py"
+    },
+    {
+      "bytes": 39879,
+      "path": "tests/providers/cncf/kubernetes/utils/test_pod_manager.py",
+      "sha256": "b7a8da60d56667875145163c62ed3aee4b5b4aba88ce98dc5a72acadc6853600",
+      "source": "https://raw.githubusercontent.com/apache/airflow/ecfa5a139c35f365836c0f462029537023d0357e/tests/providers/cncf/kubernetes/utils/test_pod_manager.py"
+    },
+    {
+      "bytes": 21763,
+      "path": "airflow/providers/sftp/hooks/sftp.py",
+      "sha256": "ce93fab6f124e034cd4844aa1b1dc127a4ff587e55e8aceff63b2e1a42cc3e8f",
+      "source": "https://raw.githubusercontent.com/apache/airflow/ecfa5a139c35f365836c0f462029537023d0357e/airflow/providers/sftp/hooks/sftp.py"
+    },
+    {
+      "bytes": 32507,
+      "path": "tests/providers/sftp/hooks/test_sftp.py",
+      "sha256": "a539601448a4f5cf23938ee0c5a9854a80ebb0cfa4e2b1528a5c3aa6919e0ff8",
+      "source": "https://raw.githubusercontent.com/apache/airflow/ecfa5a139c35f365836c0f462029537023d0357e/tests/providers/sftp/hooks/test_sftp.py"
+    },
+    {
+      "bytes": 17643,
+      "path": "airflow/providers/slack/hooks/slack.py",
+      "sha256": "4a7d14f696086348e42c51e2c33e5d78a13b458973de86592f909ea70817631b",
+      "source": "https://raw.githubusercontent.com/apache/airflow/ecfa5a139c35f365836c0f462029537023d0357e/airflow/providers/slack/hooks/slack.py"
+    },
+    {
+      "bytes": 12938,
+      "path": "airflow/providers/slack/hooks/slack_webhook.py",
+      "sha256": "bc95706c70742d510c86a31cc6fee006f5202cf6fe7d791efc3821dc09514540",
+      "source": "https://raw.githubusercontent.com/apache/airflow/ecfa5a139c35f365836c0f462029537023d0357e/airflow/providers/slack/hooks/slack_webhook.py"
+    },
+    {
+      "bytes": 24667,
+      "path": "tests/providers/slack/hooks/test_slack.py",
+      "sha256": "44792e55981548fc508e5962a3a54e5c8b200010e25de8b7a8c096b695bae442",
+      "source": "https://raw.githubusercontent.com/apache/airflow/ecfa5a139c35f365836c0f462029537023d0357e/tests/providers/slack/hooks/test_slack.py"
+    },
+    {
+      "bytes": 20246,
+      "path": "tests/providers/slack/hooks/test_slack_webhook.py",
+      "sha256": "d414c011fdefa6c7193af33d9b98b2d7cb2daea5957ed5e21266e15644a182c9",
+      "source": "https://raw.githubusercontent.com/apache/airflow/ecfa5a139c35f365836c0f462029537023d0357e/tests/providers/slack/hooks/test_slack_webhook.py"
+    }
+  ],
+  "license": "Apache-2.0",
+  "schemaVersion": 1,
+  "upstream": "apache/airflow"
+}

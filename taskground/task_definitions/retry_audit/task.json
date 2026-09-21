@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "id": "retry_audit",
+  "title": "Audit retry behavior for central cleanup",
+  "description": "Audit a pinned Apache Airflow source slice for retry correctness defects and evidence-backed cleanup candidates while separating healthy polling and delegated retry mechanisms.",
+  "estimatedCalls": 0,
+  "verify": ["python3", "{definition}/verifier/verify.py"]
+}

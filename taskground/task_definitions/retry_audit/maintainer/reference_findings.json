@@ -1,0 +1,266 @@
+{
+  "schemaVersion": 1,
+  "scope": {
+    "upstream": "apache/airflow",
+    "commit": "ecfa5a139c35f365836c0f462029537023d0357e"
+  },
+  "findings": [
+    {
+      "id": "ecs-delayed-work-drop",
+      "classification": "correctness_defect",
+      "severity": "critical",
+      "confidence": "high",
+      "title": "ECS queue traversal discards delayed retry work",
+      "primaryLocation": {"path": "airflow/providers/amazon/aws/executors/ecs/ecs_executor.py", "line": 348},
+      "evidence": [
+        {"path": "airflow/providers/amazon/aws/executors/ecs/ecs_executor.py", "startLine": 338, "endLine": 354, "claim": "The loop removes each queued task before checking its ready time, then continues without restoring a delayed task."},
+        {"path": "airflow/providers/amazon/aws/executors/ecs/utils.py", "startLine": 55, "endLine": 72, "claim": "The queued-task record owns next_attempt_time and is the only pending representation retained by the deque."}
+      ],
+      "behavior": {
+        "trigger": "An ECS launch or task retry is queued with next_attempt_time later than the next executor heartbeat.",
+        "actual": "attempt_task_runs removes the record from pending_tasks and the early continue loses the only queued representation permanently.",
+        "expected": "A delayed record remains owned by the pending queue and becomes eligible on a later heartbeat without consuming another attempt.",
+        "impact": "The scheduler can leave an Airflow task queued indefinitely because the executor silently forgets the retry before submitting it to ECS."
+      },
+      "recommendation": "Append the delayed EcsQueuedTask back to pending_tasks before continuing and add a clock-controlled regression that proves it is retained, not submitted early, and submitted once after its deadline."
+    },
+    {
+      "id": "ecs-terminal-state-lifecycle",
+      "classification": "correctness_defect",
+      "severity": "critical",
+      "confidence": "high",
+      "title": "ECS failed and removed states violate retry ownership",
+      "primaryLocation": {"path": "airflow/providers/amazon/aws/executors/ecs/ecs_executor.py", "line": 246},
+      "evidence": [
+        {"path": "airflow/providers/amazon/aws/executors/ecs/ecs_executor.py", "startLine": 239, "endLine": 260, "claim": "FAILED is immediately reported terminal instead of entering the retry handler, while REMOVED enters the handler but skips the later active-worker removal."},
+        {"path": "airflow/providers/amazon/aws/executors/ecs/ecs_executor.py", "startLine": 291, "endLine": 326, "claim": "The failure handler creates pending retry work but only releases active ownership in the exhausted-attempt branch."},
+        {"path": "tests/providers/amazon/aws/executors/ecs/test_ecs_executor.py", "startLine": 630, "endLine": 654, "claim": "The existing tests codify immediate FAILED termination and retained active ownership for REMOVED, exposing the asymmetric lifecycle."},
+        {"path": "tests/providers/amazon/aws/executors/ecs/test_ecs_executor.py", "startLine": 660, "endLine": 691, "claim": "Cumulative failure accounting expects pending work to move back into active tracking across retry cycles."}
+      ],
+      "behavior": {
+        "trigger": "ECS reports a launched task in FAILED or REMOVED state while the executor has retry attempts remaining.",
+        "actual": "FAILED bypasses the retry handler and is failed immediately; REMOVED queues another attempt while the old active worker remains tracked.",
+        "expected": "Both retryable terminal failure states should use one accounting path, transfer ownership from active to pending, and fail only when the configured limit is exhausted.",
+        "impact": "Tasks receive inconsistent retry behavior by equivalent terminal state, and stale active entries can be described and handled again after a retry is queued."
+      },
+      "recommendation": "Route FAILED and REMOVED through the same failure handler, release active ownership on every terminal transition, keep a single attempt counter, and cover both states through success and exhaustion."
+    },
+    {
+      "id": "sensor-reschedule-fixed-backoff",
+      "classification": "correctness_defect",
+      "severity": "high",
+      "confidence": "high",
+      "title": "Rescheduled sensors reset exponential backoff progress",
+      "primaryLocation": {"path": "airflow/sensors/base.py", "line": 240},
+      "evidence": [
+        {"path": "airflow/sensors/base.py", "startLine": 211, "endLine": 240, "claim": "Reschedule execution reconstructs elapsed duration from TaskReschedule history but initializes the interval try number to one on every process entry."},
+        {"path": "airflow/sensors/base.py", "startLine": 282, "endLine": 293, "claim": "The reschedule branch raises before incrementing try_number; only the in-process poke branch advances it."},
+        {"path": "airflow/sensors/base.py", "startLine": 305, "endLine": 331, "claim": "The exponential interval is a direct function of try_number, so a repeated value yields the same deterministic jittered interval."}
+      ],
+      "behavior": {
+        "trigger": "A sensor uses mode=reschedule with exponential_backoff enabled and returns false across multiple scheduler resumptions.",
+        "actual": "Every resumed execution computes the next interval with try_number one, so the delay stays fixed instead of growing.",
+        "expected": "The interval should reflect the number of prior pokes in the current sensor run while preserving the existing deterministic jitter and timeout cap.",
+        "impact": "Large fleets of rescheduled sensors poll more aggressively than configured, increasing scheduler and external-service load."
+      },
+      "recommendation": "Derive poke progress from retained reschedule history or elapsed scheduled intervals and add a multi-reschedule regression that asserts increasing backoff without changing poke-mode behavior."
+    },
+    {
+      "id": "batch-omitted-retry-override",
+      "classification": "correctness_defect",
+      "severity": "high",
+      "confidence": "high",
+      "title": "BatchOperator overwrites an omitted retry strategy",
+      "primaryLocation": {"path": "airflow/providers/amazon/aws/operators/batch.py", "line": 207},
+      "evidence": [
+        {"path": "airflow/providers/amazon/aws/operators/batch.py", "startLine": 202, "endLine": 209, "claim": "A caller that omits retry_strategy is converted from None to a new dictionary with attempts set to one."},
+        {"path": "airflow/providers/amazon/aws/operators/batch.py", "startLine": 302, "endLine": 315, "claim": "The synthesized retryStrategy is included in submit_job arguments, so AWS cannot apply the job-definition or service default."},
+        {"path": "tests/providers/amazon/aws/operators/test_batch.py", "startLine": 91, "endLine": 100, "claim": "The pre-fix constructor test explicitly expects the synthesized one-attempt strategy when the fixture passed None."},
+        {"path": "tests/providers/amazon/aws/operators/test_batch.py", "startLine": 143, "endLine": 150, "claim": "The submission test confirms that the synthetic retryStrategy reaches the AWS client call."}
+      ],
+      "behavior": {
+        "trigger": "A DAG leaves BatchOperator.retry_strategy unset in order to rely on the referenced AWS Batch job definition.",
+        "actual": "The operator submits retryStrategy attempts=1 and disables a retry policy inherited from the job definition.",
+        "expected": "An omitted optional override should remain absent; only an explicitly supplied strategy should be sent to AWS.",
+        "impact": "Jobs configured to retry at the AWS layer can run only once, changing reliability and cost semantics without a DAG-level choice."
+      },
+      "recommendation": "Preserve None through construction and omit retryStrategy from pruned submit arguments when unset; add separate tests for omitted, empty, and explicit strategies."
+    },
+    {
+      "id": "emr-deferred-attempt-bound",
+      "classification": "correctness_defect",
+      "severity": "medium",
+      "confidence": "high",
+      "title": "EMR deferred execution ignores the operator polling bound",
+      "primaryLocation": {"path": "airflow/providers/amazon/aws/triggers/emr.py", "line": 186},
+      "evidence": [
+        {"path": "airflow/providers/amazon/aws/triggers/emr.py", "startLine": 169, "endLine": 207, "claim": "EmrContainerTrigger applies a fixed default of 600 waiter attempts when its caller supplies no value."},
+        {"path": "airflow/providers/amazon/aws/operators/emr.py", "startLine": 603, "endLine": 627, "claim": "The operator computes its deferral timeout from max_polling_attempts but constructs the trigger without forwarding that attempt policy."}
+      ],
+      "behavior": {
+        "trigger": "EmrContainerOperator runs deferrably with an omitted or non-default max_polling_attempts value.",
+        "actual": "The trigger uses 600 waiter attempts regardless of the operator option, while the synchronous hook receives the operator value directly.",
+        "expected": "Synchronous and deferred modes should preserve the same public wait bound, including the documented unbounded default.",
+        "impact": "Switching only execution mode can introduce an unexpected five-hour trigger failure or a bound that disagrees with the operator timeout."
+      },
+      "recommendation": "Give the trigger the operator's effective attempt policy, preserve the unbounded default deliberately, and test serialization plus parity for omitted and explicit bounds."
+    }
+  ],
+  "rejectedCandidates": [
+    {
+      "id": "batch-delayed-requeue-ok",
+      "path": "airflow/providers/amazon/aws/executors/batch/batch_executor.py",
+      "line": 273,
+      "category": "bounded_local_retry",
+      "reason": "The Batch executor's bounded queue walk restores delayed work before continuing and therefore preserves queue ownership without blocking ready jobs.",
+      "evidence": [
+        {"path": "airflow/providers/amazon/aws/executors/batch/batch_executor.py", "startLine": 265, "endLine": 284, "claim": "The popped BatchQueuedJob is appended before the early continue and credential exceptions also restore it."},
+        {"path": "airflow/providers/amazon/aws/executors/batch/batch_executor.py", "startLine": 290, "endLine": 305, "claim": "Failures consume a bounded attempt and retain the record with a later ready time until the configured limit."}
+      ]
+    },
+    {
+      "id": "aws-waiter-sync-ok",
+      "path": "airflow/providers/amazon/aws/utils/waiter_with_logging.py",
+      "line": 68,
+      "category": "sdk_managed_retry",
+      "reason": "This synchronous loop adds logging around a botocore waiter and has an explicit maximum, delay, terminal success, and terminal error contract.",
+      "evidence": [{"path": "airflow/providers/amazon/aws/utils/waiter_with_logging.py", "startLine": 60, "endLine": 82, "claim": "Each iteration performs one SDK waiter attempt and the wrapper raises after its configured total bound."}]
+    },
+    {
+      "id": "aws-waiter-async-ok",
+      "path": "airflow/providers/amazon/aws/utils/waiter_with_logging.py",
+      "line": 119,
+      "category": "sdk_managed_retry",
+      "reason": "The async variant mirrors the bounded waiter contract and uses nonblocking asyncio sleep appropriate to trigger execution.",
+      "evidence": [{"path": "airflow/providers/amazon/aws/utils/waiter_with_logging.py", "startLine": 113, "endLine": 133, "claim": "The loop awaits delay and one waiter attempt, returns terminal output, and raises when attempts are exhausted."}]
+    },
+    {
+      "id": "google-shared-tenacity-ok",
+      "path": "airflow/providers/google/common/hooks/base_google.py",
+      "line": 425,
+      "category": "shared_retry_helper",
+      "reason": "These decorators are already centralized provider helpers that bind narrow transient predicates, exponential waits, logging, and re-raise behavior.",
+      "evidence": [{"path": "airflow/providers/google/common/hooks/base_google.py", "startLine": 425, "endLine": 452, "claim": "Both shared decorators construct Tenacity policy around provider-specific exception predicates."}]
+    },
+    {
+      "id": "http-tenacity-entrypoint-ok",
+      "path": "airflow/providers/http/hooks/http.py",
+      "line": 245,
+      "category": "shared_retry_helper",
+      "reason": "The HTTP hook exposes one reusable advanced-retry entrypoint and delegates execution, stopping, waits, and exception selection to Tenacity arguments.",
+      "evidence": [{"path": "airflow/providers/http/hooks/http.py", "startLine": 245, "endLine": 269, "claim": "run_with_advanced_retry constructs one Retrying instance from caller policy and invokes the normal run path through it."}]
+    },
+    {
+      "id": "slack-sdk-handlers-ok",
+      "path": "airflow/providers/slack/hooks/slack.py",
+      "line": 154,
+      "category": "sdk_managed_retry",
+      "reason": "Slack retry behavior is passed through to the official SDK's RetryHandler extension point instead of being reimplemented by the hook.",
+      "evidence": [{"path": "airflow/providers/slack/hooks/slack.py", "startLine": 145, "endLine": 158, "claim": "Connection parameters give retry_handlers directly to slack_sdk.WebClient."}]
+    },
+    {
+      "id": "quicksight-status-poll-ok",
+      "path": "airflow/providers/amazon/aws/hooks/quicksight.py",
+      "line": 169,
+      "category": "legitimate_polling",
+      "reason": "The sleep is remote ingestion status polling, with explicit success, failure, cancellation, and unexpected-state handling rather than transport retry masking.",
+      "evidence": [{"path": "airflow/providers/amazon/aws/hooks/quicksight.py", "startLine": 148, "endLine": 171, "claim": "The loop fetches job state, exits on target state, raises known terminal failures, and sleeps only for nonterminal states."}]
+    },
+    {
+      "id": "batch-status-throttle-loop-ok",
+      "path": "airflow/providers/amazon/aws/hooks/batch_client.py",
+      "line": 384,
+      "category": "bounded_local_retry",
+      "reason": "This compatibility loop retries only AWS throttling responses, applies jittered exponential delay, and raises after the configured status-retry bound.",
+      "evidence": [{"path": "airflow/providers/amazon/aws/hooks/batch_client.py", "startLine": 374, "endLine": 413, "claim": "The bounded loop returns a parsed job description, filters ClientError codes, delays later attempts, and reports exhaustion."}]
+    },
+    {
+      "id": "livy-http-delegation-ok",
+      "path": "airflow/providers/apache/livy/hooks/livy.py",
+      "line": 135,
+      "category": "shared_retry_helper",
+      "reason": "The synchronous Livy hook does not duplicate retry control flow; it forwards caller policy to the shared HttpHook Tenacity entrypoint.",
+      "evidence": [{"path": "airflow/providers/apache/livy/hooks/livy.py", "startLine": 113, "endLine": 140, "claim": "run_method documents retry_args and delegates the retrying request to run_with_advanced_retry."}]
+    },
+    {
+      "id": "databricks-tenacity-policy-ok",
+      "path": "airflow/providers/databricks/hooks/databricks_base.py",
+      "line": 127,
+      "category": "shared_retry_helper",
+      "reason": "Databricks builds one shared synchronous/asynchronous Tenacity policy with a provider-specific retry predicate and a bounded attempt count.",
+      "evidence": [{"path": "airflow/providers/databricks/hooks/databricks_base.py", "startLine": 118, "endLine": 131, "claim": "The constructor installs one stop, wait, predicate, and after-hook policy used by both retry object factories."}]
+    }
+  ],
+  "unresolved": [
+    {
+      "id": "compute-sdk-default-boundary",
+      "path": "airflow/providers/google/cloud/hooks/compute.py",
+      "line": 223,
+      "question": "Should selected Compute methods supply a non-None Google API retry policy by default?",
+      "missingEvidence": "The selected snapshot does not include the installed google-cloud-compute version's method defaults or a product-level contract for these operations.",
+      "nextStep": "Inspect the pinned dependency implementation and call-specific idempotency guarantees before choosing an SDK Retry default."
+    }
+  ],
+  "coverage": {
+    "areas": ["executor queue ownership", "sensor rescheduling", "AWS operator and trigger parity", "shared provider helpers", "SDK delegated retries", "remote status polling"],
+    "reviewedPaths": [
+      "airflow/providers/amazon/aws/executors/ecs/ecs_executor.py",
+      "airflow/providers/amazon/aws/executors/ecs/utils.py",
+      "tests/providers/amazon/aws/executors/ecs/test_ecs_executor.py",
+      "airflow/providers/amazon/aws/executors/batch/batch_executor.py",
+      "tests/providers/amazon/aws/executors/batch/test_batch_executor.py",
+      "airflow/sensors/base.py",
+      "tests/sensors/test_base.py",
+      "airflow/providers/amazon/aws/operators/batch.py",
+      "tests/providers/amazon/aws/operators/test_batch.py",
+      "airflow/providers/amazon/aws/operators/emr.py",
+      "airflow/providers/amazon/aws/triggers/emr.py",
+      "airflow/providers/amazon/aws/hooks/batch_client.py",
+      "airflow/providers/amazon/aws/utils/waiter_with_logging.py",
+      "airflow/providers/google/common/hooks/base_google.py",
+      "airflow/providers/google/cloud/hooks/compute.py",
+      "airflow/providers/http/hooks/http.py",
+      "airflow/providers/slack/hooks/slack.py",
+      "airflow/providers/amazon/aws/hooks/quicksight.py",
+      "airflow/providers/apache/livy/hooks/livy.py",
+      "airflow/providers/databricks/hooks/databricks_base.py"
+    ],
+    "candidateSites": [
+      {"path": "airflow/providers/amazon/aws/executors/ecs/ecs_executor.py", "line": 341, "disposition": "finding", "recordId": "ecs-delayed-work-drop"},
+      {"path": "airflow/providers/amazon/aws/executors/ecs/ecs_executor.py", "line": 348, "disposition": "finding", "recordId": "ecs-delayed-work-drop"},
+      {"path": "airflow/providers/amazon/aws/executors/ecs/ecs_executor.py", "line": 299, "disposition": "finding", "recordId": "ecs-terminal-state-lifecycle"},
+      {"path": "airflow/providers/amazon/aws/executors/ecs/ecs_executor.py", "line": 309, "disposition": "finding", "recordId": "ecs-terminal-state-lifecycle"},
+      {"path": "airflow/sensors/base.py", "line": 216, "disposition": "finding", "recordId": "sensor-reschedule-fixed-backoff"},
+      {"path": "airflow/sensors/base.py", "line": 315, "disposition": "finding", "recordId": "sensor-reschedule-fixed-backoff"},
+      {"path": "airflow/sensors/base.py", "line": 283, "disposition": "finding", "recordId": "sensor-reschedule-fixed-backoff"},
+      {"path": "airflow/sensors/base.py", "line": 292, "disposition": "finding", "recordId": "sensor-reschedule-fixed-backoff"},
+      {"path": "airflow/providers/amazon/aws/operators/batch.py", "line": 207, "disposition": "finding", "recordId": "batch-omitted-retry-override"},
+      {"path": "airflow/providers/amazon/aws/operators/batch.py", "line": 208, "disposition": "finding", "recordId": "batch-omitted-retry-override"},
+      {"path": "airflow/providers/amazon/aws/triggers/emr.py", "line": 186, "disposition": "finding", "recordId": "emr-deferred-attempt-bound"},
+      {"path": "airflow/providers/amazon/aws/operators/emr.py", "line": 609, "disposition": "finding", "recordId": "emr-deferred-attempt-bound"},
+      {"path": "airflow/providers/amazon/aws/operators/emr.py", "line": 619, "disposition": "finding", "recordId": "emr-deferred-attempt-bound"},
+      {"path": "airflow/providers/amazon/aws/executors/batch/batch_executor.py", "line": 273, "disposition": "rejected", "recordId": "batch-delayed-requeue-ok"},
+      {"path": "airflow/providers/amazon/aws/executors/batch/batch_executor.py", "line": 294, "disposition": "rejected", "recordId": "batch-delayed-requeue-ok"},
+      {"path": "airflow/providers/amazon/aws/executors/batch/batch_executor.py", "line": 301, "disposition": "rejected", "recordId": "batch-delayed-requeue-ok"},
+      {"path": "airflow/providers/amazon/aws/utils/waiter_with_logging.py", "line": 68, "disposition": "rejected", "recordId": "aws-waiter-sync-ok"},
+      {"path": "airflow/providers/amazon/aws/utils/waiter_with_logging.py", "line": 72, "disposition": "rejected", "recordId": "aws-waiter-sync-ok"},
+      {"path": "airflow/providers/amazon/aws/utils/waiter_with_logging.py", "line": 119, "disposition": "rejected", "recordId": "aws-waiter-async-ok"},
+      {"path": "airflow/providers/amazon/aws/utils/waiter_with_logging.py", "line": 123, "disposition": "rejected", "recordId": "aws-waiter-async-ok"},
+      {"path": "airflow/providers/google/common/hooks/base_google.py", "line": 425, "disposition": "rejected", "recordId": "google-shared-tenacity-ok"},
+      {"path": "airflow/providers/google/common/hooks/base_google.py", "line": 431, "disposition": "rejected", "recordId": "google-shared-tenacity-ok"},
+      {"path": "airflow/providers/google/common/hooks/base_google.py", "line": 447, "disposition": "rejected", "recordId": "google-shared-tenacity-ok"},
+      {"path": "airflow/providers/http/hooks/http.py", "line": 245, "disposition": "rejected", "recordId": "http-tenacity-entrypoint-ok"},
+      {"path": "airflow/providers/http/hooks/http.py", "line": 260, "disposition": "rejected", "recordId": "http-tenacity-entrypoint-ok"},
+      {"path": "airflow/providers/slack/hooks/slack.py", "line": 154, "disposition": "rejected", "recordId": "slack-sdk-handlers-ok"},
+      {"path": "airflow/providers/amazon/aws/hooks/quicksight.py", "line": 169, "disposition": "rejected", "recordId": "quicksight-status-poll-ok"},
+      {"path": "airflow/providers/amazon/aws/hooks/batch_client.py", "line": 384, "disposition": "rejected", "recordId": "batch-status-throttle-loop-ok"},
+      {"path": "airflow/providers/amazon/aws/hooks/batch_client.py", "line": 391, "disposition": "rejected", "recordId": "batch-status-throttle-loop-ok"},
+      {"path": "airflow/providers/apache/livy/hooks/livy.py", "line": 135, "disposition": "rejected", "recordId": "livy-http-delegation-ok"},
+      {"path": "airflow/providers/apache/livy/hooks/livy.py", "line": 140, "disposition": "rejected", "recordId": "livy-http-delegation-ok"},
+      {"path": "airflow/providers/databricks/hooks/databricks_base.py", "line": 127, "disposition": "rejected", "recordId": "databricks-tenacity-policy-ok"},
+      {"path": "airflow/providers/databricks/hooks/databricks_base.py", "line": 129, "disposition": "rejected", "recordId": "databricks-tenacity-policy-ok"},
+      {"path": "airflow/providers/google/cloud/hooks/compute.py", "line": 223, "disposition": "unresolved", "recordId": "compute-sdk-default-boundary"}
+    ],
+    "searchNotes": "Searched retry, attempt, backoff, poll, waiter, sleep, reschedule, and pending-work signals across the corpus. For queue and state-machine candidates, followed ownership records and terminal branches into tests. For operator candidates, traced submitted request arguments or deferred trigger construction. Compared local loops with provider helpers, SDK extension points, and remote-status polling before classifying lookalikes."
+  }
+}

@@ -1,0 +1,287 @@
+{
+  "schemaVersion": 1,
+  "adaptation": true,
+  "description": "Bounded source-audit fixture built from exact upstream files. No upstream source or test file was edited.",
+  "networkRequired": false,
+  "primarySnapshot": {
+    "project": "Prefect",
+    "repository": "https://github.com/PrefectHQ/prefect",
+    "revision": "d1d0f4d663f4b421fccaa78fda0cd1fd70da7f0f",
+    "revisionDate": "2026-03-09",
+    "license": "Apache-2.0",
+    "licenseFile": "workspace/prefect/LICENSE",
+    "retainedFiles": [
+      {
+        "sha256": "302c6c9fca2c024cdfc4a0b8082fdd2dc52453c0d92e4ca2859f261acdc08774",
+        "path": "workspace/prefect/LICENSE",
+        "upstreamPath": "LICENSE"
+      },
+      {
+        "sha256": "08f8c95ce5dcaa4cf683816665ff1d47fca782947181be2d0734843987db0c62",
+        "path": "workspace/prefect/src/integrations/prefect-docker/prefect_docker/worker.py",
+        "upstreamPath": "src/integrations/prefect-docker/prefect_docker/worker.py"
+      },
+      {
+        "sha256": "49551a596e1ec589459defa80e0a88411d1abc567395c88b6e4fe6794bbbce52",
+        "path": "workspace/prefect/src/integrations/prefect-docker/tests/test_worker.py",
+        "upstreamPath": "src/integrations/prefect-docker/tests/test_worker.py"
+      },
+      {
+        "sha256": "b542289ca39a0a531b959fb32c079f31dd368b3b3b6fb2681b49c522adfe0a30",
+        "path": "workspace/prefect/src/prefect/_internal/analytics/client.py",
+        "upstreamPath": "src/prefect/_internal/analytics/client.py"
+      },
+      {
+        "sha256": "50fc7fb910b45fb6a1003bf23fae35fa93f3810793e0270409ede2192732e09e",
+        "path": "workspace/prefect/src/prefect/events/utilities.py",
+        "upstreamPath": "src/prefect/events/utilities.py"
+      },
+      {
+        "sha256": "8555bc335af7b1594d17634fabf671f328de7ff7ec6762b4f5647f49c9a7a3bc",
+        "path": "workspace/prefect/src/prefect/futures.py",
+        "upstreamPath": "src/prefect/futures.py"
+      },
+      {
+        "sha256": "b19d2515e80735f8b647f2e3612e87a276fee32d6ade9b0d93d8d98f65179817",
+        "path": "workspace/prefect/src/prefect/server/events/actions.py",
+        "upstreamPath": "src/prefect/server/events/actions.py"
+      },
+      {
+        "sha256": "53ba2f189fd09ee284a490a5b11b5422800c5fe6ef95fb45374528311101cbc0",
+        "path": "workspace/prefect/src/prefect/server/events/models/automations.py",
+        "upstreamPath": "src/prefect/server/events/models/automations.py"
+      },
+      {
+        "sha256": "5fb24f139e1c293718e5e9dbac4b94450ab4d9a3d2a773a46c919391dceeec5d",
+        "path": "workspace/prefect/src/prefect/server/orchestration/core_policy.py",
+        "upstreamPath": "src/prefect/server/orchestration/core_policy.py"
+      },
+      {
+        "sha256": "df78942d929b34f0ad0e2f2612b70eaa1f2739ed58ca29ea2da385a5fc7785ed",
+        "path": "workspace/prefect/src/prefect/server/orchestration/rules.py",
+        "upstreamPath": "src/prefect/server/orchestration/rules.py"
+      },
+      {
+        "sha256": "c0fc94041a99d321b78b1a07771e941437efe4b9ef6385a22a41404e0655f124",
+        "path": "workspace/prefect/src/prefect/server/utilities/user_templates.py",
+        "upstreamPath": "src/prefect/server/utilities/user_templates.py"
+      },
+      {
+        "sha256": "4f11a35c4e4c1aa6be8443fc70abb264b989ddeb0411e0dc1755910543f8ed21",
+        "path": "workspace/prefect/src/prefect/task_runners.py",
+        "upstreamPath": "src/prefect/task_runners.py"
+      },
+      {
+        "sha256": "3f07acbfbd4f18585fde53dad6217232a659a6b063cbd9c42825714e47ff857c",
+        "path": "workspace/prefect/src/prefect/utilities/filesystem.py",
+        "upstreamPath": "src/prefect/utilities/filesystem.py"
+      },
+      {
+        "sha256": "3644615a435fc7116654684d0df9b174aff178a68486cddae36abcdd283d713e",
+        "path": "workspace/prefect/src/prefect/utilities/schema_tools/hydration.py",
+        "upstreamPath": "src/prefect/utilities/schema_tools/hydration.py"
+      },
+      {
+        "sha256": "7a34f0184c28c5e516b9b355ed76f02b39c12c2e2638aaaef8e17164e0b56b02",
+        "path": "workspace/prefect/tests/_internal/analytics/test_client.py",
+        "upstreamPath": "tests/_internal/analytics/test_client.py"
+      },
+      {
+        "sha256": "0cf50040c5605c0be5a535c7db5d4bc21c8c3f7fdd31a5752d52c090d3463ed8",
+        "path": "workspace/prefect/tests/events/client/test_events_emit_event.py",
+        "upstreamPath": "tests/events/client/test_events_emit_event.py"
+      },
+      {
+        "sha256": "2d6156848fd288955ab517bf747c6d070c20a4570ba34c4aa571f1e7bb51fe2d",
+        "path": "workspace/prefect/tests/events/server/actions/test_jinja_templated_action.py",
+        "upstreamPath": "tests/events/server/actions/test_jinja_templated_action.py"
+      },
+      {
+        "sha256": "133b11894b45fd80fa2e091b64072777b868a5dfbc0ac01c462a0be8045c0638",
+        "path": "workspace/prefect/tests/server/orchestration/test_core_policy.py",
+        "upstreamPath": "tests/server/orchestration/test_core_policy.py"
+      },
+      {
+        "sha256": "980f25d6c5a0fd4c282f869a770d4399bff7a2fc5e9de70583b375845b4db756",
+        "path": "workspace/prefect/tests/server/orchestration/test_task_concurrency_v2_integration.py",
+        "upstreamPath": "tests/server/orchestration/test_task_concurrency_v2_integration.py"
+      },
+      {
+        "sha256": "fb096349443d486adc1d14d83bdaf523cbee312f7ec959889d2c1deb0395b01c",
+        "path": "workspace/prefect/tests/server/utilities/test_user_templates.py",
+        "upstreamPath": "tests/server/utilities/test_user_templates.py"
+      },
+      {
+        "sha256": "17a6e963af5c11c2fbc527ff21e6a3ffe9eb051378a5e3f84375aae0d6c4bba5",
+        "path": "workspace/prefect/tests/test_futures.py",
+        "upstreamPath": "tests/test_futures.py"
+      },
+      {
+        "sha256": "83daee8db8232407883978dad77161d439acf16e3f7cbac9b425e0877fbe4317",
+        "path": "workspace/prefect/tests/test_task_runners.py",
+        "upstreamPath": "tests/test_task_runners.py"
+      },
+      {
+        "sha256": "41e8ca7d16f3efec086ae7c145acc04ae70088977b0bb9926548ebad29dfbe92",
+        "path": "workspace/prefect/tests/utilities/schema_tools/test_hydration.py",
+        "upstreamPath": "tests/utilities/schema_tools/test_hydration.py"
+      },
+      {
+        "sha256": "c50565257a4541d3c3c1ac7a9a011ac31216d884a54809d2b967b82bcea15348",
+        "path": "workspace/prefect/tests/utilities/test_filesystem.py",
+        "upstreamPath": "tests/utilities/test_filesystem.py"
+      }
+    ]
+  },
+  "dependencySnapshots": [
+    {
+      "project": "docker-py",
+      "repository": "https://github.com/docker/docker-py",
+      "revision": "7.1.0",
+      "lockedBy": "Prefect uv.lock at the primary revision",
+      "license": "Apache-2.0",
+      "licenseFile": "workspace/third_party/docker_py_7_1_0/LICENSE",
+      "retainedFiles": [
+        {
+          "sha256": "f2f0b07fa5e492c11d27aa0d2f3f1a0e64b9d17f32d8aa489ae2af9609af33b2",
+          "path": "workspace/third_party/docker_py_7_1_0/LICENSE",
+          "upstreamPath": "LICENSE"
+        },
+        {
+          "sha256": "68337fc8ff1a761f0272efe4b331a214cbcb1495f5d806da25dcd3245a44c360",
+          "path": "workspace/third_party/docker_py_7_1_0/docker/models/images.py",
+          "upstreamPath": "docker/models/images.py"
+        }
+      ]
+    },
+    {
+      "project": "CPython",
+      "repository": "https://github.com/python/cpython",
+      "revision": "v3.12.10",
+      "selection": "Representative callback implementation from a Python release supported by the Prefect snapshot",
+      "license": "PSF-2.0",
+      "licenseFile": "workspace/third_party/cpython_3_12_10/LICENSE",
+      "retainedFiles": [
+        {
+          "sha256": "3b2f81fe21d181c499c59a256c8e1968455d6689d269aa85373bfb6af41da3bf",
+          "path": "workspace/third_party/cpython_3_12_10/LICENSE",
+          "upstreamPath": "LICENSE"
+        },
+        {
+          "sha256": "8c6d5f09f7c535d40fa1c30ebfcb35e0601c2abf32286a82cf151af7ddf72473",
+          "path": "workspace/third_party/cpython_3_12_10/Lib/concurrent/futures/_base.py",
+          "upstreamPath": "Lib/concurrent/futures/_base.py"
+        }
+      ]
+    }
+  ],
+  "heldOutCorroboration": [
+    {
+      "project": "Prefect",
+      "revision": "fd3121de93432dc5561773a067d0148c66051dcb",
+      "pullRequest": 21045,
+      "purpose": "Template rendering propagation"
+    },
+    {
+      "project": "Prefect",
+      "revision": "4b67d3fe05baeb421deccd78eee82b13bbe616f2",
+      "pullRequest": 21310,
+      "purpose": "Docker pull stream errors"
+    },
+    {
+      "project": "Prefect",
+      "revision": "34586366f0eed9112df75a4e683a4ef91fda8db6",
+      "pullRequest": 21612,
+      "purpose": "Unpickling future callback errors"
+    },
+    {
+      "project": "Prefect",
+      "revision": "675e9bd16b8771210e15bb11f95ffa85d08704e1",
+      "pullRequest": 21797,
+      "purpose": "V2 concurrency lease release failures"
+    }
+  ],
+  "localAdditions": [
+    {
+      "sha256": "6f366f5dc6fae060d50077c3e42ad0e08f5a9ee996da0ceebb8940d0febba505",
+      "path": "instruction.md",
+      "kind": "agent-visible-adaptation"
+    },
+    {
+      "sha256": "39432a2e42e07d1b71c3a1f854b25f1ffc3ba236cb676cb99cb23e73e68bf7c8",
+      "path": "maintainer/DESIGN.md",
+      "kind": "held-out-taskground"
+    },
+    {
+      "sha256": "c85dc0242ba03063f5f53db8dfb5e656005fb3bf1957b09fac64f866c1f64ef5",
+      "path": "maintainer/README.md",
+      "kind": "held-out-taskground"
+    },
+    {
+      "sha256": "2027201193a527edc2fee585828a558dda88771e4a8fa3303282d6d776274297",
+      "path": "maintainer/reference_findings.json",
+      "kind": "held-out-taskground"
+    },
+    {
+      "sha256": "b8a308886e25831a39c31268f3d4068fd594a476068b9b781b9b4f4ff4703e87",
+      "path": "maintainer/reference_report.md",
+      "kind": "held-out-taskground"
+    },
+    {
+      "sha256": "4d5edd8ec4ded6f2ff34cacdc9a91697a225fea8251ae786c989f1e93ad17fb0",
+      "path": "maintainer/smoke.py",
+      "kind": "held-out-taskground"
+    },
+    {
+      "sha256": "056daf42203eac9374a806a72360b008851bd2952f36f46e1837758911e55177",
+      "path": "task.json",
+      "kind": "runner-metadata"
+    },
+    {
+      "sha256": "30c8b7c9077ea208b7c5e7cae3f8f8be847ed9c5bda31ccd34772fc2a70517a3",
+      "path": "verifier/reference.json",
+      "kind": "held-out-taskground"
+    },
+    {
+      "sha256": "95aa653057ae71458774b8975328a390ca42a5d6ca7e780e1e3e7359b325c624",
+      "path": "verifier/verify.py",
+      "kind": "held-out-taskground"
+    },
+    {
+      "sha256": "39d8822a959cb993f0db7bd8b227d016a1b4442dcde6d3865034f1e9b31732bb",
+      "path": "workspace/.gitignore",
+      "kind": "agent-visible-adaptation"
+    },
+    {
+      "sha256": "3b7673420d7101158a23eba7933136839acd54b7ad78405bfae028d397671a26",
+      "path": "workspace/README.md",
+      "kind": "agent-visible-adaptation"
+    },
+    {
+      "sha256": "c684f6c8548a8ac33392b48f316dde9e56e08c305dd93fb811c8b1b0862c17d6",
+      "path": "workspace/SNAPSHOT.md",
+      "kind": "agent-visible-adaptation"
+    },
+    {
+      "sha256": "b4d0c9e1211f0898c8e2d8b6bf22bebd3923764d82f1a381c34f7eac72c4a2f0",
+      "path": "workspace/examples/EXPECTED_BEHAVIOR.py",
+      "kind": "agent-visible-adaptation"
+    },
+    {
+      "sha256": "96b3830073c02e8e49168b4e8e94314def305df46b79c1b31eda1e34857001e2",
+      "path": "workspace/scripts/inventory.py",
+      "kind": "agent-visible-adaptation"
+    },
+    {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "path": "workspace/work/.gitkeep",
+      "kind": "agent-visible-adaptation"
+    }
+  ],
+  "integrityNotes": [
+    "All paths and SHA-256 values are relative to this task definition directory.",
+    "SOURCE.json omits its own checksum to avoid a self-reference.",
+    "workspace/examples/EXPECTED_BEHAVIOR.py is a labeled local policy example and is outside the scored source inventory.",
+    "Maintainer and verifier files are never copied into the agent workspace by Taskground."
+  ]
+}

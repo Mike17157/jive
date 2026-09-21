@@ -1,0 +1,342 @@
+{
+  "schemaVersion": 1,
+  "task": "error_handling_audit",
+  "scope": {
+    "reviewedFiles": [
+      "prefect/src/prefect/server/utilities/user_templates.py",
+      "prefect/src/prefect/server/events/actions.py",
+      "prefect/src/prefect/server/events/models/automations.py",
+      "prefect/src/prefect/server/orchestration/core_policy.py",
+      "prefect/src/prefect/server/orchestration/rules.py",
+      "prefect/src/prefect/utilities/schema_tools/hydration.py",
+      "prefect/src/prefect/task_runners.py",
+      "prefect/src/prefect/futures.py",
+      "prefect/src/prefect/events/utilities.py",
+      "prefect/src/prefect/_internal/analytics/client.py",
+      "prefect/src/prefect/utilities/filesystem.py",
+      "prefect/src/integrations/prefect-docker/prefect_docker/worker.py"
+    ],
+    "broadHandlersReviewed": 35,
+    "boundaryApisReviewed": 2
+  },
+  "findings": [
+    {
+      "id": "async-template-false-success",
+      "title": "Async rendering converts action failure into successful output",
+      "severity": "high",
+      "confidence": "high",
+      "boundary": {
+        "path": "prefect/src/prefect/server/utilities/user_templates.py",
+        "symbol": "render_user_template",
+        "startLine": 132,
+        "endLine": 140
+      },
+      "mechanism": "exception-returned-as-data",
+      "failureMode": "false-success",
+      "trigger": "Jinja compilation or asynchronous rendering raises, including sandbox SecurityError, range OverflowError, or loader TypeError.",
+      "observedBehavior": "The renderer logs and returns an error message as an ordinary string; gather returns normally and the action lifecycle sees no ActionFailed.",
+      "impact": "An automation can be recorded as succeeded and deduplicated even though its user template did not render and the action used error text as payload.",
+      "recommendation": "Raise a typed render exception and translate it at the action boundary into ActionFailed while retaining template error details.",
+      "callPath": [
+        {
+          "path": "prefect/src/prefect/server/utilities/user_templates.py",
+          "symbol": "render_user_template",
+          "line": 135,
+          "role": "boundary"
+        },
+        {
+          "path": "prefect/src/prefect/server/events/actions.py",
+          "symbol": "JinjaTemplateAction._render",
+          "line": 690,
+          "role": "caller"
+        },
+        {
+          "path": "prefect/src/prefect/server/events/actions.py",
+          "symbol": "consumer.message_handler",
+          "line": 1815,
+          "role": "observer"
+        }
+      ],
+      "evidence": [
+        {
+          "path": "prefect/src/prefect/server/utilities/user_templates.py",
+          "line": 137,
+          "description": "The exception branch returns formatted failure text instead of propagating failure."
+        },
+        {
+          "path": "prefect/src/prefect/server/events/actions.py",
+          "line": 1811,
+          "description": "Only ActionFailed selects the failure lifecycle branch."
+        },
+        {
+          "path": "prefect/src/prefect/server/events/actions.py",
+          "line": 1815,
+          "description": "A normal return records the action as successful."
+        },
+        {
+          "path": "prefect/tests/events/server/actions/test_jinja_templated_action.py",
+          "line": 968,
+          "description": "The snapshot test codifies returned error text for a render failure."
+        }
+      ]
+    },
+    {
+      "id": "sync-template-invalid-value",
+      "title": "Sync rendering makes a runtime template error look like a hydrated value",
+      "severity": "medium",
+      "confidence": "high",
+      "boundary": {
+        "path": "prefect/src/prefect/server/utilities/user_templates.py",
+        "symbol": "render_user_template_sync",
+        "startLine": 147,
+        "endLine": 155
+      },
+      "mechanism": "exception-returned-as-data",
+      "failureMode": "invalid-value-propagation",
+      "trigger": "A template passes static syntax and loop validation but raises while the synchronous Jinja renderer evaluates it.",
+      "observedBehavior": "The renderer returns failure text, and jinja_handler returns that text directly instead of an InvalidJinja placeholder.",
+      "impact": "Hydration consumers receive a string that looks like a rendered parameter, so raise-on-error and placeholder handling cannot identify the invalid template.",
+      "recommendation": "Raise a typed render exception and have jinja_handler translate it into InvalidJinja so the existing hydration error contract applies.",
+      "callPath": [
+        {
+          "path": "prefect/src/prefect/server/utilities/user_templates.py",
+          "symbol": "render_user_template_sync",
+          "line": 150,
+          "role": "boundary"
+        },
+        {
+          "path": "prefect/src/prefect/utilities/schema_tools/hydration.py",
+          "symbol": "jinja_handler",
+          "line": 249,
+          "role": "caller"
+        }
+      ],
+      "evidence": [
+        {
+          "path": "prefect/src/prefect/server/utilities/user_templates.py",
+          "line": 152,
+          "description": "The synchronous exception branch returns formatted failure text."
+        },
+        {
+          "path": "prefect/src/prefect/utilities/schema_tools/hydration.py",
+          "line": 245,
+          "description": "Only validation-time syntax and security exceptions become InvalidJinja."
+        },
+        {
+          "path": "prefect/src/prefect/utilities/schema_tools/hydration.py",
+          "line": 249,
+          "description": "Runtime renderer output is returned without an error translation step."
+        }
+      ]
+    },
+    {
+      "id": "docker-pull-stream-discard",
+      "title": "Docker pull can return a stale cached image after a streamed error",
+      "severity": "high",
+      "confidence": "high",
+      "boundary": {
+        "path": "prefect/src/integrations/prefect-docker/prefect_docker/worker.py",
+        "symbol": "DockerWorker._pull_image",
+        "startLine": 899,
+        "endLine": 907
+      },
+      "mechanism": "dependency-stream-discard",
+      "failureMode": "stale-resource-use",
+      "trigger": "The Docker daemon yields an error object in the low-level pull stream while a matching image tag already exists locally.",
+      "observedBehavior": "The worker uses docker-py's high-level pull, which consumes each stream record without inspecting error fields and then gets the local image by tag.",
+      "impact": "An always-pull or freshness-sensitive run may start a container from stale local content while logging that it pulled the requested image.",
+      "recommendation": "Consume the low-level decoded pull stream, raise on an error record, and fetch the image only after the stream completes successfully.",
+      "callPath": [
+        {
+          "path": "prefect/src/integrations/prefect-docker/prefect_docker/worker.py",
+          "symbol": "DockerWorker._pull_image",
+          "line": 907,
+          "role": "boundary"
+        },
+        {
+          "path": "third_party/docker_py_7_1_0/docker/models/images.py",
+          "symbol": "ImageCollection.pull",
+          "line": 467,
+          "role": "contract"
+        },
+        {
+          "path": "prefect/src/integrations/prefect-docker/prefect_docker/worker.py",
+          "symbol": "DockerWorker._create_and_start_container",
+          "line": 758,
+          "role": "caller"
+        }
+      ],
+      "evidence": [
+        {
+          "path": "third_party/docker_py_7_1_0/docker/models/images.py",
+          "line": 467,
+          "description": "The dependency iterates every pull stream record."
+        },
+        {
+          "path": "third_party/docker_py_7_1_0/docker/models/images.py",
+          "line": 470,
+          "description": "The loop body explicitly does nothing with those records."
+        },
+        {
+          "path": "prefect/src/integrations/prefect-docker/prefect_docker/worker.py",
+          "line": 758,
+          "description": "Container creation continues after the high-level pull returns."
+        },
+        {
+          "path": "prefect/src/integrations/prefect-docker/tests/test_worker.py",
+          "line": 798,
+          "description": "The retained test mocks only high-level pull invocation, not streamed error behavior."
+        }
+      ]
+    },
+    {
+      "id": "unpickling-callback-notification",
+      "title": "Deserialization failure prevents the Prefect completion callback",
+      "severity": "high",
+      "confidence": "high",
+      "boundary": {
+        "path": "prefect/src/prefect/task_runners.py",
+        "symbol": "_UnpicklingFuture.add_done_callback",
+        "startLine": 638,
+        "endLine": 647
+      },
+      "mechanism": "callback-notification-lost",
+      "failureMode": "stalled-completion",
+      "trigger": "The wrapped process future raises or returns bytes that cloudpickle cannot deserialize inside the adapter callback.",
+      "observedBehavior": "The adapter raises before invoking its supplied callback; concurrent.futures logs that callback exception, while Prefect's completion event is never set.",
+      "impact": "as_completed and callback-driven flow bookkeeping can wait forever or leave the flow run as a zombie even though the process future is done.",
+      "recommendation": "Store the adapter error as future state, invoke the consumer callback with the wrapper future in all outcomes, and expose the error from result and exception.",
+      "callPath": [
+        {
+          "path": "prefect/src/prefect/task_runners.py",
+          "symbol": "_UnpicklingFuture.add_done_callback",
+          "line": 644,
+          "role": "boundary"
+        },
+        {
+          "path": "prefect/src/prefect/task_runners.py",
+          "symbol": "ProcessPoolTaskRunner.submit",
+          "line": 1103,
+          "role": "caller"
+        },
+        {
+          "path": "prefect/src/prefect/futures.py",
+          "symbol": "as_completed",
+          "line": 563,
+          "role": "observer"
+        },
+        {
+          "path": "third_party/cpython_3_12_10/Lib/concurrent/futures/_base.py",
+          "symbol": "Future._invoke_callbacks",
+          "line": 340,
+          "role": "contract"
+        }
+      ],
+      "evidence": [
+        {
+          "path": "prefect/src/prefect/task_runners.py",
+          "line": 644,
+          "description": "Deserialization occurs before the supplied completion callback."
+        },
+        {
+          "path": "third_party/cpython_3_12_10/Lib/concurrent/futures/_base.py",
+          "line": 341,
+          "description": "The supported runtime catches ordinary callback exceptions."
+        },
+        {
+          "path": "prefect/src/prefect/futures.py",
+          "line": 566,
+          "description": "as_completed blocks on an event set only by its callback."
+        },
+        {
+          "path": "prefect/src/prefect/task_runners.py",
+          "line": 1103,
+          "description": "Process-pool results are wrapped in this adapter before Prefect observes them."
+        }
+      ]
+    },
+    {
+      "id": "task-concurrency-cleanup",
+      "title": "Task concurrency cleanup reports success while a slot remains held",
+      "severity": "high",
+      "confidence": "high",
+      "boundary": {
+        "path": "prefect/src/prefect/server/orchestration/core_policy.py",
+        "symbol": "SecureTaskConcurrencySlots.cleanup",
+        "startLine": 431,
+        "endLine": 442
+      },
+      "mechanism": "cleanup-failure-suppressed",
+      "failureMode": "leaked-capacity",
+      "trigger": "Reading, decrementing, or revoking an acquired V2 task-concurrency lease raises while a rule fizzles after acquisition.",
+      "observedBehavior": "cleanup logs the exception and returns, so the orchestration rule context exits without exposing that its acquisition side effects were not reverted.",
+      "impact": "The concurrency limit retains an active slot or lease and can unnecessarily block later task runs until independent recovery occurs.",
+      "recommendation": "Propagate cleanup failure from the rule lifecycle and centralize release so decrement success and lease revocation are checked consistently.",
+      "callPath": [
+        {
+          "path": "prefect/src/prefect/server/orchestration/core_policy.py",
+          "symbol": "SecureTaskConcurrencySlots.cleanup",
+          "line": 441,
+          "role": "boundary"
+        },
+        {
+          "path": "prefect/src/prefect/server/orchestration/rules.py",
+          "symbol": "BaseOrchestrationRule.__aexit__",
+          "line": 691,
+          "role": "caller"
+        }
+      ],
+      "evidence": [
+        {
+          "path": "prefect/src/prefect/server/orchestration/core_policy.py",
+          "line": 431,
+          "description": "Cleanup is responsible for decrementing the acquired V2 slot."
+        },
+        {
+          "path": "prefect/src/prefect/server/orchestration/core_policy.py",
+          "line": 441,
+          "description": "Every release exception enters a logging-only branch."
+        },
+        {
+          "path": "prefect/src/prefect/server/orchestration/rules.py",
+          "line": 691,
+          "description": "The rule lifecycle awaits cleanup to revert fizzle side effects."
+        },
+        {
+          "path": "prefect/tests/server/orchestration/test_task_concurrency_v2_integration.py",
+          "line": 196,
+          "description": "The retained integration test establishes that abort cleanup owns V2 lease release."
+        }
+      ]
+    }
+  ],
+  "rejectedLookalikes": [
+    {
+      "path": "prefect/src/prefect/events/utilities.py",
+      "symbol": "emit_event",
+      "line": 110,
+      "reason": "General event delivery is explicitly optional and returns None, while the semantically required EventTooLarge validation error is re-raised separately."
+    },
+    {
+      "path": "prefect/src/prefect/_internal/analytics/client.py",
+      "symbol": "track_event",
+      "line": 122,
+      "reason": "Anonymous SDK telemetry is documented as fire-and-forget and the boolean return preserves delivery status without changing workflow success."
+    },
+    {
+      "path": "prefect/src/prefect/utilities/filesystem.py",
+      "symbol": "get_open_file_limit",
+      "line": 172,
+      "reason": "This cross-platform capability probe supplies a documented conservative numeric default when either resource or ctypes probing is unavailable."
+    }
+  ],
+  "unresolvedBoundaries": [
+    {
+      "path": "prefect/src/prefect/server/orchestration/core_policy.py",
+      "symbol": "SecureFlowConcurrencySlots.cleanup",
+      "line": 682,
+      "reason": "This logging-only flow lease cleanup resembles the task defect, but retained comments and lifecycle behavior imply lease-reaper recovery and do not establish the duration or externally promised cleanup result.",
+      "recommendedNextStep": "Inject decrement and revoke failures in a flow-concurrency integration test and observe slot availability, lease metadata, retry behavior, and reaper timing."
+    }
+  ]
+}

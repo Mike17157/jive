@@ -1,0 +1,192 @@
+{
+  "schemaVersion": 1,
+  "snapshot": {
+    "project": "home-assistant/core",
+    "version": "2024.9.0",
+    "commit": "36ec1b33fe0039d838586730768730c2ea4e054c"
+  },
+  "scope": {
+    "candidateCount": 74,
+    "filesReviewed": [
+      "source/homeassistant/components/yale_smart_alarm/__init__.py",
+      "source/homeassistant/components/yale_smart_alarm/config_flow.py",
+      "source/homeassistant/components/yale_smart_alarm/coordinator.py",
+      "source/homeassistant/components/yale_smart_alarm/alarm_control_panel.py",
+      "source/homeassistant/components/yale_smart_alarm/button.py",
+      "source/homeassistant/components/yale_smart_alarm/lock.py",
+      "source/homeassistant/components/yale_smart_alarm/diagnostics.py",
+      "source/homeassistant/components/xiaomi_miio/__init__.py",
+      "source/homeassistant/components/xiaomi_miio/config_flow.py",
+      "source/homeassistant/components/xiaomi_miio/device.py",
+      "source/homeassistant/components/media_source/__init__.py",
+      "source/homeassistant/components/media_source/local_source.py",
+      "source/homeassistant/components/media_source/models.py",
+      "source/homeassistant/helpers/update_coordinator.py",
+      "source/dependencies/yalesmartalarmclient-0.4.0/yalesmartalarmclient/client.py",
+      "source/dependencies/yalesmartalarmclient-0.4.0/yalesmartalarmclient/auth.py",
+      "source/dependencies/micloud-0.5/micloud/micloud.py",
+      "source/dependencies/tzlocal-5.2/tzlocal/unix.py"
+    ],
+    "searches": [
+      {"query": "async def plus direct calls and constructors", "reason": "Locate synchronous work reached from event-loop entry points.", "filesMatched": 13},
+      {"query": "async_add_executor_job", "reason": "Separate protected operations from direct calls.", "filesMatched": 9},
+      {"query": "Path filesystem methods, requests, sleep, and dependency constructors", "reason": "Trace file and network candidates into supplied implementations.", "filesMatched": 8}
+    ]
+  },
+  "findings": [
+    {
+      "id": "yale-setup-client-constructor",
+      "classification": "confirmed_blocking",
+      "location": {"path": "source/homeassistant/components/yale_smart_alarm/coordinator.py", "line": 39},
+      "symbol": "YaleDataUpdateCoordinator._async_setup",
+      "expression": "YaleSmartAlarmClient(...)" ,
+      "callerPath": [
+        {"path": "source/homeassistant/components/yale_smart_alarm/__init__.py", "line": 21, "symbol": "async_setup_entry"},
+        {"path": "source/homeassistant/helpers/update_coordinator.py", "line": 293, "symbol": "DataUpdateCoordinator.__wrap_async_setup"},
+        {"path": "source/homeassistant/components/yale_smart_alarm/coordinator.py", "line": 39, "symbol": "YaleDataUpdateCoordinator._async_setup"},
+        {"path": "source/dependencies/yalesmartalarmclient-0.4.0/yalesmartalarmclient/client.py", "line": 64, "symbol": "YaleSmartAlarmClient.__init__"},
+        {"path": "source/dependencies/yalesmartalarmclient-0.4.0/yalesmartalarmclient/auth.py", "line": 40, "symbol": "YaleAuth.__init__"},
+        {"path": "source/dependencies/yalesmartalarmclient-0.4.0/yalesmartalarmclient/auth.py", "line": 214, "symbol": "YaleAuth._authorize"}
+      ],
+      "evidence": [
+        {"path": "source/homeassistant/components/yale_smart_alarm/coordinator.py", "startLine": 36, "endLine": 42, "note": "The async setup override constructs the client directly, with no executor boundary."},
+        {"path": "source/dependencies/yalesmartalarmclient-0.4.0/yalesmartalarmclient/client.py", "startLine": 62, "endLine": 66, "note": "The client constructor immediately constructs YaleAuth."},
+        {"path": "source/dependencies/yalesmartalarmclient-0.4.0/yalesmartalarmclient/auth.py", "startLine": 33, "endLine": 40, "note": "YaleAuth construction immediately invokes synchronous authorization."},
+        {"path": "source/dependencies/yalesmartalarmclient-0.4.0/yalesmartalarmclient/auth.py", "startLine": 211, "endLine": 217, "note": "Authorization executes requests.post with a network timeout."}
+      ],
+      "reason": "Config entry first refresh awaits this setup on the event loop, while construction reaches a synchronous HTTP request before returning."
+    },
+    {
+      "id": "xiaomi-cloud-cold-constructor",
+      "classification": "confirmed_blocking",
+      "location": {"path": "source/homeassistant/components/xiaomi_miio/config_flow.py", "line": 240},
+      "symbol": "XiaomiMiioFlowHandler.async_step_cloud",
+      "expression": "MiCloud(cloud_username, cloud_password)",
+      "callerPath": [
+        {"path": "source/homeassistant/components/xiaomi_miio/config_flow.py", "line": 221, "symbol": "XiaomiMiioFlowHandler.async_step_cloud"},
+        {"path": "source/homeassistant/components/xiaomi_miio/config_flow.py", "line": 240, "symbol": "MiCloud.__init__"},
+        {"path": "source/dependencies/micloud-0.5/micloud/micloud.py", "line": 38, "symbol": "tzlocal.get_localzone"},
+        {"path": "source/dependencies/tzlocal-5.2/tzlocal/unix.py", "line": 219, "symbol": "tzlocal._get_localzone"},
+        {"path": "source/dependencies/tzlocal-5.2/tzlocal/unix.py", "line": 62, "symbol": "open timezone configuration"}
+      ],
+      "evidence": [
+        {"path": "source/homeassistant/components/xiaomi_miio/config_flow.py", "startLine": 240, "endLine": 242, "note": "Client construction is direct even though the following login is executor protected."},
+        {"path": "source/dependencies/micloud-0.5/micloud/micloud.py", "startLine": 34, "endLine": 40, "note": "MiCloud construction synchronously resolves the local timezone."},
+        {"path": "source/dependencies/tzlocal-5.2/tzlocal/unix.py", "startLine": 214, "endLine": 221, "note": "The timezone result is cached, but a cold call enters discovery."},
+        {"path": "source/dependencies/tzlocal-5.2/tzlocal/unix.py", "startLine": 59, "endLine": 64, "note": "Cold Unix discovery opens and reads timezone configuration files."}
+      ],
+      "reason": "On a cold tzlocal cache the direct constructor can perform filesystem discovery on the config-flow event-loop path; warm calls may use the cache."
+    },
+    {
+      "id": "local-media-file-check",
+      "classification": "confirmed_blocking",
+      "location": {"path": "source/homeassistant/components/media_source/local_source.py", "line": 228},
+      "symbol": "LocalMediaView.get",
+      "expression": "media_path.is_file()",
+      "callerPath": [
+        {"path": "source/homeassistant/components/media_source/local_source.py", "line": 213, "symbol": "LocalMediaView.get"},
+        {"path": "source/homeassistant/components/media_source/local_source.py", "line": 228, "symbol": "Path.is_file"}
+      ],
+      "evidence": [
+        {"path": "source/homeassistant/components/media_source/local_source.py", "startLine": 213, "endLine": 215, "note": "The HTTP GET handler is an async event-loop entry point."},
+        {"path": "source/homeassistant/components/media_source/local_source.py", "startLine": 225, "endLine": 232, "note": "Path.is_file performs a synchronous filesystem stat directly in that handler."}
+      ],
+      "reason": "The async HTTP handler invokes the synchronous Path.is_file filesystem check directly, without an executor boundary."
+    },
+    {
+      "id": "yale-reauth-client-offloaded",
+      "classification": "executor_protected",
+      "location": {"path": "source/homeassistant/components/yale_smart_alarm/config_flow.py", "line": 80},
+      "symbol": "YaleConfigFlow.async_step_reauth_confirm",
+      "expression": "async_add_executor_job(YaleSmartAlarmClient, ...)" ,
+      "callerPath": [{"path": "source/homeassistant/components/yale_smart_alarm/config_flow.py", "line": 69, "symbol": "async_step_reauth_confirm"}, {"path": "source/homeassistant/components/yale_smart_alarm/config_flow.py", "line": 80, "symbol": "async_add_executor_job"}],
+      "evidence": [{"path": "source/homeassistant/components/yale_smart_alarm/config_flow.py", "startLine": 75, "endLine": 82, "note": "The same network-performing constructor is submitted to Home Assistant's executor here."}],
+      "reason": "This lookalike is protected because the constructor itself is the callable passed to async_add_executor_job."
+    },
+    {
+      "id": "xiaomi-cloud-login-offloaded",
+      "classification": "executor_protected",
+      "location": {"path": "source/homeassistant/components/xiaomi_miio/config_flow.py", "line": 242},
+      "symbol": "XiaomiMiioFlowHandler.async_step_cloud",
+      "expression": "async_add_executor_job(miio_cloud.login)",
+      "callerPath": [{"path": "source/homeassistant/components/xiaomi_miio/config_flow.py", "line": 221, "symbol": "async_step_cloud"}, {"path": "source/homeassistant/components/xiaomi_miio/config_flow.py", "line": 242, "symbol": "async_add_executor_job"}],
+      "evidence": [{"path": "source/homeassistant/components/xiaomi_miio/config_flow.py", "startLine": 240, "endLine": 243, "note": "The login method, unlike construction on the preceding line, is submitted to the executor."}],
+      "reason": "The synchronous cloud login is awaited through an explicit executor boundary and is not a direct event-loop call."
+    },
+    {
+      "id": "local-media-browse-offloaded",
+      "classification": "executor_protected",
+      "location": {"path": "source/homeassistant/components/media_source/local_source.py", "line": 96},
+      "symbol": "LocalSource.async_browse_media",
+      "expression": "async_add_executor_job(self._browse_media, ...)" ,
+      "callerPath": [{"path": "source/homeassistant/components/media_source/local_source.py", "line": 85, "symbol": "async_browse_media"}, {"path": "source/homeassistant/components/media_source/local_source.py", "line": 96, "symbol": "async_add_executor_job"}],
+      "evidence": [{"path": "source/homeassistant/components/media_source/local_source.py", "startLine": 93, "endLine": 102, "note": "Directory traversal is delegated as the _browse_media executor callable."}],
+      "reason": "The filesystem-heavy browse helper runs in the executor rather than directly in the asynchronous browse method."
+    },
+    {
+      "id": "local-media-move-offloaded",
+      "classification": "executor_protected",
+      "location": {"path": "source/homeassistant/components/media_source/local_source.py", "line": 293},
+      "symbol": "UploadMediaView.post",
+      "expression": "async_add_executor_job(self._move_file, ...)" ,
+      "callerPath": [{"path": "source/homeassistant/components/media_source/local_source.py", "line": 256, "symbol": "UploadMediaView.post"}, {"path": "source/homeassistant/components/media_source/local_source.py", "line": 293, "symbol": "async_add_executor_job"}],
+      "evidence": [{"path": "source/homeassistant/components/media_source/local_source.py", "startLine": 291, "endLine": 298, "note": "The upload's file move helper is explicitly passed through the executor."}],
+      "reason": "File creation and copying occur inside _move_file after the helper is submitted to the executor."
+    },
+    {
+      "id": "xiaomi-reauth-task-scheduling",
+      "classification": "native_async",
+      "location": {"path": "source/homeassistant/components/xiaomi_miio/config_flow.py", "line": 87},
+      "symbol": "OptionsFlowHandler.async_step_init",
+      "expression": "self.hass.async_create_task(...)" ,
+      "callerPath": [{"path": "source/homeassistant/components/xiaomi_miio/config_flow.py", "line": 71, "symbol": "OptionsFlowHandler.async_step_init"}, {"path": "source/homeassistant/components/xiaomi_miio/config_flow.py", "line": 87, "symbol": "async_create_task"}],
+      "evidence": [{"path": "source/homeassistant/components/xiaomi_miio/config_flow.py", "startLine": 82, "endLine": 93, "note": "The call schedules an existing flow coroutine with Home Assistant's event-loop task API."}],
+      "reason": "At this call site async_create_task performs event-loop scheduling; it does not itself execute synchronous file or network work."
+    },
+    {
+      "id": "media-upload-parse-native",
+      "classification": "native_async",
+      "location": {"path": "source/homeassistant/components/media_source/local_source.py", "line": 263},
+      "symbol": "UploadMediaView.post",
+      "expression": "await request.post()",
+      "callerPath": [{"path": "source/homeassistant/components/media_source/local_source.py", "line": 256, "symbol": "UploadMediaView.post"}, {"path": "source/homeassistant/components/media_source/local_source.py", "line": 263, "symbol": "request.post"}],
+      "evidence": [{"path": "source/homeassistant/components/media_source/local_source.py", "startLine": 256, "endLine": 264, "note": "The aiohttp request body parser is awaited in the async POST handler."}],
+      "reason": "The request parser is used as an awaited asynchronous API, so the syntax is not a direct synchronous file operation."
+    },
+    {
+      "id": "xiaomi-zeroconf-regex",
+      "classification": "safe_sync",
+      "location": {"path": "source/homeassistant/components/xiaomi_miio/config_flow.py", "line": 168},
+      "symbol": "XiaomiMiioFlowHandler.async_step_zeroconf",
+      "expression": "search(r\"mac=\\w+\", poch)",
+      "callerPath": [{"path": "source/homeassistant/components/xiaomi_miio/config_flow.py", "line": 159, "symbol": "async_step_zeroconf"}, {"path": "source/homeassistant/components/xiaomi_miio/config_flow.py", "line": 168, "symbol": "re.search"}],
+      "evidence": [{"path": "source/homeassistant/components/xiaomi_miio/config_flow.py", "startLine": 163, "endLine": 169, "note": "The call searches a small discovery property string and then splits the match."}],
+      "reason": "This direct synchronous call is bounded in-memory regular-expression processing over already supplied discovery data."
+    },
+    {
+      "id": "media-uri-parser",
+      "classification": "safe_sync",
+      "location": {"path": "source/homeassistant/components/media_source/local_source.py", "line": 269},
+      "symbol": "UploadMediaView.post",
+      "expression": "MediaSourceItem.from_uri(...)" ,
+      "callerPath": [{"path": "source/homeassistant/components/media_source/local_source.py", "line": 256, "symbol": "UploadMediaView.post"}, {"path": "source/homeassistant/components/media_source/local_source.py", "line": 269, "symbol": "MediaSourceItem.from_uri"}, {"path": "source/homeassistant/components/media_source/models.py", "line": 96, "symbol": "MediaSourceItem.from_uri"}],
+      "evidence": [{"path": "source/homeassistant/components/media_source/local_source.py", "startLine": 269, "endLine": 275, "note": "The handler directly calls the local URI parser."}, {"path": "source/homeassistant/components/media_source/models.py", "startLine": 91, "endLine": 102, "note": "The parser only matches a compiled regex, extracts groups, and constructs a dataclass."}],
+      "reason": "The supplied implementation establishes that this synchronous helper only parses in-memory URI data and does no I/O."
+    },
+    {
+      "id": "xiaomi-device-constructor-boundary",
+      "classification": "unresolved",
+      "location": {"path": "source/homeassistant/components/xiaomi_miio/device.py", "line": 50},
+      "symbol": "ConnectXiaomiDevice.async_connect_device",
+      "expression": "Device(host, token)",
+      "callerPath": [{"path": "source/homeassistant/components/xiaomi_miio/device.py", "line": 45, "symbol": "async_connect_device"}, {"path": "source/homeassistant/components/xiaomi_miio/device.py", "line": 50, "symbol": "miio.Device.__init__"}],
+      "evidence": [{"path": "source/homeassistant/components/xiaomi_miio/device.py", "startLine": 45, "endLine": 53, "note": "The constructor is direct while the following info request is executor protected."}, {"path": "source/homeassistant/components/xiaomi_miio/manifest.json", "startLine": 1, "endLine": 10, "note": "The implementation belongs to python-miio, whose source is not supplied in this fixture."}],
+      "reason": "The direct constructor deserves follow-up, but python-miio constructor source or a runtime trace is absent, so blocking behavior is not established."
+    }
+  ],
+  "limitations": [
+    "This is static source review; Home Assistant was not installed or run with an event-loop blocking detector.",
+    "tzlocal 5.2 is a representative compatible transitive resolution because micloud does not pin it.",
+    "Selected dependency boundaries such as python-miio remain outside the fixture and are explicitly unresolved."
+  ]
+}

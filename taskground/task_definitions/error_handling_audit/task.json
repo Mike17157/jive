@@ -1,0 +1,11 @@
+{
+  "schemaVersion": 1,
+  "id": "error_handling_audit",
+  "title": "Audit swallowed errors in a Prefect snapshot",
+  "description": "Trace broad exception handlers and hidden error boundaries through callers, tests, and dependency code; report only failures that become harmful success or lost completion.",
+  "estimatedCalls": 0,
+  "verify": [
+    "python3",
+    "{definition}/verifier/verify.py"
+  ]
+}

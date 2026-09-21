@@ -1,0 +1,21 @@
+# Retry audit for central cleanup
+
+The pinned snapshot contains four release-blocking correctness groups and one additional deferred-execution parity defect. The first rollout should address queue ownership and task state in `airflow/providers/amazon/aws/executors/ecs/ecs_executor.py`: **ecs-delayed-work-drop** silently loses a delayed `EcsQueuedTask`, while **ecs-terminal-state-lifecycle** gives FAILED and REMOVED incompatible retry transitions and leaves stale active ownership. These changes belong in one ECS patch because their invariants meet in the same active-to-pending state machine, but the regression tests should isolate time gating from terminal-state accounting.
+
+Next, fix **sensor-reschedule-fixed-backoff** in `airflow/sensors/base.py`. Reschedule mode reconstructs start time from persistence but resets the interval counter, so exponential backoff is constant across process resumptions. A regression should drive several reschedules under a controlled clock and assert increasing deterministic intervals, the timeout cap, and unchanged poke-mode behavior. This should land separately from ECS because it affects core scheduler load and has no shared implementation dependency.
+
+The provider-default issue **batch-omitted-retry-override** should preserve `None` in `airflow/providers/amazon/aws/operators/batch.py` and rely on argument pruning before submission. The tests in `tests/providers/amazon/aws/operators/test_batch.py` need explicit cases for omitted, empty, and caller-supplied strategies; an omitted value must not synthesize `retryStrategy`. The follow-up **emr-deferred-attempt-bound** should make `airflow/providers/amazon/aws/triggers/emr.py` receive the effective public limit from `airflow/providers/amazon/aws/operators/emr.py`, including the deliberately unbounded default. Serialization and sync/deferred parity tests should cover both omitted and explicit bounds.
+
+## Search coverage
+
+The audit reviewed 20 source and test paths and classified 35 distinct locations across executor queue ownership, sensor rescheduling, AWS operator/trigger parity, shared helpers, SDK delegation, and remote polling. Searches covered retry, attempt, backoff, poll, waiter, reschedule, sleep, and pending-work signals. Promising sites were followed into state records, call construction, companion paths, and existing tests rather than classified from a matching token. Key companion evidence included `airflow/providers/amazon/aws/executors/ecs/utils.py`, `tests/providers/amazon/aws/executors/ecs/test_ecs_executor.py`, and `airflow/providers/amazon/aws/executors/batch/batch_executor.py`.
+
+## Rejected lookalikes
+
+**batch-delayed-requeue-ok** is the healthy comparator for ECS: it restores a popped delayed job before continuing. **aws-waiter-sync-ok** and **aws-waiter-async-ok** are bounded wrappers around one-attempt SDK waiters and add needed status logging. **google-shared-tenacity-ok** and **http-tenacity-entrypoint-ok** are already central shared helpers rather than local reinventions. **slack-sdk-handlers-ok** delegates retry selection to the Slack SDK extension point. **quicksight-status-poll-ok** is status polling with explicit terminal-state handling, not a transport retry. **batch-status-throttle-loop-ok** is a bounded compatibility loop restricted to throttling. **livy-http-delegation-ok** forwards policy into the HTTP helper, and **databricks-tenacity-policy-ok** defines one shared synchronous/asynchronous Tenacity policy. These sites should remain unchanged unless a broader API migration supplies equivalent exception, delay, cancellation, and logging semantics.
+
+## Dependency boundary and rollout evidence
+
+**compute-sdk-default-boundary** remains unresolved. `airflow/providers/google/cloud/hooks/compute.py` accepts an SDK Retry object, but the selected slice omits the pinned dependency implementation and a product contract for safe idempotent defaults. Inspect that dependency and method-specific idempotency before proposing a default.
+
+Land ECS with focused queue/state tests first, then the sensor load fix, Batch request-shape fix, and EMR parity fix. Each patch should state total-attempt versus retry-after-first semantics and test the terminal boundary. No cleanup should begin by replacing the rejected polling or SDK-delegated sites; the evidence here supports preserving them.
