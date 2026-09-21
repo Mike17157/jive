@@ -1,0 +1,9 @@
+{
+  "schemaVersion": 1,
+  "id": "search_results_race",
+  "title": "Search results jump backwards",
+  "description": "Reproduce and fix a browser search regression with deterministic request ordering and fast browser checks.",
+  "estimatedCalls": 0,
+  "setup": ["node", "{workspace}/scripts/setup.mjs"],
+  "verify": ["node", "{definition}/verifier/verify.mjs"]
+}

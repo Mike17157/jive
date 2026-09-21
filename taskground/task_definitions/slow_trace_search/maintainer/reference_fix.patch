@@ -1,0 +1,137 @@
+diff --git a/tracequery/reader.py b/tracequery/reader.py
+index 7357cb1..1111111 100644
+--- a/tracequery/reader.py
++++ b/tracequery/reader.py
+@@ -44,3 +44,11 @@ def iter_lines(path: str | Path) -> Iterator[str]:
+         for line in handle:
+             if line.strip():
+                 yield line
++
++
++def iter_records(path: str | Path) -> Iterator[dict[str, Any]]:
++    """Decode each non-blank line exactly once."""
++    with Path(path).open("r", encoding="utf-8") as handle:
++        for line in handle:
++            if line.strip():
++                yield decode_line(line)
+diff --git a/tracequery/filters.py b/tracequery/filters.py
+index 3af8c84..2222222 100644
+--- a/tracequery/filters.py
++++ b/tracequery/filters.py
+@@ -5,29 +5,42 @@ from __future__ import annotations
+ from collections.abc import Mapping
+ from typing import Any
+ 
+-from .reader import field, normalize_text
++from .reader import normalize_text
+ 
+ 
+ def _normalized_set(values: Any) -> set[str]:
+     return {normalize_text(value) for value in values}
+ 
+ 
+-def matches(line: str, query: Mapping[str, Any]) -> bool:
+-    """Return whether an encoded trace line satisfies *query*."""
+-    if "min_timestamp" in query and int(field(line, "timestamp")) < int(query["min_timestamp"]):
++def prepare_query(query: Mapping[str, Any]) -> dict[str, Any]:
++    """Normalize invariant query values once per search."""
++    prepared: dict[str, Any] = {}
++    if "min_timestamp" in query:
++        prepared["min_timestamp"] = int(query["min_timestamp"])
++    if "max_timestamp" in query:
++        prepared["max_timestamp"] = int(query["max_timestamp"])
++    for name in ("levels", "services", "tags"):
++        if query.get(name):
++            prepared[name] = _normalized_set(query[name])
++    if query.get("terms"):
++        prepared["terms"] = tuple(normalize_text(value) for value in query["terms"])
++    return prepared
++
++
++def matches(record: Mapping[str, Any], query: Mapping[str, Any]) -> bool:
++    """Return whether a normalized trace record satisfies a prepared query."""
++    if "min_timestamp" in query and int(record["timestamp"]) < query["min_timestamp"]:
+         return False
+-    if "max_timestamp" in query and int(field(line, "timestamp")) > int(query["max_timestamp"]):
++    if "max_timestamp" in query and int(record["timestamp"]) > query["max_timestamp"]:
+         return False
+-    if query.get("levels") and field(line, "level") not in _normalized_set(query["levels"]):
++    if query.get("levels") and record["level"] not in query["levels"]:
+         return False
+-    if query.get("services") and field(line, "service") not in _normalized_set(query["services"]):
++    if query.get("services") and record["service"] not in query["services"]:
+         return False
+     if query.get("tags"):
+-        record_tags = set(field(line, "tags"))
+-        if not _normalized_set(query["tags"]).issubset(record_tags):
++        if not query["tags"].issubset(set(record["tags"])):
+             return False
+     if query.get("terms"):
+-        message = field(line, "message")
+-        if not all(normalize_text(term) in message for term in query["terms"]):
++        if not all(term in record["message"] for term in query["terms"]):
+             return False
+     return True
+diff --git a/tracequery/formatter.py b/tracequery/formatter.py
+index f5aab3a..3333333 100644
+--- a/tracequery/formatter.py
++++ b/tracequery/formatter.py
+@@ -3,17 +3,16 @@
+ from __future__ import annotations
+ 
++from collections.abc import Mapping
+ from typing import Any
+ 
+-from .reader import field
+-
+ 
+-def format_line(line: str) -> dict[str, Any]:
+-    """Build the documented result object from an encoded trace line."""
++def format_record(record: Mapping[str, Any]) -> dict[str, Any]:
++    """Build the documented result object from a normalized trace record."""
+     return {
+-        "id": field(line, "id"),
+-        "timestamp": int(field(line, "timestamp")),
+-        "service": field(line, "service"),
+-        "level": field(line, "level"),
+-        "message": field(line, "message"),
+-        "tags": list(field(line, "tags")),
++        "id": record["id"],
++        "timestamp": int(record["timestamp"]),
++        "service": record["service"],
++        "level": record["level"],
++        "message": record["message"],
++        "tags": list(record["tags"]),
+     }
+diff --git a/tracequery/engine.py b/tracequery/engine.py
+index ad1e099..4444444 100644
+--- a/tracequery/engine.py
++++ b/tracequery/engine.py
+@@ -6,9 +6,9 @@ from collections.abc import Mapping
+ from pathlib import Path
+ from typing import Any
+ 
+-from .filters import matches
+-from .formatter import format_line
+-from .reader import iter_lines
++from .filters import matches, prepare_query
++from .formatter import format_record
++from .reader import iter_records
+ 
+ 
+ def search(path: str | Path, query: Mapping[str, Any]) -> list[dict[str, Any]]:
+@@ -21,10 +21,11 @@ def search(path: str | Path, query: Mapping[str, Any]) -> list[dict[str, Any]]:
+         if limit == 0:
+             return []
+ 
++    prepared = prepare_query(query)
+     results: list[dict[str, Any]] = []
+-    for line in iter_lines(path):
+-        if matches(line, query):
+-            results.append(format_line(line))
++    for record in iter_records(path):
++        if matches(record, prepared):
++            results.append(format_record(record))
+             if limit is not None and len(results) >= limit:
+                 break
+     return results

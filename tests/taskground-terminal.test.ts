@@ -82,7 +82,10 @@ process.stdin.on("data", chunk => {
 });
 setInterval(() => {}, 1000);
 `;
-  const running = runTerminalProcess([process.execPath, "-e", script], { cwd: directory, directory, columns: 80, rows: 24 });
+  const running = runTerminalProcess([process.execPath, "-e", script], {
+    cwd: directory, directory, columns: 80, rows: 24,
+    env: { ...process.env, TASKGROUND_CAPTURE_TUI: "1" },
+  });
   const first = await TerminalClient.connect(directory);
   expect((await stat(join(directory, "terminal.json"))).mode & 0o777).toBe(0o600);
   const initial = await first.next(message => message.type === "snapshot");
@@ -139,6 +142,12 @@ setInterval(() => {}, 1000);
   const log = await readFile(join(directory, "logs/terminal.log"), "utf8");
   expect(log).toContain("TTY=true/true");
   expect(log).toContain("\x1b[31mANSI-RED\x1b[0m");
+  const [header, ...events] = (await readFile(join(directory, "terminal.cast"), "utf8")).trim().split("\n").map(line => JSON.parse(line));
+  expect(header).toMatchObject({ version: 2, width: 80, height: 24 });
+  expect(events.some(event => event[1] === "r" && event[2] === "100x30")).toBe(true);
+  const captured = events.filter(event => event[1] === "o").map(event => event[2]).join("");
+  expect(captured).toBe(log);
+  expect(events.every((event, index) => event[0] >= 0 && (!index || event[0] >= events[index - 1][0]))).toBe(true);
   expect(await readTerminalEndpoint(directory)).toBeNull();
   second.close();
   reconnected.close();

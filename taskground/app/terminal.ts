@@ -130,6 +130,17 @@ export async function runTerminalProcess(command: string[], options: {
   const log = await openLog(join(options.directory, "logs/terminal.log"));
   const logFinished = finished(log);
   logFinished.catch(() => {});
+  // Opt-in lossless, timed PTY capture for replaying the actual native TUI.
+  const cast = options.env?.TASKGROUND_CAPTURE_TUI === "1"
+    ? await openLog(join(options.directory, "terminal.cast")) : undefined;
+  const castFinished = cast ? finished(cast) : Promise.resolve();
+  castFinished.catch(() => {});
+  const captureStart = Date.now();
+  cast?.write(JSON.stringify({ version: 2, width: initialColumns, height: initialRows,
+    timestamp: captureStart / 1000, env: { TERM: "xterm-256color" } }) + "\n");
+  const captureEvent = (kind: string, data: string) => {
+    if (cast) cast.write(JSON.stringify([(Date.now() - captureStart) / 1000, kind, data]) + "\n");
+  };
 
   const screen = new HeadlessTerminal({ cols: initialColumns, rows: initialRows, scrollback: MAX_SCROLLBACK, allowProposedApi: true });
   const serializer = new SerializeAddon();
@@ -221,6 +232,7 @@ export async function runTerminalProcess(command: string[], options: {
   };
 
   log.once("error", failOutput);
+  cast?.once("error", failOutput);
   process.on("SIGINT", stop);
   process.on("SIGTERM", stop);
   const timer = options.timeoutMs ? setTimeout(() => { timedOut = true; void stop(); }, options.timeoutMs) : undefined;
@@ -289,6 +301,7 @@ export async function runTerminalProcess(command: string[], options: {
               return;
             }
             const columns = message.cols, rows = message.rows;
+            captureEvent("r", `${columns}x${rows}`);
             terminal?.resize(columns, rows);
             screenWrites = screenWrites.then(() => {
               screen.resize(columns, rows);
@@ -332,7 +345,9 @@ export async function runTerminalProcess(command: string[], options: {
             if (log.writableLength > 16 * 1024 * 1024) throw new Error("Terminal output exceeded the log buffer limit");
             log.write(bytes);
             const copy = Uint8Array.from(bytes);
-            queueScreenWrite(copy, decoder.decode(copy, { stream: true }));
+            const text = decoder.decode(copy, { stream: true });
+            captureEvent("o", text);
+            queueScreenWrite(copy, text);
           } catch (error) {
             failOutput(error);
           }
@@ -398,8 +413,10 @@ export async function runTerminalProcess(command: string[], options: {
     serializer.dispose();
     screen.dispose();
     log.end();
+    cast?.end();
     let logError: unknown;
     await logFinished.catch(error => { if (!outputError) logError = error; });
+    await castFinished.catch(error => { if (!outputError) logError = error; });
     await unlink(join(options.directory, "terminal.json")).catch(() => {});
     if (logError) throw logError;
     if (persistenceError) throw persistenceError;

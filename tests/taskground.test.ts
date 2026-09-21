@@ -121,6 +121,18 @@ test("fixture copying refuses symlinks and excludes credentials and old sessions
   await expect(copyDefinition(source, join(root, "another"))).rejects.toThrow("symlinks");
 });
 
+test("profiling setup generates repeatable inputs and keeps maintainer solutions out of workspaces", async () => {
+  const first = await fixture({ task: "slow_trace_search" });
+  const second = await fixture({ task: "slow_trace_search" });
+  const manifest = await json(join(first.workspace, "data/MANIFEST.json"));
+  expect(manifest.records).toBeGreaterThan(1000);
+  expect(await json(join(second.workspace, "data/MANIFEST.json"))).toEqual(manifest);
+  expect(await Bun.file(join(first.workspace, "maintainer/reference_fix.patch")).exists()).toBe(false);
+  expect(await Bun.file(join(first.workspace, "verifier/verify.py")).exists()).toBe(false);
+  expect(await Bun.file(join(first.workspace, "work/report.md")).exists()).toBe(false);
+  expect(await capture(["git", "status", "--porcelain"], first.workspace)).toBe("");
+});
+
 test("search latency prepares reproducible diagnostic inputs without leaking its repair", async () => {
   const first = await fixture({ task: "search_latency", agent: "jive" });
   const second = await fixture({ task: "search_latency", agent: "jive" });

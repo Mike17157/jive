@@ -1,0 +1,9 @@
+{
+  "schemaVersion": 1,
+  "id": "slow_trace_search",
+  "title": "Speed up a trace-log search",
+  "description": "Profile and optimize a correct but unexpectedly slow JSONL trace-query engine without changing its behavior.",
+  "estimatedCalls": 0,
+  "setup": ["python3", "{workspace}/scripts/setup.py"],
+  "verify": ["python3", "{definition}/verifier/verify.py"]
+}

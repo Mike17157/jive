@@ -1,4 +1,6 @@
 .venv/
+tui-generated/
+__pycache__/
 *.png
 header-*.mp4
 *-progress.txt

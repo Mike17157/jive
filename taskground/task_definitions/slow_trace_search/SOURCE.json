@@ -1,0 +1,10 @@
+{
+  "schemaVersion": 1,
+  "type": "synthetic",
+  "seed": "slow-trace-search-v1",
+  "sources": [],
+  "license": "Original synthetic task; no external data or code.",
+  "description": "Deterministically generated JSONL application traces and queries designed to exercise parsing, Unicode normalization, filtering, ordering, and formatting.",
+  "generator": "workspace/scripts/setup.py",
+  "notes": "All names, messages, identifiers, and payloads are synthetic. The verifier generates additional deterministic held-out traces."
+}

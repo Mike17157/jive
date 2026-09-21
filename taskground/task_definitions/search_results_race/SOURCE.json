@@ -1,0 +1,6 @@
+{
+  "adaptation": false,
+  "origin": "Original synthetic Taskground fixture",
+  "description": "Fictional equipment catalog and intentionally defective search client; no external dataset or customer data.",
+  "dependencies": {"playwright": "1.63.0"}
+}
