@@ -24,7 +24,7 @@ Claude prefill an editable draft; in Codex, ask it to read TASK.md and README.md
 --headless waits; --detach returns a run ID immediately. status and logs work while
 a headless run is active. --json keeps stdout machine-readable (agent output goes to
 logs). A completed process is ungraded until verify runs. There is no enforced
-API-call or spend limit; non-Jive READMEs state the 200-call helper allowance.
+API-call or spend limit; all READMEs state the same 200-call helper allowance.
 The bundled task preparation and verifiers make no model calls.
 `;
 

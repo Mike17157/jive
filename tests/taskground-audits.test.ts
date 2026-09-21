@@ -18,7 +18,7 @@ for (const task of ["async_blocking_audit", "error_handling_audit", "retry_audit
     const run = await prepareRun({ task, agent: "jive", runsRoot: root });
     expect(run.status).toBe("ready");
     expect(await capture(["git", "status", "--porcelain"], run.workspace)).toBe("");
-    expect(await readFile(join(run.workspace, "README.md"), "utf8")).not.toContain(OPENROUTER_NOTE);
+    expect(await readFile(join(run.workspace, "README.md"), "utf8")).toContain(OPENROUTER_NOTE);
     expect(await Bun.file(join(run.workspace, "maintainer/reference_findings.json")).exists()).toBe(false);
     expect(await Bun.file(join(run.workspace, "verifier/verify.py")).exists()).toBe(false);
     expect((await verifyRun(run.id, root)).grading.status).toBe("failed");
@@ -40,6 +40,10 @@ for (const task of ["async_blocking_audit", "error_handling_audit", "retry_audit
 
     const codex = await prepareRun({ task, agent: "codex", runsRoot: root });
     expect(await readFile(join(codex.workspace, "README.md"), "utf8")).toContain(OPENROUTER_NOTE);
+    for (const file of ["README.md", "TASK.md"]) {
+      expect(await readFile(join(codex.workspace, file), "utf8")).toBe(await readFile(join(run.workspace, file), "utf8"));
+    }
+    expect(await readFile(join(codex.directory, "prompt.txt"), "utf8")).toBe(await readFile(join(run.directory, "prompt.txt"), "utf8"));
     await copyFile(join(codex.definition, "maintainer/reference_findings.json"), join(codex.workspace, "work/findings.json"));
     await copyFile(join(codex.definition, "maintainer/reference_report.md"), join(codex.workspace, "work/report.md"));
     const codexResult = await verifyRun(codex.id, root);

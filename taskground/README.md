@@ -80,11 +80,13 @@ can still use their normal authentication. Jive's Jev credentials/settings are
 inherited or loaded from those same source env files, without copying them into
 the task's `.env`.
 
-Only **non-Jive** workspace READMEs receive a line saying OpenRouter is optional,
+All workspace READMEs receive the same line saying OpenRouter is optional,
 using `deepseek/deepseek-v4-flash`, with at most **200 helper calls per task run**,
 including calibration and retries. This is an instruction, not a metered or
-enforced limit. It does not count the coding agent's own inference. Jive's README,
-task prompt, and core agent guidance receive no OpenRouter helper instructions.
+enforced limit. It does not count the coding agent's own inference. Given the
+same task and prompt override, Jive, Codex, and Claude receive identical task
+instructions, README context, and prepared prompt text. Their native tools and
+agent-level system instructions can differ.
 
 Secrets are excluded from definition snapshots, run metadata, and workspace Git.
 Agent stdout is captured as emitted: an agent that prints a secret can put it into
@@ -247,6 +249,12 @@ caller, wrapper, or dependency that needs further inspection. No particular grap
 or helper-call count is required. Evaluate Jev's contribution from execution traces,
 including whether decisions changed subsequent investigation, rather than counting
 calls alone.
+
+The Prefect and Airflow task prompts include the same
+[execution guidance](_shared/audit_execution_guidance.md) for every agent profile:
+ground bounded judgments in source evidence, connect decisions to follow-up reads,
+reuse an evidence ledger, and validate the documented output contract before
+finishing. The guidance does not name a specific agent or require its tool APIs.
 
 Automated grading checks the documented structured artifacts against a curated
 reference. Passing is evidence of performance on that scoped fixture, not a proof

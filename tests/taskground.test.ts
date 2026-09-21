@@ -69,7 +69,7 @@ test("bundled tasks fit the allowance; dataset adaptations hide answer fields", 
   }
 });
 
-test("fresh runs copy fixtures, snapshot definitions, inject only non-Jive guidance, and keep .env out of Git and metadata", async () => {
+test("fresh runs copy fixtures, share task guidance across profiles, and keep .env out of Git and metadata", async () => {
   const root = await scratch();
   const envFile = join(root, "task.env");
   const secret = "test-secret-that-must-not-enter-artifacts";
@@ -92,10 +92,16 @@ test("fresh runs copy fixtures, snapshot definitions, inject only non-Jive guida
     expect(next.id).not.toBe(run.id);
     expect(await readFile(join(next.workspace, "data/test.jsonl"), "utf8")).toBe(original);
     expect(await Bun.file(join(next.workspace, "work/old-result")).exists()).toBe(false);
-    expect(await readFile(join(next.workspace, "README.md"), "utf8")).not.toContain("OpenRouter");
+    expect(await readFile(join(next.workspace, "README.md"), "utf8")).toContain(OPENROUTER_NOTE);
     expect(await fingerprint(next.definition)).toBe(next.definitionHash!);
     const claude = await prepareRun({ task: "intent_routing", agent: "claude", runsRoot: root, envFile });
     expect(await readFile(join(claude.workspace, "README.md"), "utf8")).toContain(OPENROUTER_NOTE);
+    for (const other of [next, claude]) {
+      for (const file of ["README.md", "TASK.md"]) {
+        expect(await readFile(join(other.workspace, file), "utf8")).toBe(await readFile(join(run.workspace, file), "utf8"));
+      }
+      expect(await readFile(join(other.directory, "prompt.txt"), "utf8")).toBe(await readFile(join(run.directory, "prompt.txt"), "utf8"));
+    }
   } finally {
     if (previous === undefined) delete process.env.OPENROUTER_API_KEY; else process.env.OPENROUTER_API_KEY = previous;
   }
@@ -124,7 +130,7 @@ test("search latency prepares reproducible diagnostic inputs without leaking its
   expect(await Bun.file(join(first.workspace, "maintainer/DESIGN.md")).exists()).toBe(false);
   expect(await Bun.file(join(first.workspace, "maintainer/reference_fix.patch")).exists()).toBe(false);
   expect(await Bun.file(join(first.workspace, "verifier/verify.py")).exists()).toBe(false);
-  expect(await readFile(join(first.workspace, "README.md"), "utf8")).not.toContain("OpenRouter");
+  expect(await readFile(join(first.workspace, "README.md"), "utf8")).toContain(OPENROUTER_NOTE);
   expect(await capture(["python3", "-m", "unittest", "discover", "-s", "tests"], first.workspace)).not.toBeNull();
   expect(await capture(["git", "status", "--porcelain"], first.workspace)).toBe("");
 }, 15000);

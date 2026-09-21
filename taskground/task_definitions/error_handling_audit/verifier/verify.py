@@ -164,7 +164,7 @@ def fixture_unchanged(workspace: Path, definition: Path) -> tuple[bool, list[str
                 continue
             relative = path.relative_to(root)
             if (
-                relative.parts[0] in {"work", ".git"}
+                relative.parts[0] in {"work", ".git", ".jev", ".context", ".cache"}
                 or "__pycache__" in relative.parts
                 or path.suffix == ".pyc"
                 or relative.as_posix() in {"README.md", "TASK.md", ".env", ".gitignore"}

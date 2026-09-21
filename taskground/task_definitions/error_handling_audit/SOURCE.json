@@ -203,7 +203,7 @@
   ],
   "localAdditions": [
     {
-      "sha256": "6f366f5dc6fae060d50077c3e42ad0e08f5a9ee996da0ceebb8940d0febba505",
+      "sha256": "684433eef291346bbfebc13b543e0dbd71d97f67c19adc7411af60050b272146",
       "path": "instruction.md",
       "kind": "agent-visible-adaptation"
     },
@@ -213,7 +213,7 @@
       "kind": "held-out-taskground"
     },
     {
-      "sha256": "c85dc0242ba03063f5f53db8dfb5e656005fb3bf1957b09fac64f866c1f64ef5",
+      "sha256": "6ea6b61ec7679654d75c7b5ca4969a921dc906d993d9a3cc0b04ef4ac2f921e5",
       "path": "maintainer/README.md",
       "kind": "held-out-taskground"
     },
@@ -228,7 +228,7 @@
       "kind": "held-out-taskground"
     },
     {
-      "sha256": "4d5edd8ec4ded6f2ff34cacdc9a91697a225fea8251ae786c989f1e93ad17fb0",
+      "sha256": "4f475948fac27804b3c02466eb12fb5cb263792e920662939b53be501e72c215",
       "path": "maintainer/smoke.py",
       "kind": "held-out-taskground"
     },
@@ -243,7 +243,7 @@
       "kind": "held-out-taskground"
     },
     {
-      "sha256": "95aa653057ae71458774b8975328a390ca42a5d6ca7e780e1e3e7359b325c624",
+      "sha256": "cb59354f3af7e0f5e256e1a71503bd04c921fcc21a88a4f47c10c7228778496e",
       "path": "verifier/verify.py",
       "kind": "held-out-taskground"
     },

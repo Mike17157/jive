@@ -54,6 +54,31 @@ def main() -> None:
         assert accepted_report["status"] == "passed", json.dumps(accepted_report, indent=2)
         assert all(accepted_report["checks"].values())
 
+        # Real agent runs create session state after preparation. It is not corpus data.
+        logged = fresh_workspace(root, "logged")
+        write_reference(logged, reference)
+        for relative in (
+            ".jev/openrouter-models.json",
+            ".jev/sessions/example/session.jsonl",
+            ".jev/runs/example/command-read.stdout",
+            ".context/session.json",
+            ".cache/tool-cache.json",
+        ):
+            artifact = logged / relative
+            artifact.parent.mkdir(parents=True, exist_ok=True)
+            artifact.write_text("runtime state\n", encoding="utf-8")
+        logged_report = run(logged, root, "logged")
+        assert logged_report["status"] == "passed", json.dumps(logged_report, indent=2)
+        assert logged_report["metrics"]["fixtureDifferences"] == []
+
+        # Ignore runtime directories only at the root; preserve strict source integrity.
+        unexpected = logged / "prefect/.jev/added_source.py"
+        unexpected.parent.mkdir(parents=True)
+        unexpected.write_text("unexpected = True\n", encoding="utf-8")
+        added_report = run(logged, root, "added-source")
+        assert added_report["status"] == "failed"
+        assert "prefect/.jev/added_source.py" in added_report["metrics"]["fixtureDifferences"]
+
         empty = fresh_workspace(root, "empty")
         assert run(empty, root, "empty")["status"] == "failed"
 
@@ -150,6 +175,8 @@ def main() -> None:
             json.dumps(
                 {
                     "reference": accepted_report["status"],
+                    "runtimeArtifacts": logged_report["status"],
+                    "addedSource": added_report["status"],
                     "empty": run(empty, root, "empty-again")["status"],
                     "malformed": malformed_report["status"],
                     "wrong": wrong_report["status"],

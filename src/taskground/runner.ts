@@ -115,7 +115,8 @@ export async function prepareRun(options: RunOptions): Promise<RunRecord> {
     await appendFile(join(run.workspace, ".gitignore"), ignore);
     // Only the requested helper key is persisted; Jive's other credentials travel in its environment.
     await writeFile(join(run.workspace, ".env"), `OPENROUTER_API_KEY=${JSON.stringify(env.OPENROUTER_API_KEY ?? "")}\n`, { mode: 0o600 });
-    if (run.agent !== "jive") await appendFile(join(run.workspace, "README.md"), `\n\n${OPENROUTER_NOTE}\n`);
+    // Task context is identical across agent profiles; only native adapters differ.
+    await appendFile(join(run.workspace, "README.md"), `\n\n${OPENROUTER_NOTE}\n`);
     const instruction = options.promptFile ? await readFile(resolve(options.promptFile), "utf8") : await readFile(join(run.definition, "instruction.md"), "utf8");
     const prompt = `${instruction.trim()}\n\nRead README.md for the task environment and available resources. Work in this directory and preserve your deliverables under work/.`;
     await writeFile(join(directory, "prompt.txt"), prompt + "\n");
