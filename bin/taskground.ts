@@ -15,6 +15,7 @@ const HELP = `Taskground — fresh, retained workspaces for agent tasks
   bun run taskground prepare TASK --agent jive|codex|claude [--json]
   bun run taskground run TASK --agent jive|codex|claude
   bun run taskground run TASK --agent jive|codex|claude --headless [--detach] [--json]
+  bun run taskground run TASK --agent jive|codex|claude --terminal [--json]
   bun run taskground status RUN_ID [--json]
   bun run taskground logs RUN_ID [--tail 40]
   bun run taskground stop RUN_ID [--json]
@@ -26,8 +27,10 @@ Options: --model ID --effort LEVEL --prompt-file FILE --env-file FILE --timeout 
 Source:  --source working|head|commit [--commit REVISION] (default: working)
 Video:   --record [--width 1920 --height 1080 --columns 120 --rows 36]
 
-launch opens a local browser dashboard. Headless CLI runs appear automatically;
-interactive runs are excluded. Source is snapshotted from the primary worktree.
+launch opens a local browser dashboard with native agent terminals. Headless CLI
+runs also appear automatically; local interactive runs are excluded.
+--terminal starts a detached native agent session; view and attach in the browser.
+Source is snapshotted from the primary worktree.
 New runs live outside the repo; TASKGROUND_DATA_DIR overrides the data directory.
 --record captures the headless transcript; export renders an MP4 using FFmpeg.
 
@@ -47,7 +50,7 @@ function summary(run: RunRecord) {
 async function main() {
   const { values, positionals } = parseArgs({ args: process.argv.slice(2), allowPositionals: true, options: {
     help: { type: "boolean", short: "h" }, json: { type: "boolean" }, agent: { type: "string", default: "jive" },
-    headless: { type: "boolean" }, detach: { type: "boolean" }, model: { type: "string" }, effort: { type: "string" },
+    headless: { type: "boolean" }, terminal: { type: "boolean" }, detach: { type: "boolean" }, model: { type: "string" }, effort: { type: "string" },
     "prompt-file": { type: "string" }, "env-file": { type: "string" }, timeout: { type: "string" },
     "agent-bin": { type: "string" }, "agent-arg": { type: "string", multiple: true },
     "runs-dir": { type: "string" }, tail: { type: "string", default: "40" },
@@ -74,24 +77,25 @@ async function main() {
     if (!Number.isInteger(port) || port < 0 || port > 65535) throw new Error("--port must be between 0 and 65535");
     const { startDashboard } = await import("../taskground/app/server");
     const { url, server } = await startDashboard({ port, runsRoot: root, open: !values["no-open"] });
-    console.log(`Taskground ${url}\nHeadless runs continue when this dashboard closes.`);
+    console.log(`Taskground ${url}\nManaged terminal and detached headless runs continue when this dashboard closes.`);
     const close = () => { server.stop(true); process.exit(0); };
     process.once("SIGINT", close); process.once("SIGTERM", close);
     return;
   }
   if (command === "runs") {
     const runs = await listRuns(root);
-    console.log(values.json ? JSON.stringify(runs.map(summary)) : runs.map(run => `${run.id}  ${run.agent.padEnd(6)} ${run.status.padEnd(10)} ${run.grading.status}`).join("\n") || "No headless runs yet.");
+    console.log(values.json ? JSON.stringify(runs.map(summary)) : runs.map(run => `${run.id}  ${run.agent.padEnd(6)} ${run.status.padEnd(10)} ${run.grading.status}`).join("\n") || "No managed runs yet.");
     return;
   }
   if (!id || positionals.length > 2) throw new Error("Provide exactly one task or run ID; see --help");
   if (command === "run" || command === "prepare") {
     if (!AGENTS.includes(values.agent as Agent)) throw new Error(`Choose an agent: ${AGENTS.join(", ")}`);
-    if (values.detach && !values.headless) throw new Error("--detach requires --headless");
-    if (command === "run" && !values.headless && values.json) throw new Error("Interactive terminal output cannot be JSON; use --headless --json");
-    if (command === "run" && !values.headless && !process.stdin.isTTY) throw new Error("Interactive runs need a terminal; use --headless or prepare");
-    const options: RunOptions = { task: id, agent: values.agent as Agent, headless: values.headless, model: values.model, effort: values.effort, executable: values["agent-bin"], extraArgs: values["agent-arg"], promptFile: values["prompt-file"], envFile: values["env-file"], timeoutSeconds: values.timeout === undefined ? undefined : Number(values.timeout), runsRoot: root, sourceMode: (values.source ?? (values.commit ? "commit" : "working")) as SourceMode, commit: values.commit, recording: values.record ? { width: Number(values.width), height: Number(values.height), columns: Number(values.columns), rows: Number(values.rows) } : undefined };
-    if (command === "run" && values.detach) { print(await scheduleRun(options)); return; }
+    if (values.terminal && values.headless) throw new Error("Choose --terminal or --headless");
+    if (values.detach && !values.headless && !values.terminal) throw new Error("--detach requires --headless or --terminal");
+    if (command === "run" && !values.headless && !values.terminal && values.json) throw new Error("Interactive terminal output cannot be JSON; use --headless --json or --terminal --json");
+    if (command === "run" && !values.headless && !values.terminal && !process.stdin.isTTY) throw new Error("Interactive runs need a terminal; use --headless, --terminal or prepare");
+    const options: RunOptions = { task: id, agent: values.agent as Agent, headless: values.headless, terminal: values.terminal, model: values.model, effort: values.effort, executable: values["agent-bin"], extraArgs: values["agent-arg"], promptFile: values["prompt-file"], envFile: values["env-file"], timeoutSeconds: values.timeout === undefined ? undefined : Number(values.timeout), runsRoot: root, sourceMode: (values.source ?? (values.commit ? "commit" : "working")) as SourceMode, commit: values.commit, recording: values.record ? { width: Number(values.width), height: Number(values.height), columns: Number(values.columns), rows: Number(values.rows) } : undefined };
+    if (command === "run" && (values.detach || values.terminal)) { print(await scheduleRun(options)); return; }
     let run = await prepareRun(options);
     if (command === "prepare") { print(run); return; }
     if (!values.json) console.error(`Run ${run.id}\nWorkspace: ${run.workspace}`);
@@ -115,7 +119,7 @@ async function main() {
   }
   if (command === "status") {
     const run = await runStatus(id, root);
-    if (values.json && run.mode === "headless") {
+    if (values.json && run.mode !== "interactive") {
       const { getRunMetrics } = await import("../taskground/app/metrics");
       console.log(JSON.stringify({ ...summary(run), metrics: await getRunMetrics(run) }));
     } else print(run);

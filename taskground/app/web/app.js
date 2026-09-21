@@ -21,11 +21,14 @@
     outputErrors: new Map(),
     artifacts: new Map(),
     artifactErrors: new Map(),
+    terminalSessions: new Map(),
     scrollPositions: new Map(),
     pendingFocusKey: "",
+    pendingTerminalFocus: "",
     maximizedOutput: "",
     pollTimer: null,
     requestInFlight: false,
+    configRequest: null,
   };
 
   const $ = (selector, root = document) => root.querySelector(selector);
@@ -57,10 +60,13 @@
     modelNotice: $("#model-notice"),
     effort: $("#effort-select"),
     effortNotice: $("#effort-notice"),
+    executionMode: $("#execution-mode"),
+    executionModeNotice: $("#execution-mode-notice"),
     timeout: $("#timeout-input"),
     commitField: $("#commit-field"),
     commit: $("#commit-input"),
     recordingEnabled: $("#recording-enabled"),
+    recordingNotice: $("#recording-notice"),
     recordingOptions: $("#recording-options"),
     recordingPreset: $("#recording-preset"),
     recordingWidth: $("#recording-width"),
@@ -133,6 +139,11 @@
 
   function captureViewState() {
     captureScrollPositions();
+    const focusedTerminal = document.activeElement && document.activeElement.closest
+      ? document.activeElement.closest(".native-terminal-pane .xterm")
+      : null;
+    const focusedPane = focusedTerminal ? focusedTerminal.closest(".native-terminal-pane") : null;
+    if (focusedPane) state.pendingTerminalFocus = focusedPane.dataset.terminalRun || "";
     const focused = document.activeElement && document.activeElement.closest
       ? document.activeElement.closest("[data-focus-key]")
       : null;
@@ -157,15 +168,31 @@
       }
       state.pendingFocusKey = "";
     }
+    if (state.pendingTerminalFocus) {
+      const session = state.terminalSessions.get(state.pendingTerminalFocus);
+      if (session && session.attached && session.pane.isConnected && session.terminal) session.terminal.focus();
+      state.pendingTerminalFocus = "";
+    }
   }
 
-  async function loadConfig() {
+  async function loadConfig({ announceError = true, clearOnError = true } = {}) {
+    if (state.configRequest) return state.configRequest;
+    const request = (async () => {
+      try {
+        const config = await api("/api/config", { cache: "no-store" });
+        state.token = config && typeof config.token === "string" ? config.token : "";
+        return Boolean(state.token);
+      } catch (error) {
+        if (clearOnError) state.token = "";
+        if (announceError) showToast(`Controls unavailable: ${normalizeError(error)}`, true);
+        return false;
+      }
+    })();
+    state.configRequest = request;
     try {
-      const config = await api("/api/config");
-      state.token = config && typeof config.token === "string" ? config.token : "";
-    } catch (error) {
-      state.token = "";
-      showToast(`Controls unavailable: ${normalizeError(error)}`, true);
+      return await request;
+    } finally {
+      if (state.configRequest === request) state.configRequest = null;
     }
   }
 
@@ -186,6 +213,7 @@
       state.loading = false;
       state.error = "";
       updateTaskOptions();
+      if (document.hidden) return;
       render();
       setConnection("online", "Live");
       await refreshExpandedRuns();
@@ -226,6 +254,7 @@
         state.artifactErrors.set(id, normalizeError(artifactsResult.reason, "Deliverables unavailable."));
       }
     }));
+    if (document.hidden) return;
     captureViewState();
     renderRuns();
   }
@@ -316,6 +345,7 @@
 
   function renderRuns() {
     const runs = filteredRuns();
+    cleanupHiddenTerminals(runs);
     if (state.maximizedOutput && (!state.expanded.has(state.maximizedOutput) || !runs.some((run) => run.id === state.maximizedOutput))) {
       state.maximizedOutput = "";
     }
@@ -359,7 +389,10 @@
     // A detail poll can finish before the next frame; restore now so it never
     // saves the replacement pane's initial scroll position over the user's.
     restoreViewState();
-    requestAnimationFrame(drawCharts);
+    requestAnimationFrame(() => {
+      drawCharts();
+      activateVisibleTerminals();
+    });
   }
 
   function stateCard(icon, title, message, loading = false) {
@@ -485,8 +518,9 @@
   }
 
   function renderOutput(run) {
-    const panel = detailPanel("Output", ACTIVE_STATUSES.has(run.status) ? "live tail" : "terminal log");
-    const view = state.outputViews.get(run.id) || "logs";
+    const native = runMode(run) === "terminal";
+    const panel = detailPanel("Output", native ? "native terminal" : ACTIVE_STATUSES.has(run.status) ? "live tail" : "terminal log");
+    const view = state.outputViews.get(run.id) || (native ? "terminal" : "logs");
     const viewId = `output-${safeId(run.id)}-${view}`;
     const maximized = state.maximizedOutput === run.id;
     panel.classList.add("output-panel");
@@ -530,25 +564,24 @@
       tabs.append(tab);
     }
     panel.append(tabs);
-    if (view === "terminal") {
-      const bar = node("div", "terminal-toolbar");
-      const label = node("span", "terminal-caption", `${run.agent || "Agent"} · ${run.model || "default model"}`);
-      label.title = label.textContent;
-      const tools = node("span", "terminal-tools");
-      tools.append(node("span", "terminal-readonly", "Read only"));
-      const latest = node("button", "panel-control", "Jump to latest");
-      latest.type = "button";
-      latest.dataset.focusKey = `output-latest:${run.id}`;
-      latest.addEventListener("click", () => {
-        const output = $(".terminal-output", panel);
-        output.scrollTop = output.scrollHeight;
-        state.scrollPositions.set(output.dataset.outputId, { top: output.scrollTop, left: output.scrollLeft, followTail: true });
-      });
-      tools.append(latest);
-      append(bar, label, tools);
-      panel.append(bar);
+    if (view === "terminal" && native) {
+      panel.append(nativeTerminalPane(run));
+      return panel;
     }
-    const output = node("pre", `terminal-output${view === "terminal" ? " terminal-screen" : ""}`);
+    if (view === "terminal") {
+      const unavailable = node("div", "terminal-unavailable");
+      unavailable.id = viewId;
+      unavailable.setAttribute("role", "tabpanel");
+      unavailable.setAttribute("aria-labelledby", `output-tab-${safeId(run.id)}-${view}`);
+      append(
+        unavailable,
+        node("strong", "", "Native terminal unavailable"),
+        node("p", "", "This run uses headless logs and has no interactive PTY. Open Logs to review its captured transcript."),
+      );
+      panel.append(unavailable);
+      return panel;
+    }
+    const output = node("pre", "terminal-output");
     output.id = viewId;
     output.dataset.outputId = `${run.id}:${view}`;
     output.dataset.focusKey = `output:${run.id}:${view}`;
@@ -566,21 +599,414 @@
     } else if (!text) {
       output.classList.add("terminal-empty");
       output.textContent = ACTIVE_STATUSES.has(run.status) ? "Waiting for agent output…" : "No terminal output was captured.";
-    } else if (view === "terminal") {
-      for (const line of text.split("\n")) {
-        const row = node("span", /\[stderr\]/.test(line) ? "terminal-line terminal-stderr" : "terminal-line");
-        const timestamp = /^(\[\+?\d{2}:\d{2}:\d{2}\.\d{3}\])/.exec(line);
-        if (timestamp) {
-          row.append(node("span", "terminal-timestamp", timestamp[1]));
-          row.append(document.createTextNode(line.slice(timestamp[1].length) + "\n"));
-        } else row.textContent = line + "\n";
-        output.append(row);
-      }
     } else {
       output.textContent = text;
     }
     panel.append(output);
     return panel;
+  }
+
+  function runMode(run) {
+    return run && run.mode === "terminal" ? "terminal" : "headless";
+  }
+
+  function cleanupHiddenTerminals(visibleRuns) {
+    const visible = new Map(visibleRuns.map((run) => [run.id, { ...run, ...(state.details.get(run.id) || {}) }]));
+    for (const [id] of state.terminalSessions) {
+      const run = visible.get(id);
+      const view = run ? state.outputViews.get(id) || (runMode(run) === "terminal" ? "terminal" : "logs") : "";
+      if (!run || !state.expanded.has(id) || runMode(run) !== "terminal" || view !== "terminal") disposeTerminalSession(id);
+    }
+  }
+
+  function nativeTerminalPane(run) {
+    let session = state.terminalSessions.get(run.id);
+    if (!session) session = createTerminalSession(run);
+    session.run = run;
+    session.pane.id = `output-${safeId(run.id)}-terminal`;
+    session.pane.setAttribute("aria-labelledby", `output-tab-${safeId(run.id)}-terminal`);
+    session.caption.textContent = `${run.agent || "Agent"} · ${run.model || "default model"}`;
+    session.caption.title = session.caption.textContent;
+    updateTerminalUi(session);
+    return session.pane;
+  }
+
+  function createTerminalSession(run) {
+    const pane = node("div", "native-terminal-pane");
+    pane.dataset.terminalRun = run.id;
+    pane.setAttribute("role", "tabpanel");
+    const bar = node("div", "terminal-toolbar");
+    const caption = node("span", "terminal-caption", `${run.agent || "Agent"} · ${run.model || "default model"}`);
+    const tools = node("span", "terminal-tools");
+    const status = node("span", "terminal-connection", "Preparing terminal…");
+    status.setAttribute("role", "status");
+    const control = node("button", "panel-control terminal-control", "Attach");
+    control.type = "button";
+    control.dataset.focusKey = `terminal-control:${run.id}`;
+    control.disabled = true;
+    append(tools, status, control);
+    append(bar, caption, tools);
+    const host = node("div", "native-terminal-host");
+    host.dataset.focusKey = `output:${run.id}:terminal`;
+    host.setAttribute("aria-label", `Terminal for ${run.id}`);
+    const scroll = node("div", "native-terminal-scroll");
+    scroll.append(host);
+    const help = node("p", "terminal-help", "Read-only by default. Attach to type; detaching leaves the agent running until it exits or you cancel it.");
+    append(pane, bar, scroll, help);
+
+    const session = {
+      id: run.id,
+      run,
+      pane,
+      caption,
+      host,
+      scroll,
+      help,
+      status,
+      control,
+      terminal: null,
+      socket: null,
+      observer: null,
+      inputDisposable: null,
+      parserDisposables: [],
+      reconnectTimer: null,
+      resizeTimer: null,
+      resizeFrame: null,
+      layoutFrame: null,
+      reconnectAttempt: 0,
+      attached: false,
+      available: false,
+      exited: false,
+      disposed: false,
+      lastSentSize: "",
+      exitCode: null,
+      error: "",
+      renderQueue: Promise.resolve(),
+    };
+    state.terminalSessions.set(run.id, session);
+
+    control.addEventListener("click", () => toggleTerminalControl(session));
+    updateTerminalUi(session);
+    return session;
+  }
+
+  function initializeTerminal(session) {
+    if (session.terminal || session.disposed || document.hidden) return;
+    const TerminalConstructor = window.Terminal;
+    if (typeof TerminalConstructor !== "function") {
+      session.error = "The terminal component failed to load.";
+      updateTerminalUi(session);
+      return;
+    }
+    session.terminal = new TerminalConstructor({
+      allowProposedApi: false,
+      convertEol: false,
+      cursorBlink: false,
+      cursorStyle: "block",
+      disableStdin: true,
+      fontFamily: '"SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace',
+      fontSize: 12,
+      lineHeight: 1.2,
+      scrollback: 10000,
+      theme: {
+        background: "#0b1015",
+        foreground: "#d0ded8",
+        cursor: "#ffad73",
+        cursorAccent: "#0b1015",
+        selectionBackground: "#35516b",
+        black: "#101820",
+        brightBlack: "#6f7b85",
+        red: "#f2777a",
+        brightRed: "#ff8b8f",
+        green: "#99cc99",
+        brightGreen: "#b5e0b5",
+        yellow: "#ffcc66",
+        brightYellow: "#ffe099",
+        blue: "#6699cc",
+        brightBlue: "#8bb8e8",
+        magenta: "#cc99cc",
+        brightMagenta: "#e0b5e0",
+        cyan: "#66cccc",
+        brightCyan: "#99e0e0",
+        white: "#d0d0d0",
+        brightWhite: "#ffffff",
+      },
+    });
+    suppressBrowserTerminalReplies(session);
+    session.terminal.open(session.host);
+    session.inputDisposable = session.terminal.onData((data) => {
+      if (!session.attached || !session.socket || session.socket.readyState !== WebSocket.OPEN) return;
+      sendTerminalMessage(session, { type: "input", data });
+    });
+    session.observer = new ResizeObserver(() => scheduleTerminalResize(session));
+    session.observer.observe(session.scroll);
+    connectTerminal(session);
+  }
+
+  function suppressBrowserTerminalReplies(session) {
+    const parser = session.terminal.parser;
+    const consume = () => true;
+    // The supervisor's headless terminal is authoritative for emulator query
+    // replies. Rendering the same query here must never inject a second reply.
+    session.parserDisposables.push(
+      parser.registerCsiHandler({ final: "n" }, consume),
+      parser.registerCsiHandler({ prefix: "?", final: "n" }, consume),
+      parser.registerCsiHandler({ final: "c" }, consume),
+      parser.registerCsiHandler({ prefix: ">", final: "c" }, consume),
+      parser.registerCsiHandler({ final: "t" }, consume),
+      parser.registerCsiHandler({ intermediates: "$", final: "p" }, consume),
+      parser.registerCsiHandler({ prefix: "?", intermediates: "$", final: "p" }, consume),
+      parser.registerDcsHandler({ intermediates: "$", final: "q" }, consume),
+    );
+    for (const identifier of [4, 10, 11, 12]) {
+      session.parserDisposables.push(parser.registerOscHandler(identifier, (data) => data.includes("?")));
+    }
+  }
+
+  function activateVisibleTerminals() {
+    if (document.hidden) return;
+    for (const session of state.terminalSessions.values()) {
+      if (!session.pane.isConnected) continue;
+      initializeTerminal(session);
+      if (session.attached) scheduleTerminalResize(session);
+      else scheduleReadonlyTerminalLayout(session);
+      if (!session.socket && !session.exited && !session.disposed) connectTerminal(session);
+    }
+  }
+
+  function connectTerminal(session) {
+    if (document.hidden || session.disposed || session.exited || session.socket || session.reconnectTimer) return;
+    if (!state.token) {
+      session.status.textContent = "Preparing terminal…";
+      scheduleTerminalReconnect(session);
+      return;
+    }
+    session.error = "";
+    session.status.textContent = session.reconnectAttempt ? "Reconnecting…" : "Preparing terminal…";
+    const scheme = window.location.protocol === "https:" ? "wss:" : "ws:";
+    const url = `${scheme}//${window.location.host}/api/runs/${encodeURIComponent(session.id)}/terminal`;
+    let socket;
+    try {
+      socket = new WebSocket(url, ["taskground", state.token]);
+    } catch (error) {
+      session.error = normalizeError(error, "Could not open terminal connection.");
+      updateTerminalUi(session);
+      scheduleTerminalReconnect(session);
+      return;
+    }
+    session.socket = socket;
+    socket.addEventListener("open", () => {
+      if (session.socket !== socket || session.disposed) return;
+      session.reconnectAttempt = 0;
+      session.status.textContent = "Read only";
+      updateTerminalUi(session);
+    });
+    socket.addEventListener("message", (event) => handleTerminalMessage(session, event.data));
+    socket.addEventListener("error", () => {
+      if (session.socket === socket) session.status.textContent = "Terminal connection interrupted";
+    });
+    socket.addEventListener("close", () => {
+      if (session.socket !== socket) return;
+      session.socket = null;
+      session.attached = false;
+      session.available = false;
+      if (session.terminal) session.terminal.options.disableStdin = true;
+      updateTerminalUi(session);
+      scheduleReadonlyTerminalLayout(session);
+      if (!session.disposed && !session.exited) scheduleTerminalReconnect(session);
+    });
+  }
+
+  function handleTerminalMessage(session, raw) {
+    if (session.disposed) return;
+    let message;
+    try { message = JSON.parse(String(raw)); } catch { return; }
+    if (!message || typeof message.type !== "string") return;
+    if (message.type === "snapshot") {
+      const data = typeof message.data === "string" ? message.data : "";
+      queueTerminalRender(session, () => {
+        if (!session.terminal) return Promise.resolve();
+        const cols = clampDimension(message.cols, 40, 300);
+        const rows = clampDimension(message.rows, 10, 100);
+        if (cols && rows) session.terminal.resize(cols, rows);
+        session.terminal.reset();
+        return writeTerminal(session, data).then(() => {
+          if (!session.attached) layoutReadonlyTerminal(session);
+        });
+      });
+      session.error = "";
+    } else if (message.type === "output") {
+      session.error = "";
+      if (typeof message.data === "string") queueTerminalRender(session, () => writeTerminal(session, message.data));
+    } else if (message.type === "control") {
+      const wasAttached = session.attached;
+      session.error = "";
+      session.attached = message.attached === true;
+      session.available = message.available === true;
+      if (session.attached && !wasAttached) session.lastSentSize = "";
+      if (session.terminal) session.terminal.options.disableStdin = !session.attached;
+      updateTerminalUi(session);
+      if (session.attached) {
+        scheduleTerminalResize(session);
+        if (session.terminal) session.terminal.focus();
+      } else scheduleReadonlyTerminalLayout(session);
+    } else if (message.type === "exit") {
+      session.exited = true;
+      session.attached = false;
+      session.available = false;
+      session.exitCode = Number.isInteger(message.exitCode) ? message.exitCode : null;
+      if (session.terminal) session.terminal.options.disableStdin = true;
+      updateTerminalUi(session);
+      scheduleReadonlyTerminalLayout(session);
+    } else if (message.type === "error") {
+      session.error = typeof message.message === "string" ? message.message : "Terminal unavailable.";
+      updateTerminalUi(session);
+    }
+  }
+
+  function queueTerminalRender(session, operation) {
+    session.renderQueue = session.renderQueue.then(() => session.disposed ? undefined : operation()).catch(() => {});
+  }
+
+  function writeTerminal(session, data) {
+    if (!session.terminal || session.disposed) return Promise.resolve();
+    return new Promise((resolve) => session.terminal.write(data, resolve));
+  }
+
+  function toggleTerminalControl(session) {
+    if (!session.socket || session.socket.readyState !== WebSocket.OPEN || session.exited) return;
+    if (session.attached) {
+      session.attached = false;
+      session.available = true;
+      if (session.terminal) session.terminal.options.disableStdin = true;
+      sendTerminalMessage(session, { type: "detach" });
+      updateTerminalUi(session);
+      scheduleReadonlyTerminalLayout(session);
+    } else {
+      session.status.textContent = "Requesting control…";
+      session.control.disabled = true;
+      sendTerminalMessage(session, { type: "attach" });
+    }
+  }
+
+  function sendTerminalMessage(session, message) {
+    if (session.socket && session.socket.readyState === WebSocket.OPEN) session.socket.send(JSON.stringify(message));
+  }
+
+  function updateTerminalUi(session) {
+    const connected = session.socket && session.socket.readyState === WebSocket.OPEN;
+    session.pane.classList.toggle("is-attached", session.attached);
+    session.control.textContent = session.attached ? "Detach" : "Attach";
+    session.control.setAttribute("aria-pressed", String(session.attached));
+    session.control.disabled = session.exited || !connected || (!session.attached && !session.available);
+    if (session.error) session.status.textContent = session.error;
+    else if (session.exited) session.status.textContent = session.exitCode === null ? "Exited" : `Exited (${session.exitCode})`;
+    else if (session.attached) session.status.textContent = "Attached · keyboard active";
+    else if (connected && !session.available) session.status.textContent = "Read only · control in use";
+    else if (connected) session.status.textContent = "Read only";
+  }
+
+  function scheduleTerminalReconnect(session) {
+    if (document.hidden || session.disposed || session.exited || session.reconnectTimer) return;
+    const delay = Math.min(8000, 500 * (2 ** Math.min(session.reconnectAttempt, 4)));
+    session.reconnectAttempt += 1;
+    session.status.textContent = `Reconnecting in ${Math.ceil(delay / 1000)}s…`;
+    session.reconnectTimer = window.setTimeout(async () => {
+      session.reconnectTimer = null;
+      if (document.hidden || session.disposed || session.exited) return;
+      await loadConfig({ announceError: false, clearOnError: false });
+      connectTerminal(session);
+    }, delay);
+  }
+
+  function scheduleTerminalResize(session) {
+    if (!session.attached || session.disposed || !session.pane.isConnected || document.hidden) return;
+    if (session.resizeTimer) clearTimeout(session.resizeTimer);
+    if (session.resizeFrame) cancelAnimationFrame(session.resizeFrame);
+    session.resizeTimer = window.setTimeout(() => {
+      session.resizeTimer = null;
+      session.resizeFrame = requestAnimationFrame(() => {
+        session.resizeFrame = null;
+        resizeTerminalToHost(session);
+      });
+    }, 80);
+  }
+
+  function resizeTerminalToHost(session) {
+    if (!session.attached || !session.terminal || !session.scroll.clientWidth || !session.scroll.clientHeight) return;
+    const metrics = terminalCellMetrics(session);
+    if (!metrics) return;
+    const width = session.scroll.clientWidth;
+    const height = session.scroll.clientHeight;
+    session.host.style.width = `${width}px`;
+    session.host.style.height = `${height}px`;
+    session.scroll.scrollLeft = 0;
+    session.scroll.scrollTop = 0;
+    const cols = Math.max(40, Math.min(300, Math.floor((width - metrics.scrollbarWidth) / metrics.cellWidth)));
+    const rows = Math.max(10, Math.min(100, Math.floor(height / metrics.cellHeight)));
+    const size = `${cols}x${rows}`;
+    if (session.terminal.cols !== cols || session.terminal.rows !== rows) session.terminal.resize(cols, rows);
+    if (session.lastSentSize === size) return;
+    session.lastSentSize = size;
+    sendTerminalMessage(session, { type: "resize", cols, rows });
+  }
+
+  function terminalCellMetrics(session) {
+    if (!session.terminal || !session.terminal.cols || !session.terminal.rows) return null;
+    const screen = $(".xterm-screen", session.host);
+    if (!screen) return null;
+    const bounds = screen.getBoundingClientRect();
+    if (!bounds.width || !bounds.height) return null;
+    const viewport = $(".xterm-viewport", session.host);
+    return {
+      cellWidth: bounds.width / session.terminal.cols,
+      cellHeight: bounds.height / session.terminal.rows,
+      scrollbarWidth: viewport ? Math.max(0, viewport.offsetWidth - viewport.clientWidth) : 0,
+      screenWidth: bounds.width,
+      screenHeight: bounds.height,
+    };
+  }
+
+  function scheduleReadonlyTerminalLayout(session) {
+    if (session.attached || session.disposed || session.layoutFrame || !session.pane.isConnected || document.hidden) return;
+    session.layoutFrame = requestAnimationFrame(() => {
+      session.layoutFrame = null;
+      layoutReadonlyTerminal(session);
+    });
+  }
+
+  function layoutReadonlyTerminal(session) {
+    if (session.attached || session.disposed || !session.terminal || document.hidden) return;
+    const metrics = terminalCellMetrics(session);
+    if (!metrics) return;
+    session.host.style.width = `${Math.max(session.scroll.clientWidth, Math.ceil(metrics.screenWidth + metrics.scrollbarWidth))}px`;
+    session.host.style.height = `${Math.max(session.scroll.clientHeight, Math.ceil(metrics.screenHeight))}px`;
+  }
+
+  function clampDimension(value, minimum, maximum) {
+    const number = Number(value);
+    return Number.isFinite(number) ? Math.max(minimum, Math.min(maximum, Math.floor(number))) : 0;
+  }
+
+  function disposeTerminalSession(id) {
+    const session = state.terminalSessions.get(id);
+    if (!session) return;
+    session.disposed = true;
+    if (session.reconnectTimer) clearTimeout(session.reconnectTimer);
+    if (session.resizeTimer) clearTimeout(session.resizeTimer);
+    if (session.resizeFrame) cancelAnimationFrame(session.resizeFrame);
+    if (session.layoutFrame) cancelAnimationFrame(session.layoutFrame);
+    if (session.attached) sendTerminalMessage(session, { type: "detach" });
+    if (session.socket) {
+      session.socket.onclose = null;
+      session.socket.close();
+    }
+    if (session.observer) session.observer.disconnect();
+    if (session.inputDisposable) session.inputDisposable.dispose();
+    for (const disposable of session.parserDisposables) disposable.dispose();
+    if (session.terminal) session.terminal.dispose();
+    session.host.replaceChildren();
+    state.terminalSessions.delete(id);
   }
 
   function renderCharts(run) {
@@ -882,10 +1308,24 @@
   }
 
   function updateRecording() {
-    elements.recordingOptions.hidden = !elements.recordingEnabled.checked;
+    const native = elements.executionMode.value === "terminal";
+    if (native) elements.recordingEnabled.checked = false;
+    elements.recordingEnabled.disabled = native;
+    elements.recordingNotice.textContent = native
+      ? "Recording currently supports headless transcripts only."
+      : "Opt in to an MP4 export of the captured headless transcript.";
+    elements.recordingOptions.hidden = native || !elements.recordingEnabled.checked;
     elements.recordingEnabled.closest(".switch").classList.toggle("is-checked", elements.recordingEnabled.checked);
-    for (const input of [elements.recordingWidth, elements.recordingHeight, elements.recordingColumns, elements.recordingRows]) input.disabled = !elements.recordingEnabled.checked;
+    for (const input of [elements.recordingWidth, elements.recordingHeight, elements.recordingColumns, elements.recordingRows]) input.disabled = native || !elements.recordingEnabled.checked;
     if (elements.recordingEnabled.checked && !elements.recordingWidth.value) applyRecordingPreset();
+  }
+
+  function updateExecutionMode() {
+    const native = elements.executionMode.value === "terminal";
+    elements.executionModeNotice.textContent = native
+      ? "Starts the task immediately, then stays alive for follow-up messages until it exits or you cancel it."
+      : "Runs non-interactively and keeps a captured transcript in Logs.";
+    updateRecording();
   }
 
   async function submitRun(event) {
@@ -894,7 +1334,8 @@
     if (!elements.form.reportValidity()) return;
     const sourceMode = elements.form.elements.sourceMode.value;
     const agent = elements.form.elements.agent.value;
-    const payload = { task: elements.taskSelect.value, agent, sourceMode };
+    const executionMode = elements.executionMode.value === "headless" ? "headless" : "terminal";
+    const payload = { task: elements.taskSelect.value, agent, sourceMode, executionMode };
     const model = elements.model.value.trim();
     const timeout = elements.timeout.value.trim();
     const commit = elements.commit.value.trim();
@@ -1056,6 +1497,7 @@
   for (const input of elements.form.querySelectorAll('input[name="sourceMode"]')) input.addEventListener("change", updateSourceMode);
   elements.recordingEnabled.addEventListener("change", updateRecording);
   elements.recordingPreset.addEventListener("change", applyRecordingPreset);
+  elements.executionMode.addEventListener("change", updateExecutionMode);
   elements.dialog.addEventListener("click", (event) => {
     const rect = elements.dialog.getBoundingClientRect();
     if (event.clientX < rect.left || event.clientX > rect.right || event.clientY < rect.top || event.clientY > rect.bottom) closeDialog();
@@ -1063,7 +1505,9 @@
   document.addEventListener("keydown", (event) => {
     const target = event.target;
     const typing = target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement || target instanceof HTMLSelectElement;
-    if (event.key === "Escape" && state.maximizedOutput) {
+    const terminalPane = target && target.closest ? target.closest(".native-terminal-pane") : null;
+    const terminalSession = terminalPane ? state.terminalSessions.get(terminalPane.dataset.terminalRun) : null;
+    if (event.key === "Escape" && state.maximizedOutput && !(terminalSession && terminalSession.attached)) {
       event.preventDefault();
       captureViewState();
       state.maximizedOutput = "";
@@ -1081,12 +1525,20 @@
   });
   document.addEventListener("visibilitychange", () => {
     schedulePolling();
-    if (!document.hidden) refreshState();
+    if (document.hidden) {
+      for (const id of [...state.terminalSessions.keys()]) disposeTerminalSession(id);
+      return;
+    }
+    renderRuns();
+    refreshState();
   });
   window.addEventListener("resize", () => requestAnimationFrame(drawCharts));
+  window.addEventListener("beforeunload", () => {
+    for (const id of [...state.terminalSessions.keys()]) disposeTerminalSession(id);
+  });
 
   applyRecordingPreset();
-  updateRecording();
+  updateExecutionMode();
   updateSourceMode();
   Promise.all([loadConfig(), refreshState({ announceError: false })]).finally(schedulePolling);
 })();

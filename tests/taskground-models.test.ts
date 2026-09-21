@@ -37,6 +37,18 @@ test("each native launch receives the selected effort using its own CLI option",
   expect(agentCommand({ ...base, effort: undefined, agent: "codex" }).some(arg => arg.includes("model_reasoning_effort"))).toBe(false);
 });
 
+test("managed terminals submit the task in the native UI while local interactive launches keep their draft behavior", () => {
+  const base = { workspace: "/tmp/task", prompt: "Do the task", headless: false, finalPath: "/tmp/final" };
+  for (const agent of ["jive", "claude", "codex"] as const) {
+    const args = agentCommand({ ...base, agent, autoSubmit: true });
+    expect(args.at(-1)).toBe(base.prompt);
+    for (const flag of ["--headless", "--json", "--print", "--prefill", "exec"]) expect(args).not.toContain(flag);
+    const local = agentCommand({ ...base, agent });
+    if (agent === "codex") expect(local).not.toContain(base.prompt);
+    else expect(local).toContain("--prefill");
+  }
+});
+
 test("Jive CLI applies effort before submission without an inference request", async () => {
   const cwd = await mkdtemp(join(tmpdir(), "taskground-effort-"));
   try {

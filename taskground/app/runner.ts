@@ -8,15 +8,16 @@ import { capture, runProcess } from "./process";
 import { primarySource, snapshotSource, snapshotDependencies, type SourceMode, type SourceRecord } from "./source";
 import { defaultRunsRoot, registerRunsRoot } from "./storage";
 import { validateRecording, type RecordingOptions } from "./recording";
+import { runTerminalProcess } from "./terminal";
 
 export interface RunOptions {
-  task: string; agent: Agent; headless?: boolean; model?: string; effort?: string; executable?: string; extraArgs?: string[];
+  task: string; agent: Agent; headless?: boolean; terminal?: boolean; model?: string; effort?: string; executable?: string; extraArgs?: string[];
   promptFile?: string; envFile?: string; timeoutSeconds?: number; runsRoot?: string; definitionDir?: string;
   sourceMode?: SourceMode; commit?: string; recording?: RecordingOptions;
 }
 export type RunStatus = "preparing" | "ready" | "starting" | "running" | "completed" | "failed" | "cancelled" | "timed_out";
 export interface RunRecord {
-  schemaVersion: 1; id: string; task: string; agent: Agent; mode: "interactive" | "headless"; status: RunStatus;
+  schemaVersion: 1; id: string; task: string; agent: Agent; mode: "interactive" | "headless" | "terminal"; status: RunStatus;
   createdAt: string; startedAt?: string; finishedAt?: string; elapsedMs?: number;
   directory: string; workspace: string; definition: string; definitionHash?: string;
   source: SourceRecord;
@@ -91,6 +92,7 @@ function hook(command: string[], run: RunRecord, result: string): string[] {
 async function allocateRun(options: RunOptions): Promise<RunRecord> {
   if (!AGENTS.includes(options.agent)) throw new Error(`Unknown agent: ${options.agent}`);
   if (!ID.test(options.task)) throw new Error("Invalid task ID");
+  if (options.terminal && options.headless) throw new Error("Choose either terminal or headless execution");
   if (options.timeoutSeconds !== undefined && (!Number.isFinite(options.timeoutSeconds) || options.timeoutSeconds <= 0)) throw new Error("Timeout must be a positive number of seconds");
   if (options.recording && !options.headless) throw new Error("Recording is available only for headless runs");
   if (options.sourceMode && !["working", "head", "commit"].includes(options.sourceMode)) throw new Error("Source must be working, head, or commit");
@@ -103,7 +105,7 @@ async function allocateRun(options: RunOptions): Promise<RunRecord> {
   const id = `${new Date().toISOString().replace(/[-:.]/g, "").replace("Z", "")}-${options.task}-${randomUUID().slice(0, 8)}`;
   const directory = runDirectory(id, root);
   const run: RunRecord = {
-    schemaVersion: 1, id, task: options.task, agent: options.agent, mode: options.headless ? "headless" : "interactive", status: "preparing",
+    schemaVersion: 1, id, task: options.task, agent: options.agent, mode: options.terminal ? "terminal" : options.headless ? "headless" : "interactive", status: "preparing",
     createdAt: new Date().toISOString(), directory, workspace: join(directory, "workspace"), definition: join(directory, "definition"),
     source: { ...primary, dirty: false, codeHash: "", mode: options.sourceMode ?? "working" }, recording,
     model: options.model, effort: options.effort, executable: options.executable, extraArgs: options.extraArgs ?? [], timeoutSeconds: options.timeoutSeconds,
@@ -114,7 +116,7 @@ async function allocateRun(options: RunOptions): Promise<RunRecord> {
   await chmod(directory, 0o700);
   await mkdir(join(directory, "logs"));
   await save(run);
-  if (options.headless) await registerRunsRoot(root);
+  if (options.headless || options.terminal) await registerRunsRoot(root);
   return run;
 }
 
@@ -167,7 +169,7 @@ export async function prepareRun(options: RunOptions, allocated?: RunRecord): Pr
 
 /** A supervisor owns preparation too, so long setup hooks survive the dashboard. */
 export async function scheduleRun(options: RunOptions): Promise<RunRecord> {
-  if (!options.headless) throw new Error("Detached preparation requires a headless run");
+  if (!options.headless && !options.terminal) throw new Error("Detached preparation requires a headless or managed terminal run");
   const run = await allocateRun(options);
   const normalized = { ...options, runsRoot: dirname(run.directory),
     ...(options.envFile ? { envFile: resolve(options.envFile) } : {}),
@@ -203,17 +205,20 @@ export async function executeRun(id: string, root?: string): Promise<RunRecord> 
       if (!run.executable) await snapshotDependencies(run.source);
     }
     const prompt = await readFile(join(run.directory, "prompt.txt"), "utf8");
-    run.command = agentCommand({ agent: run.agent, workspace: run.workspace, prompt, headless: run.mode === "headless", model: run.model, effort: run.effort, executable: run.executable ?? (run.agent === "jive" && run.source.snapshot ? join(run.source.snapshot, "bin/jive") : undefined), extraArgs: run.extraArgs, finalPath: join(run.directory, "logs/final.txt") });
+    run.command = agentCommand({ agent: run.agent, workspace: run.workspace, prompt, headless: run.mode === "headless", autoSubmit: run.mode === "terminal", model: run.model, effort: run.effort, executable: run.executable ?? (run.agent === "jive" && run.source.snapshot ? join(run.source.snapshot, "bin/jive") : undefined), extraArgs: run.extraArgs, finalPath: join(run.directory, "logs/final.txt") });
     if (run.agent === "jive" && !env.OPENROUTER_API_KEY && !run.extraArgs.includes("--demo")) throw new Error("Jive requires OPENROUTER_API_KEY; set it in the shell or repository .env before preparing the run");
     run.agentVersion = run.agent === "jive" ? JSON.parse(await readFile(join(run.source.snapshot ?? REPO_ROOT, "package.json"), "utf8")).version : await capture([run.command[0]!, "--version"], run.workspace);
     run.startedAt = new Date().toISOString(); run.status = "running"; await save(run);
-    const result = await runProcess(run.command, {
+    const processOptions = {
       cwd: run.workspace, env, interactive: run.mode === "interactive", cancelFile: join(run.directory, "cancel.requested"),
       stdout: join(run.directory, "logs/agent.stdout.log"), stderr: join(run.directory, "logs/agent.stderr.log"),
       timeoutMs: run.timeoutSeconds ? run.timeoutSeconds * 1000 : undefined,
       recording: run.recording ? { ...run.recording, path: join(run.directory, "recording.jsonl") } : undefined,
-      onStart: async pid => { run.agentPid = pid; await save(run); },
-    });
+      onStart: async (pid: number) => { run.agentPid = pid; await save(run); },
+    };
+    const result = run.mode === "terminal"
+      ? await runTerminalProcess(run.command, { ...processOptions, directory: run.directory })
+      : await runProcess(run.command, processOptions);
     run.exitCode = result.exitCode; run.signal = result.signal;
     run.status = result.timedOut ? "timed_out" : result.cancelled ? "cancelled" : result.exitCode === 0 ? "completed" : "failed";
     if (run.agent === "jive") {

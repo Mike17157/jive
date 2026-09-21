@@ -170,6 +170,7 @@ async function updateOutput(cache: OutputCache, run: OutputRun, directory: strin
 
 /** Human-readable, bounded output for a dashboard. */
 export async function readRunOutput(run: OutputRun): Promise<string> {
+  if (run.mode === "terminal") return "This run uses the agent's native interface. Open the Terminal tab to view its screen or attach. Raw terminal output is retained in logs/terminal.log.";
   const directory = resolve(run.directory);
   const cache = cacheFor(directory);
   cache.busy += 1;

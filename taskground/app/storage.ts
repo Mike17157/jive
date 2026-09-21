@@ -37,7 +37,7 @@ export async function listRuns(extra?: string): Promise<RunRecord[]> {
   for (const root of await runsRoots(extra)) {
     for (const entry of await readdir(root, { withFileTypes: true }).catch(() => [])) {
       if (!entry.isDirectory()) continue;
-      try { const run = await runStatus(entry.name, root); if (run.mode === "headless") runs.push(run); } catch { /* Incomplete/unrelated folders are not runs. */ }
+      try { const run = await runStatus(entry.name, root); if (run.mode === "headless" || run.mode === "terminal") runs.push(run); } catch { /* Incomplete/unrelated folders are not runs. */ }
     }
   }
   return runs.sort((a, b) => b.createdAt.localeCompare(a.createdAt));

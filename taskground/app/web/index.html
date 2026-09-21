@@ -6,7 +6,9 @@
     <meta name="color-scheme" content="dark">
     <meta name="theme-color" content="#111315">
     <title>Taskground — Local benchmark runner</title>
+    <link rel="stylesheet" href="/xterm.css">
     <link rel="stylesheet" href="/style.css">
+    <script src="/xterm.js" defer></script>
     <script src="/app.js" defer></script>
   </head>
   <body>
@@ -153,6 +155,14 @@
               <small id="effort-notice">Choose a model to see available effort levels.</small>
             </label>
             <label class="field">
+              <span>Execution mode</span>
+              <select id="execution-mode" name="executionMode">
+                <option value="terminal" selected>Native terminal</option>
+                <option value="headless">Headless logs</option>
+              </select>
+              <small id="execution-mode-notice">Starts the task immediately, then stays alive for follow-up messages until it exits or you cancel it.</small>
+            </label>
+            <label class="field">
               <span>Timeout <i>seconds</i></span>
               <input id="timeout-input" name="timeout" type="number" min="1" max="86400" step="1" placeholder="No limit" inputmode="numeric">
             </label>
@@ -175,7 +185,7 @@
               <label class="switch-row" for="recording-enabled">
                 <span>
                   <b>Record terminal session</b>
-                  <small>Opt in to an MP4 export of the terminal output.</small>
+                  <small id="recording-notice">Recording is available for headless logs.</small>
                 </span>
                 <span class="switch"><input id="recording-enabled" type="checkbox"><span aria-hidden="true"></span></span>
               </label>

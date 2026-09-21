@@ -327,6 +327,8 @@ input:hover, select:hover { border-color: #4a535b; }
 }
 .output-panel.is-maximized .detail-panel-header { flex: 0 0 auto; min-height: 45px; }
 .output-panel.is-maximized .terminal-output { flex: 1 1 auto; height: auto; min-height: 0; font-size: 12px; }
+.output-panel.is-maximized .native-terminal-pane { flex: 1 1 auto; min-height: 0; }
+.output-panel.is-maximized .native-terminal-scroll { flex: 1 1 auto; height: auto; min-height: 0; }
 .terminal-output {
   height: 286px;
   margin: 0;
@@ -349,10 +351,20 @@ input:hover, select:hover { border-color: #4a535b; }
 .terminal-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 7px 11px; background: #171d22; border-bottom: 1px solid #263039; flex: none; }
 .terminal-caption { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #a9bac6; font: 10px var(--mono); }
 .terminal-tools { display: flex; align-items: center; gap: 10px; flex: none; }
-.terminal-readonly { color: var(--muted-2); font: 9px var(--mono); }
-.terminal-screen { background: #0b1015; color: #d0ded8; font-size: 12px; line-height: 1.6; white-space: pre; overflow-wrap: normal; }
-.terminal-stderr { color: #f2a099; }
-.terminal-timestamp { color: #778e9e; }
+.native-terminal-pane { min-width: 0; display: flex; flex-direction: column; background: #0b1015; }
+.native-terminal-scroll { min-width: 0; height: 286px; overflow: auto; padding: 5px 6px; background: #0b1015; scrollbar-color: #3b464f #0b1015; }
+.native-terminal-host { position: relative; min-width: 100%; min-height: 100%; background: #0b1015; }
+.native-terminal-host .xterm { width: 100%; height: 100%; }
+.native-terminal-host .xterm-viewport { scrollbar-color: #3b464f #0b1015; }
+.native-terminal-host .xterm-screen { margin: 0; }
+.terminal-connection { max-width: min(300px, 32vw); overflow: hidden; color: var(--muted-2); font: 9px var(--mono); text-overflow: ellipsis; white-space: nowrap; }
+.native-terminal-pane.is-attached .terminal-connection { color: var(--green); }
+.native-terminal-pane.is-attached .terminal-toolbar { background: #14211e; border-bottom-color: rgba(82, 210, 155, .25); }
+.native-terminal-pane.is-attached .native-terminal-scroll { overflow: hidden; }
+.terminal-help { flex: none; margin: 0; padding: 6px 11px; color: var(--muted-2); background: #11161a; border-top: 1px solid #20282e; font-size: 9px; }
+.terminal-unavailable { min-height: 286px; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 28px; color: var(--muted); background: #101214; text-align: center; }
+.terminal-unavailable strong { color: #d0d6da; }
+.terminal-unavailable p { max-width: 440px; margin: 5px 0 0; font-size: 11px; }
 .charts { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; padding: 11px; }
 .chart-wrap { min-width: 0; }
 .chart-label { display: flex; justify-content: space-between; gap: 10px; margin-bottom: 6px; color: var(--muted); font-size: 9px; }
@@ -424,6 +436,7 @@ input:hover, select:hover { border-color: #4a535b; }
 .agent-picker input:focus-visible + span, .source-picker input:focus-visible + span { outline: 2px solid var(--orange); outline-offset: 2px; }
 .recording-block { padding: 0; background: var(--bg-raised); border: 1px solid var(--line); border-radius: var(--radius-sm); }
 .switch-row { display: flex; align-items: center; justify-content: space-between; gap: 20px; padding: 12px; cursor: pointer; }
+.switch-row:has(input:disabled) { cursor: not-allowed; }
 .switch-row > span:first-child b, .switch-row > span:first-child small { display: block; }
 .switch-row > span:first-child b { font-size: 11px; }
 .switch-row > span:first-child small { margin-top: 2px; color: var(--muted); font-size: 9px; }
@@ -473,7 +486,7 @@ input:hover, select:hover { border-color: #4a535b; }
   .detail-head { align-items: flex-start; flex-direction: column; }
   .detail-actions { justify-content: flex-start; }
   .detail-grid { grid-template-columns: minmax(0, 1fr); }
-  .terminal-output { height: 240px; }
+  .terminal-output, .native-terminal-scroll { height: 240px; }
 }
 
 @media (max-width: 560px) {

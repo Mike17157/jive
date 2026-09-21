@@ -29,26 +29,43 @@ bun run taskground launch
 bun run taskground launch --no-open --port 4317
 ```
 
-The local dashboard shows active headless runs and searchable history, expandable
-terminal output, live metrics, source provenance, cancellation, verification and
-recording export. Ordinary `run ... --headless` CLI runs appear automatically,
-including runs started while the dashboard was closed. Interactive runs are excluded.
+The local dashboard shows native agent terminals, headless runs and searchable
+history, live metrics, source provenance, cancellation, verification and recording
+export. New dashboard runs default to **Native terminal**; **Headless logs** remains
+available. Ordinary `run ... --headless` CLI runs appear automatically, including
+runs started while the dashboard was closed. Local interactive CLI runs are excluded.
 Closing the dashboard does not stop its detached agents; reopening reconnects to
 their saved records. No background daemon is required. A foreground CLI run still
 belongs to its launching terminal; use `--detach` to let that run outlive it.
 
-Each output pane has **Logs** and **Terminal** tabs. Terminal presents the same live
-headless transcript with preserved line widths, horizontal scrolling, timestamp and
-stderr highlighting, and a read-only status bar. Both tabs support maximize and keep
-their own scroll position; updates follow the tail only when you are at the bottom.
-Use **Jump to latest** to resume following in Terminal. These views do not change
-agent execution or send terminal input.
+The **Terminal** tab renders the agent's actual native UI, including cursor movement,
+colors and full-screen updates. A Bun PTY is owned by the detached run supervisor;
+tmux is not required. Open **Attach** to type into that same process, answer permission
+prompts, or submit follow-up messages. **Detach** returns to read-only viewing without
+stopping the agent. Only one viewer controls input at a time. Resizing an attached
+pane resizes the agent's terminal. Native agents receive the initial task immediately
+but can pause at their own setup/trust prompts. The session remains running after a
+response until you quit the agent or cancel the run; metrics cover the whole session.
+
+Only expanded panes with **Terminal** selected create a browser terminal and live
+connection. Collapsing a run, filtering it out, or switching to **Logs** disposes of
+the renderer and connection. Reopening restores the current screen and bounded
+scrollback. Hidden browser tabs also release terminal connections. Browser refreshes
+and dashboard restarts reconnect read-only. Closed sessions retain their final screen.
+Existing headless runs have logs only and cannot
+be converted into interactive terminal sessions after launch.
+
+To start a managed terminal directly from the CLI and return its run ID:
+
+```sh
+bun run taskground run intent_routing --agent jive --terminal --json
+```
 
 New runs are retained under `~/.local/share/taskground/<project-id>/runs/`, outside
 the repository. Set `TASKGROUND_DATA_DIR` to change the project data directory, or
-use `--runs-dir` for a particular run. Custom headless run roots are registered for
+use `--runs-dir` for a particular run. Custom managed run roots are registered for
 discovery. Existing `taskground/task_runs/` history is read in place. Nothing is
-automatically deleted. `bun run taskground runs --json` lists the same headless runs.
+automatically deleted. `bun run taskground runs --json` lists the same managed runs.
 
 ### Model and thinking effort
 
@@ -95,6 +112,7 @@ Streaming graph wrappers are not separate executions. Runtime excludes preparati
 and grading. These counters show activity, not an estimated percentage complete.
 Codex/Claude expose turns and tool operations where their event logs provide them;
 Jive-only metrics and unavailable historical telemetry are shown as unavailable.
+Native Codex/Claude terminal screens are not parsed into structured task metrics.
 
 ### Optional video recording
 
@@ -114,8 +132,10 @@ Export renders the chosen size with original timing and saves `recording.mp4` be
 the run, available to download from its dashboard panel. Both transcript and video
 stay outside the repository; recording with an in-repo `--runs-dir` is rejected.
 Export requires FFmpeg, plus its ASS/subtitles filter or a local ImageMagick renderer.
+Video export is available in **Headless logs** mode; native PTY sessions currently
+retain their terminal output and final screen, without MP4 export.
 
-Interactive runs do not submit the task automatically. Jive and Claude open with
+Local interactive CLI runs do not submit the task automatically. Jive and Claude open with
 the task prefilled as an editable draft; press Enter when ready. Jive also exposes
 this directly as `jive --prefill "your draft"`, while `--prompt` still submits
 immediately. Claude uses its native `--prefill` option (verified in 2.1.278, hidden
@@ -144,7 +164,9 @@ taskground/
     prompt.txt              # Exact initial prompt
     run.json                # Configuration, process state, provenance
     result.json             # Final execution/verification result
-    logs/                   # Headless output and supervisor logs
+    logs/                   # Headless output, native terminal bytes, supervisor logs
+    terminal.json           # Private live PTY endpoint (while running)
+    terminal-screen.json    # Final native screen and terminal dimensions
     verification/           # Every grading attempt and its logs
     recording.jsonl         # Optional timestamped headless transcript
     recording.mp4           # Created on demand by export

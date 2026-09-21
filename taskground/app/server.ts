@@ -11,6 +11,7 @@ import { readRunOutput } from "./output";
 import { exportRecording, validateRecording } from "./recording";
 import { AGENTS, type Agent } from "./agents";
 import { getAgentModels, validateModelSelection } from "./models";
+import { terminalBridgeHandlers, type TerminalBridge } from "./terminal-proxy";
 
 const json = (data: unknown, status = 200) => Response.json(data, { status, headers: { "Cache-Control": "no-store" } });
 const stopped = new Set(["completed", "failed", "cancelled", "timed_out", "ready"]);
@@ -29,7 +30,7 @@ export async function startDashboard(options: { port?: number; runsRoot?: string
   const root = options.runsRoot ?? await defaultRunsRoot();
   const pendingExports = new Set<string>();
   const pendingVerifiers = new Set<string>();
-  const server = Bun.serve({
+  const server = Bun.serve<TerminalBridge>({
     hostname: "127.0.0.1", port: options.port ?? 4317,
     idleTimeout: 255, maxRequestBodySize: 16384,
     async fetch(request) {
@@ -63,15 +64,26 @@ export async function startDashboard(options: { port?: number; runsRoot?: string
           if (body.model !== undefined && typeof body.model !== "string" || body.commit !== undefined && typeof body.commit !== "string") throw new Error("Model and commit must be text");
           if (body.timeoutSeconds !== undefined && typeof body.timeoutSeconds !== "number") throw new Error("Timeout must be a number");
           if (body.effort !== undefined && typeof body.effort !== "string") throw new Error("Thinking effort must be text");
+          const executionMode = body.executionMode ?? "terminal";
+          if (executionMode !== "terminal" && executionMode !== "headless") throw new Error("Choose terminal or headless execution");
+          if (body.recording && executionMode !== "headless") throw new Error("Video recording currently requires headless execution");
           if (body.model || body.effort) validateModelSelection(await getAgentModels(body.agent as Agent), body.model as string | undefined, body.effort as string | undefined);
-          const run = await scheduleRun({ task: body.task, agent: body.agent as Agent, model: body.model as string | undefined, effort: body.effort as string | undefined, headless: true, runsRoot: root, sourceMode: sourceMode as SourceMode, commit: body.commit as string | undefined, timeoutSeconds: body.timeoutSeconds as number | undefined, recording: body.recording ? validateRecording(body.recording) : undefined });
+          const run = await scheduleRun({ task: body.task, agent: body.agent as Agent, model: body.model as string | undefined, effort: body.effort as string | undefined, headless: executionMode === "headless", terminal: executionMode === "terminal", runsRoot: root, sourceMode: sourceMode as SourceMode, commit: body.commit as string | undefined, timeoutSeconds: body.timeoutSeconds as number | undefined, recording: body.recording ? validateRecording(body.recording) : undefined });
           return json({ id: run.id }, 202);
         }
-        const match = /^\/api\/runs\/([A-Za-z0-9_-]+)(?:\/(output|stop|verify|export|recording|artifacts|artifact|report))?$/.exec(url.pathname);
+        const match = /^\/api\/runs\/([A-Za-z0-9_-]+)(?:\/(output|terminal|stop|verify|export|recording|artifacts|artifact|report))?$/.exec(url.pathname);
         if (match) {
           const { run, root: runRoot } = await locateRun(match[1]!, root);
-          if (run.mode !== "headless") return json({ error: "Interactive runs are not tracked by the dashboard" }, 404);
+          if (run.mode === "interactive") return json({ error: "Local interactive runs are not tracked by the dashboard" }, 404);
           const action = match[2];
+          if (action === "terminal" && request.method === "GET") {
+            if (run.mode !== "terminal") return json({ error: "This run has no native terminal. Start a new run in terminal mode." }, 409);
+            const protocols = request.headers.get("sec-websocket-protocol")?.split(",").map(value => value.trim()) ?? [];
+            const supplied = Buffer.from(protocols[1] ?? "");
+            if (protocols.length !== 2 || protocols[0] !== "taskground" || supplied.length !== token.length || !timingSafeEqual(supplied, Buffer.from(token))) return json({ error: "Invalid terminal token; refresh the page" }, 403);
+            if (server.upgrade(request, { data: { run }, headers: { "Sec-WebSocket-Protocol": "taskground" } })) return;
+            return json({ error: "Expected a WebSocket connection" }, 400);
+          }
           if (request.method === "POST") {
             if (action === "stop") return json(await describe(await stopRun(run.id, runRoot)));
             if (action === "verify") {
@@ -121,13 +133,15 @@ export async function startDashboard(options: { port?: number; runsRoot?: string
           }
           return json({ error: "Unknown action" }, 404);
         }
-        if (request.method === "GET" && ["/", "/app.js", "/style.css"].includes(url.pathname)) {
-          const file = Bun.file(join(import.meta.dir, "web", url.pathname === "/" ? "index.html" : url.pathname.slice(1)));
-          return new Response(file, { headers: { "Cache-Control": "no-cache", "Content-Security-Policy": "default-src 'self'; script-src 'self'; style-src 'self'; connect-src 'self'; img-src 'self' data:; frame-ancestors 'none'; base-uri 'none'", "X-Content-Type-Options": "nosniff" } });
+        if (request.method === "GET" && ["/", "/app.js", "/style.css", "/xterm.js", "/xterm.css"].includes(url.pathname)) {
+          const file = Bun.file(url.pathname === "/xterm.js" ? require.resolve("@xterm/xterm") : url.pathname === "/xterm.css" ? require.resolve("@xterm/xterm/css/xterm.css") : join(import.meta.dir, "web", url.pathname === "/" ? "index.html" : url.pathname.slice(1)));
+          // xterm generates per-cell colors and geometry in runtime stylesheets.
+          return new Response(file, { headers: { "Cache-Control": "no-cache", "Content-Security-Policy": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self'; img-src 'self' data:; frame-ancestors 'none'; base-uri 'none'", "X-Content-Type-Options": "nosniff" } });
         }
         return json({ error: "Not found" }, 404);
       } catch (error) { return json({ error: error instanceof Error ? error.message : String(error) }, 400); }
     },
+    websocket: terminalBridgeHandlers,
   });
   const url = `http://127.0.0.1:${server.port}`;
   if (options.open !== false) {
