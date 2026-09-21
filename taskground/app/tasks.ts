@@ -36,9 +36,9 @@ export async function loadTask(directory: string): Promise<Task> {
   return task;
 }
 
-export async function listTasks(): Promise<Task[]> {
-  const entries = await readdir(DEFINITIONS, { withFileTypes: true });
-  return await Promise.all(entries.filter(e => e.isDirectory()).sort((a, b) => a.name.localeCompare(b.name)).map(e => loadTask(join(DEFINITIONS, e.name))));
+export async function listTasks(definitions = DEFINITIONS): Promise<Task[]> {
+  const entries = await readdir(definitions, { withFileTypes: true });
+  return await Promise.all(entries.filter(e => e.isDirectory()).sort((a, b) => a.name.localeCompare(b.name)).map(e => loadTask(join(definitions, e.name))));
 }
 
 const excluded = (name: string) => name === ".env" || name.startsWith(".env.") && name !== ".env.example" || [".git", ".jev", ".context", ".cache", "node_modules", "__pycache__", ".DS_Store"].includes(name);

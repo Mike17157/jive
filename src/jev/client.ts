@@ -1,5 +1,13 @@
 import type { JevAdapter, JevRequest, JevResponse } from "../core/types";
 import { DEFAULT_JEV_MODEL } from "../core/runtime-contract.ts";
+import { appendFile } from "node:fs/promises";
+
+async function recordAttempt(type: "attempt" | "retry"): Promise<void> {
+  const path = process.env.JEV_METRICS_FILE;
+  if (!path) return;
+  // Telemetry is deliberately best-effort and contains no request, response, model, URL, or token.
+  try { await appendFile(path, JSON.stringify({ time: Date.now(), type }) + "\n", "utf8"); } catch { /* metrics must never affect evaluation */ }
+}
 
 export function validateQuestions(questions: Record<string, any>): void {
   if (!questions || Array.isArray(questions) || typeof questions !== "object" || !Object.keys(questions).length) throw new Error("Jev requires a nonempty question map");
@@ -56,10 +64,12 @@ export class JevClient implements JevAdapter {
     const attempts = 1 + (this.options.retries ?? 1);
     for (let attempt = 1; ; attempt++) {
       try {
+        await recordAttempt("attempt");
         return await this.#call(request, model, apiKey, signal);
       } catch (error) {
         const retryable = error instanceof JevAnswerError || (error instanceof JevHttpError && error.status >= 500);
         if (!retryable || attempt >= attempts || signal?.aborted) throw error;
+        await recordAttempt("retry");
       }
     }
   }

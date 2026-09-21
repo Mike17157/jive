@@ -15,7 +15,7 @@ import { listSessions, resolveSessionReference } from "./session/index";
 const {values,positionals}=parseArgs({args:process.argv.slice(2),allowPositionals:true,options:{
   help:{type:"boolean",short:"h"},version:{type:"boolean",short:"v"},demo:{type:"boolean"},headless:{type:"boolean"},json:{type:"boolean"},
   run:{type:"string"},model:{type:"string"},resume:{type:"string"},cwd:{type:"string"},prompt:{type:"string"},prefill:{type:"string"},
-  schema:{type:"boolean"},models:{type:"boolean"},"refresh-models":{type:"boolean"},sessions:{type:"boolean"},search:{type:"string"},
+  schema:{type:"boolean"},models:{type:"boolean"},"refresh-models":{type:"boolean"},sessions:{type:"boolean"},search:{type:"string"},effort:{type:"string"},
 }});
 const cwd=resolve(values.cwd??process.cwd());
 
@@ -38,7 +38,7 @@ async function main(){
   jive --version                    Print the installed version
   jive update                       Pull the latest sources (git installs)
 
-Options: --cwd DIR --model ID --json --headless --prompt TEXT --prefill TEXT
+Options: --cwd DIR --model ID --effort LEVEL --json --headless --prompt TEXT --prefill TEXT
 --prompt submits immediately. --prefill fills the interactive composer without submitting.
 Interactive commands: /resume [ID], /sessions, /name TEXT, /rename TEXT,
 /model, /effort [LEVEL], /new, /clear, /pin TEXT, /quit.
@@ -80,6 +80,7 @@ directory (searched upward) or the jive checkout. Install: see README.md.
       getPluginCatalog:async()=>runtimeCatalog(cwd),
     });
   }
+  if(values.effort)await controller.setEffort(values.effort);
   const prompt=values.prompt??positionals.join(" ");
   if(values.headless){
     if(!prompt)throw new Error("Headless planner requires --prompt TEXT (or use --demo --headless)");

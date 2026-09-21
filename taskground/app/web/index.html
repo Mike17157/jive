@@ -1,0 +1,216 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="color-scheme" content="dark">
+    <meta name="theme-color" content="#111315">
+    <title>Taskground — Local benchmark runner</title>
+    <link rel="stylesheet" href="/style.css">
+    <script src="/app.js" defer></script>
+  </head>
+  <body>
+    <a class="skip-link" href="#run-list">Skip to runs</a>
+
+    <header class="topbar">
+      <a class="brand" href="/" aria-label="Taskground home">
+        <span class="brand-mark" aria-hidden="true">T</span>
+        <span>
+          <strong>Taskground</strong>
+          <small>Local benchmark runner</small>
+        </span>
+      </a>
+      <div class="source-context" aria-label="Current source">
+        <span class="eyebrow">SOURCE</span>
+        <span class="source-branch" id="source-branch">—</span>
+        <code id="source-revision">Loading…</code>
+      </div>
+      <div class="header-actions">
+        <span class="connection" id="connection-state" role="status">
+          <span class="connection-dot" aria-hidden="true"></span>
+          <span id="connection-label">Connecting</span>
+        </span>
+        <button class="button button-primary" id="new-run-button" type="button">
+          <span aria-hidden="true">＋</span> New run
+        </button>
+      </div>
+    </header>
+
+    <main class="shell">
+      <section class="overview" aria-labelledby="overview-title">
+        <div class="section-heading">
+          <div>
+            <p class="kicker">TASKGROUND</p>
+            <h1 id="overview-title">Task runs</h1>
+          </div>
+          <p class="directory" id="data-directory">Discovering run storage…</p>
+        </div>
+        <div class="stat-grid" id="summary-stats" aria-label="Run summary">
+          <article class="stat-card stat-running">
+            <span>Active</span><strong id="stat-active">—</strong><small id="stat-active-note">runs in flight</small>
+          </article>
+          <article class="stat-card stat-complete">
+            <span>Completed</span><strong id="stat-completed">—</strong><small>finished runs</small>
+          </article>
+          <article class="stat-card stat-pass">
+            <span>Pass rate</span><strong id="stat-pass-rate">—</strong><small id="stat-graded-note">verified runs</small>
+          </article>
+          <article class="stat-card stat-duration">
+            <span>Median time</span><strong id="stat-median">—</strong><small>completed runs</small>
+          </article>
+        </div>
+      </section>
+
+      <section class="runs-panel" aria-labelledby="runs-title">
+        <div class="panel-toolbar">
+          <div class="panel-title">
+            <span class="pulse-mark" aria-hidden="true"></span>
+            <div>
+              <h2 id="runs-title">Runs</h2>
+              <p id="result-count">Loading run history…</p>
+            </div>
+          </div>
+          <div class="filters" role="search" aria-label="Filter run history">
+            <label class="search-field">
+              <span class="visually-hidden">Search runs</span>
+              <span aria-hidden="true">⌕</span>
+              <input id="run-search" type="search" placeholder="Search task, run, model…" autocomplete="off">
+              <kbd>/</kbd>
+            </label>
+            <label>
+              <span class="visually-hidden">Filter by status</span>
+              <select id="status-filter">
+                <option value="all">All statuses</option>
+                <option value="active">Active</option>
+                <option value="completed">Completed</option>
+                <option value="failed">Failed</option>
+                <option value="cancelled">Cancelled</option>
+              </select>
+            </label>
+            <label>
+              <span class="visually-hidden">Filter by agent</span>
+              <select id="agent-filter">
+                <option value="all">All agents</option>
+                <option value="jive">Jive</option>
+                <option value="codex">Codex</option>
+                <option value="claude">Claude</option>
+              </select>
+            </label>
+          </div>
+        </div>
+
+        <div class="run-columns" aria-hidden="true">
+          <span>Run / task</span><span>Agent</span><span>Status</span><span>Duration</span><span>Created</span><span></span>
+        </div>
+        <div id="run-list" class="run-list" tabindex="-1" aria-live="polite" aria-busy="true">
+          <div class="state-card loading-state">
+            <span class="loader" aria-hidden="true"></span>
+            <strong>Loading Taskground</strong>
+            <p>Reading tasks and retained runs from this machine.</p>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <dialog id="new-run-dialog" class="run-dialog" aria-labelledby="new-run-title">
+      <form id="new-run-form" method="dialog">
+        <header class="dialog-header">
+          <div>
+            <p class="kicker">LAUNCH CONFIGURATION</p>
+            <h2 id="new-run-title">Start a benchmark run</h2>
+            <p>Taskground creates a retained workspace and streams its local execution.</p>
+          </div>
+          <button class="icon-button" id="close-dialog" type="button" aria-label="Close new run dialog">×</button>
+        </header>
+
+        <div class="dialog-body">
+          <div class="form-grid">
+            <label class="field field-wide">
+              <span>Task <b aria-hidden="true">*</b></span>
+              <select id="task-select" name="task" required>
+                <option value="">Loading tasks…</option>
+              </select>
+              <small id="task-description">Choose a benchmark definition.</small>
+            </label>
+
+            <fieldset class="field field-wide">
+              <legend>Agent</legend>
+              <div class="agent-picker">
+                <label><input type="radio" name="agent" value="jive" checked><span><b>Jive</b><small>Graph execution</small></span></label>
+                <label><input type="radio" name="agent" value="codex"><span><b>Codex</b><small>Coding agent</small></span></label>
+                <label><input type="radio" name="agent" value="claude"><span><b>Claude</b><small>Code agent</small></span></label>
+              </div>
+            </fieldset>
+
+            <label class="field">
+              <span>Model <i>optional</i></span>
+              <select id="model-input" name="model"><option value="">Agent default</option></select>
+              <small id="model-notice"></small>
+            </label>
+            <label class="field">
+              <span>Thinking effort</span>
+              <select id="effort-select" name="effort" disabled><option value="">Model default</option></select>
+              <small id="effort-notice">Choose a model to see available effort levels.</small>
+            </label>
+            <label class="field">
+              <span>Timeout <i>seconds</i></span>
+              <input id="timeout-input" name="timeout" type="number" min="1" max="86400" step="1" placeholder="No limit" inputmode="numeric">
+            </label>
+
+            <fieldset class="field field-wide">
+              <legend>Source snapshot</legend>
+              <div class="source-picker">
+                <label for="source-working"><input id="source-working" type="radio" name="sourceMode" value="working" checked><span><b>Working tree</b><small>Include local changes</small></span></label>
+                <label for="source-head"><input id="source-head" type="radio" name="sourceMode" value="head"><span><b>HEAD</b><small>Latest local commit</small></span></label>
+                <label for="source-commit"><input id="source-commit" type="radio" name="sourceMode" value="commit"><span><b>Commit</b><small>Choose a revision</small></span></label>
+              </div>
+            </fieldset>
+
+            <label class="field field-wide commit-field" id="commit-field" hidden>
+              <span>Commit reference <b aria-hidden="true">*</b></span>
+              <input id="commit-input" name="commit" type="text" placeholder="SHA, branch, or tag" spellcheck="false">
+            </label>
+
+            <div class="recording-block field-wide">
+              <label class="switch-row" for="recording-enabled">
+                <span>
+                  <b>Record terminal session</b>
+                  <small>Opt in to an MP4 export of the terminal output.</small>
+                </span>
+                <span class="switch"><input id="recording-enabled" type="checkbox"><span aria-hidden="true"></span></span>
+              </label>
+              <div class="recording-options" id="recording-options" hidden>
+                <label class="field field-wide">
+                  <span>Recording preset</span>
+                  <select id="recording-preset">
+                    <option value="1280,720,120,34">Standard · 1280×720 · 120×34</option>
+                    <option value="1440,900,140,42">Workspace · 1440×900 · 140×42</option>
+                    <option value="1920,1080,180,50">Full HD · 1920×1080 · 180×50</option>
+                    <option value="1024,768,100,36">Compact · 1024×768 · 100×36</option>
+                  </select>
+                </label>
+                <div class="recording-grid">
+                  <label class="field"><span>Width</span><input id="recording-width" type="number" min="320" max="7680" required></label>
+                  <label class="field"><span>Height</span><input id="recording-height" type="number" min="240" max="4320" required></label>
+                  <label class="field"><span>Columns</span><input id="recording-columns" type="number" min="40" max="400" required></label>
+                  <label class="field"><span>Rows</span><input id="recording-rows" type="number" min="12" max="200" required></label>
+                </div>
+              </div>
+            </div>
+          </div>
+          <p class="form-error" id="form-error" role="alert" hidden></p>
+        </div>
+
+        <footer class="dialog-footer">
+          <span>Runs execute locally in a retained workspace.</span>
+          <div>
+            <button class="button button-secondary" id="cancel-dialog" type="button">Cancel</button>
+            <button class="button button-primary" id="submit-run" type="submit"><span aria-hidden="true">▶</span> Start run</button>
+          </div>
+        </footer>
+      </form>
+    </dialog>
+
+    <div class="toast-region" id="toast-region" aria-live="polite" aria-atomic="true"></div>
+  </body>
+</html>

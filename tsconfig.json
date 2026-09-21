@@ -19,6 +19,7 @@
   },
   "include": [
     "src",
+    "taskground/app",
     "tests",
     "examples",
     "evals",

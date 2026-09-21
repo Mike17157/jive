@@ -18,8 +18,95 @@ bun run taskground run retry_audit --agent jive
 
 Run `npm install --no-package-lock` first if dependencies are absent. If Bun is not
 on PATH, use `node_modules/.bin/bun run taskground ...`. Python 3 and Git are required;
-Codex/Claude must be installed and authenticated for those profiles. Jive runs this
-checkout's `bin/jive`, so local feature changes are exercised automatically.
+Codex/Claude must be installed and authenticated for those profiles. Jive runs the
+selected source snapshot's `bin/jive`, so each run retains the code it started with.
+
+## Browser dashboard
+
+```sh
+bun run taskground launch
+# Print the local URL without opening a browser, or choose a different port:
+bun run taskground launch --no-open --port 4317
+```
+
+The local dashboard shows active headless runs and searchable history, expandable
+terminal output, live metrics, source provenance, cancellation, verification and
+recording export. Ordinary `run ... --headless` CLI runs appear automatically,
+including runs started while the dashboard was closed. Interactive runs are excluded.
+Closing the dashboard does not stop its detached agents; reopening reconnects to
+their saved records. No background daemon is required. A foreground CLI run still
+belongs to its launching terminal; use `--detach` to let that run outlive it.
+
+New runs are retained under `~/.local/share/taskground/<project-id>/runs/`, outside
+the repository. Set `TASKGROUND_DATA_DIR` to change the project data directory, or
+use `--runs-dir` for a particular run. Custom headless run roots are registered for
+discovery. Existing `taskground/task_runs/` history is read in place. Nothing is
+automatically deleted. `bun run taskground runs --json` lists the same headless runs.
+
+### Model and thinking effort
+
+The model picker uses Jive's curated catalogue and OpenRouter capability metadata,
+the installed Codex model cache, or Claude's metadata-only initialization response.
+Thinking effort offers only the selected model's supported levels and resets when
+the agent or model changes. Unknown or unsupported capabilities keep the agent's
+default effort. No inference is performed while loading these choices. CLI runs can
+also set `--model ID --effort LEVEL`; both selections are retained in the run record.
+Older Jive source commits must support `--effort` to use an explicit effort override.
+
+### Source selection
+
+Each new run snapshots the primary Git worktree, even when Taskground is launched
+from a linked worktree. Choose in the dashboard or use:
+
+```sh
+# Current branch including staged, unstaged and non-ignored untracked files (default)
+bun run taskground run intent_routing --headless --source working
+# Latest LOCAL commit on the primary worktree's currently checked-out branch
+bun run taskground run intent_routing --headless --source head
+# Specific commit, tag or revision, resolved to an immutable commit SHA
+bun run taskground run intent_routing --headless --source commit --commit abc1234
+```
+
+The snapshot supplies both Jive's source and the task definitions/verifiers. An old
+commit must contain the selected task. It does not switch branches, edit the index,
+pull from a remote, or change the primary worktree. Credentials, previous runs,
+dependency folders, caches and recording media are excluded from the source copy.
+Jive dependencies are copied separately when manifests match, or installed in the
+snapshot with the selected lockfile and lifecycle scripts disabled. Codex/Claude
+use their installed executables. Every run records its branch, resolved commit,
+selection mode and source hash; later source edits affect only subsequent runs.
+
+### Metrics
+
+Metrics are derived from saved events and work for live runs and retained history.
+`status RUN_ID --json` also includes them. Jive reports planner requests, executed
+Bash/Jev steps, graph outcomes, average executed leaf nodes per finished graph,
+logical Jev evaluations and instrumented HTTP attempts/retries, active/peak/average
+concurrency, repeat iterations and foreach items. Average concurrency is weighted by
+time over graph execution, excluding planner waiting and loop container nodes.
+Streaming graph wrappers are not separate executions. Runtime excludes preparation
+and grading. These counters show activity, not an estimated percentage complete.
+Codex/Claude expose turns and tool operations where their event logs provide them;
+Jive-only metrics and unavailable historical telemetry are shown as unavailable.
+
+### Optional video recording
+
+```sh
+bun run taskground run intent_routing --agent jive --headless --detach --record \
+  --width 1920 --height 1080 --columns 120 --rows 36
+# After the run stops:
+bun run taskground export RUN_ID
+```
+
+Recording captures a readable, timestamped **headless transcript**, not the native
+interactive agent UI or your desktop. It is opt-in before launch; runs without
+capture cannot later produce an exact video. The original structured logs remain
+available for inspection. Terminal columns/rows determine text wrapping; width/height
+determine MP4 pixels. The agent receives `COLUMNS`/`LINES` but still runs headlessly.
+Export renders the chosen size with original timing and saves `recording.mp4` beside
+the run, available to download from its dashboard panel. Both transcript and video
+stay outside the repository; recording with an in-repo `--runs-dir` is rejected.
+Export requires FFmpeg, plus its ASS/subtitles filter or a local ImageMagick renderer.
 
 Interactive runs do not submit the task automatically. Jive and Claude open with
 the task prefilled as an editable draft; press Enter when ready. Jive also exposes
@@ -33,6 +120,7 @@ task.` or paste the full prompt from `../prompt.txt`.
 
 ```text
 taskground/
+  app/                      # Dashboard server, web UI and run management
   task_definitions/<task>/
     task.json               # ID, description, optional setup/verifier argv
     instruction.md          # Identical task instruction for every agent
@@ -40,7 +128,10 @@ taskground/
     verifier/reference.json # Held-out answers; not copied to workspace
     SOURCE.json             # Attribution, upstream revision/checksums, sampling
   _shared/                  # Dev scoring and deterministic verifiers
-  task_runs/<run-id>/        # Gitignored, retained until you remove the run
+  task_runs/                # Legacy run history; still discovered
+
+~/.local/share/taskground/<project-id>/runs/<run-id>/
+    source/                 # Frozen source + selected task definitions
     definition/             # Definition + shared verifier snapshot
     workspace/              # Fresh Git repository; .env, inputs, work/ outputs
     prompt.txt              # Exact initial prompt
@@ -48,6 +139,8 @@ taskground/
     result.json             # Final execution/verification result
     logs/                   # Headless output and supervisor logs
     verification/           # Every grading attempt and its logs
+    recording.jsonl         # Optional timestamped headless transcript
+    recording.mp4           # Created on demand by export
 ```
 
 | Task | Size | Expected individual helper calls |
@@ -159,8 +252,8 @@ a run while retaining its partial artifacts.
 Run records include the task snapshot hash, initial prompt, CLI command/version,
 requested model/extra arguments, source revision/dirty flag/source-code hash,
 timestamps, exit status and artifact paths. Native logs hold actual model events
-where available. The source hash identifies a dirty checkout; it is not a complete
-backup of that checkout or of global agent configuration.
+where available. New runs retain their source snapshot as well as its hash. Legacy
+runs may only contain a source hash. Global agent configuration is not snapshotted.
 
 ## Maintaining fixtures
 

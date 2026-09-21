@@ -2,10 +2,10 @@ import { afterEach, expect, test } from "bun:test";
 import { mkdtemp, readFile, writeFile, mkdir, rm, stat, symlink } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import { agentCommand, OPENROUTER_NOTE } from "../src/taskground/agents";
-import { prepareRun, executeRun, detachRun, readRun, stopRun, verifyRun, parseDotEnv, runStatus, logTail, type RunRecord } from "../src/taskground/runner";
-import { DEFINITIONS, copyDefinition, fingerprint, listTasks, writeJSON } from "../src/taskground/tasks";
-import { capture } from "../src/taskground/process";
+import { agentCommand, OPENROUTER_NOTE } from "../taskground/app/agents";
+import { prepareRun, executeRun, detachRun, readRun, stopRun, verifyRun, parseDotEnv, runStatus, logTail, type RunRecord } from "../taskground/app/runner";
+import { DEFINITIONS, copyDefinition, fingerprint, listTasks, writeJSON } from "../taskground/app/tasks";
+import { capture } from "../taskground/app/process";
 
 const temporary: string[] = [];
 afterEach(async () => { for (const directory of temporary.splice(0)) await rm(directory, { recursive: true, force: true }); });

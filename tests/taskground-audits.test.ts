@@ -2,9 +2,9 @@ import { afterEach, expect, test } from "bun:test";
 import { copyFile, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { prepareRun, verifyRun } from "../src/taskground/runner";
-import { capture } from "../src/taskground/process";
-import { OPENROUTER_NOTE } from "../src/taskground/agents";
+import { prepareRun, verifyRun } from "../taskground/app/runner";
+import { capture } from "../taskground/app/process";
+import { OPENROUTER_NOTE } from "../taskground/app/agents";
 
 const temporary: string[] = [];
 afterEach(async () => {
