@@ -37,6 +37,13 @@ Closing the dashboard does not stop its detached agents; reopening reconnects to
 their saved records. No background daemon is required. A foreground CLI run still
 belongs to its launching terminal; use `--detach` to let that run outlive it.
 
+Each output pane has **Logs** and **Terminal** tabs. Terminal presents the same live
+headless transcript with preserved line widths, horizontal scrolling, timestamp and
+stderr highlighting, and a read-only status bar. Both tabs support maximize and keep
+their own scroll position; updates follow the tail only when you are at the bottom.
+Use **Jump to latest** to resume following in Terminal. These views do not change
+agent execution or send terminal input.
+
 New runs are retained under `~/.local/share/taskground/<project-id>/runs/`, outside
 the repository. Set `TASKGROUND_DATA_DIR` to change the project data directory, or
 use `--runs-dir` for a particular run. Custom headless run roots are registered for

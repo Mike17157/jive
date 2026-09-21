@@ -342,6 +342,17 @@ input:hover, select:hover { border-color: #4a535b; }
   overflow-wrap: anywhere;
 }
 .terminal-empty { color: var(--muted-2); font-style: italic; }
+.output-tabs { display: flex; gap: 16px; padding: 0 11px; border-bottom: 1px solid var(--line); flex: none; }
+.output-tab { padding: 9px 2px; color: var(--muted); background: none; border: 0; border-bottom: 2px solid transparent; font-size: 11px; }
+.output-tab[aria-selected="true"] { color: var(--text); border-bottom-color: var(--orange); }
+.output-tab:hover { color: var(--text); }
+.terminal-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 7px 11px; background: #171d22; border-bottom: 1px solid #263039; flex: none; }
+.terminal-caption { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #a9bac6; font: 10px var(--mono); }
+.terminal-tools { display: flex; align-items: center; gap: 10px; flex: none; }
+.terminal-readonly { color: var(--muted-2); font: 9px var(--mono); }
+.terminal-screen { background: #0b1015; color: #d0ded8; font-size: 12px; line-height: 1.6; white-space: pre; overflow-wrap: normal; }
+.terminal-stderr { color: #f2a099; }
+.terminal-timestamp { color: #778e9e; }
 .charts { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; padding: 11px; }
 .chart-wrap { min-width: 0; }
 .chart-label { display: flex; justify-content: space-between; gap: 10px; margin-bottom: 6px; color: var(--muted); font-size: 9px; }

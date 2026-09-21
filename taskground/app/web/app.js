@@ -17,6 +17,7 @@
     expanded: new Set(),
     details: new Map(),
     outputs: new Map(),
+    outputViews: new Map(),
     outputErrors: new Map(),
     artifacts: new Map(),
     artifactErrors: new Map(),
@@ -355,10 +356,10 @@
     const fragment = document.createDocumentFragment();
     for (const run of runs) fragment.append(renderRun(run));
     elements.runList.append(fragment);
-    requestAnimationFrame(() => {
-      restoreViewState();
-      drawCharts();
-    });
+    // A detail poll can finish before the next frame; restore now so it never
+    // saves the replacement pane's initial scroll position over the user's.
+    restoreViewState();
+    requestAnimationFrame(drawCharts);
   }
 
   function stateCard(icon, title, message, loading = false) {
@@ -485,6 +486,8 @@
 
   function renderOutput(run) {
     const panel = detailPanel("Output", ACTIVE_STATUSES.has(run.status) ? "live tail" : "terminal log");
+    const view = state.outputViews.get(run.id) || "logs";
+    const viewId = `output-${safeId(run.id)}-${view}`;
     const maximized = state.maximizedOutput === run.id;
     panel.classList.add("output-panel");
     panel.classList.toggle("is-maximized", maximized);
@@ -499,11 +502,59 @@
       renderRuns();
     });
     $(".panel-header-tools", panel).append(maximize);
-    const output = node("pre", "terminal-output");
-    output.dataset.outputId = run.id;
-    output.dataset.focusKey = `output:${run.id}`;
+    const tabs = node("div", "output-tabs");
+    tabs.setAttribute("role", "tablist");
+    tabs.setAttribute("aria-label", `Output views for ${run.id}`);
+    const views = ["logs", "terminal"];
+    for (const name of views) {
+      const tab = node("button", "output-tab", name === "logs" ? "Logs" : "Terminal");
+      tab.type = "button";
+      tab.id = `output-tab-${safeId(run.id)}-${name}`;
+      tab.dataset.focusKey = `output-tab:${run.id}:${name}`;
+      tab.setAttribute("role", "tab");
+      tab.setAttribute("aria-selected", String(view === name));
+      tab.setAttribute("aria-controls", `output-${safeId(run.id)}-${name}`);
+      tab.tabIndex = view === name ? 0 : -1;
+      const select = target => {
+        captureViewState();
+        state.outputViews.set(run.id, target);
+        state.pendingFocusKey = `output-tab:${run.id}:${target}`;
+        renderRuns();
+      };
+      tab.addEventListener("click", () => select(name));
+      tab.addEventListener("keydown", event => {
+        if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
+        event.preventDefault();
+        select(event.key === "Home" ? "logs" : event.key === "End" ? "terminal" : views[(views.indexOf(name) + 1) % views.length]);
+      });
+      tabs.append(tab);
+    }
+    panel.append(tabs);
+    if (view === "terminal") {
+      const bar = node("div", "terminal-toolbar");
+      const label = node("span", "terminal-caption", `${run.agent || "Agent"} · ${run.model || "default model"}`);
+      label.title = label.textContent;
+      const tools = node("span", "terminal-tools");
+      tools.append(node("span", "terminal-readonly", "Read only"));
+      const latest = node("button", "panel-control", "Jump to latest");
+      latest.type = "button";
+      latest.dataset.focusKey = `output-latest:${run.id}`;
+      latest.addEventListener("click", () => {
+        const output = $(".terminal-output", panel);
+        output.scrollTop = output.scrollHeight;
+        state.scrollPositions.set(output.dataset.outputId, { top: output.scrollTop, left: output.scrollLeft, followTail: true });
+      });
+      tools.append(latest);
+      append(bar, label, tools);
+      panel.append(bar);
+    }
+    const output = node("pre", `terminal-output${view === "terminal" ? " terminal-screen" : ""}`);
+    output.id = viewId;
+    output.dataset.outputId = `${run.id}:${view}`;
+    output.dataset.focusKey = `output:${run.id}:${view}`;
     output.tabIndex = 0;
-    output.setAttribute("aria-label", `Terminal output for ${run.id}`);
+    output.setAttribute("role", "tabpanel");
+    output.setAttribute("aria-labelledby", `output-tab-${safeId(run.id)}-${view}`);
     const error = state.outputErrors.get(run.id);
     const text = state.outputs.get(run.id);
     if (error) {
@@ -515,6 +566,16 @@
     } else if (!text) {
       output.classList.add("terminal-empty");
       output.textContent = ACTIVE_STATUSES.has(run.status) ? "Waiting for agent output…" : "No terminal output was captured.";
+    } else if (view === "terminal") {
+      for (const line of text.split("\n")) {
+        const row = node("span", /\[stderr\]/.test(line) ? "terminal-line terminal-stderr" : "terminal-line");
+        const timestamp = /^(\[\+?\d{2}:\d{2}:\d{2}\.\d{3}\])/.exec(line);
+        if (timestamp) {
+          row.append(node("span", "terminal-timestamp", timestamp[1]));
+          row.append(document.createTextNode(line.slice(timestamp[1].length) + "\n"));
+        } else row.textContent = line + "\n";
+        output.append(row);
+      }
     } else {
       output.textContent = text;
     }
