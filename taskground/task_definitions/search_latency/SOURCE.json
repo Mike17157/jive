@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "kind": "original-synthetic",
+  "description": "Original standard-library multi-tenant search application and deterministic synthetic trace workloads, extending the query semantics of the local slow_trace_search fixture.",
+  "externalData": false,
+  "networkRequired": false,
+  "maintainerNotes": "One seeded performance defect, no prescribed investigation graph; reference repair and held-out checks remain outside the agent workspace. Synthetic data contains no real users or traffic."
+}

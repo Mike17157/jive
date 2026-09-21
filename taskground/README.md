@@ -8,6 +8,7 @@ bun run taskground list
 bun run taskground run intent_routing --agent jive
 bun run taskground run product_matching --agent codex
 bun run taskground run sembench_movie --agent claude
+bun run taskground run search_latency --agent jive
 ```
 
 Run `npm install --no-package-lock` first if dependencies are absent. If Bun is not
@@ -50,8 +51,9 @@ taskground/
 | `product_matching` | 120 test pairs and 20 dev pairs | 140 |
 | `intent_routing` | 154 test requests across 77 intents; labeled examples supplied for reference | 154 |
 | `conversation_eval` | Three dev rounds of 20 responses + 10 pairs, then 40 test responses + 20 pairs | 150 |
+| `search_latency` | Diagnose uneven latency across search, cache, storage, and audit components using workload profiles, traces, and controlled experiments | ~8 (investigation-dependent) |
 
-These are frozen **development adaptations**, not official full-benchmark scores.
+The first four are frozen **development adaptations**, not official full-benchmark scores.
 The counts leave room below 200 for retries/refinements; they assume all five
 conversation attributes are evaluated together per response. Intent examples do
 not require a separate full inference pass. Fixtures are checked in: ordinary runs
@@ -161,10 +163,37 @@ It makes no model calls. Downloads live in `taskground/.cache/` (ignored). Revie
 fixture changes before accepting new upstream content. Public dev scorers are
 generated copies of `_shared/score.py`; regenerate them after changing that helper.
 
+## Search latency investigation
+
+`search_latency` extends the profiling task to a local multi-tenant search endpoint
+with caching, batched audit receipts, ingestion, and concurrent callers. Its Python
+standard-library toolkit offers workload overviews, CPU profiles, structured event
+traces, component controls, and uninstrumented benchmarks. The agent designs its
+own investigation; no graph or helper-call requirement is supplied. Bounded choices
+between available experiments can drive an adaptive execution graph. The helper
+estimate is an experiment-design expectation, not a quota or a measured result.
+Held-out checks cover audit completeness, freshness, tenant isolation, concurrency,
+and same-machine speedup. A prepared diagnostic toolkit does not guarantee that an
+agent will use Jev; compare actual run traces to evaluate that behavior.
+
+This is an original synthetic coding task with a seeded performance defect.
+Maintainer reference fixes and held-out checks stay outside the agent workspace.
+Start each attempt with a fresh run. No helper model calls are required.
+
+Maintainer validation (no agent/model calls):
+
+```sh
+python3 taskground/task_definitions/search_latency/maintainer/smoke.py
+```
+
+This checks that the baseline fails the performance target, the reference repair
+passes, and disabled auditing or stale cached results are rejected. Run performance
+validation without competing CPU-heavy workloads.
+
 ## Original task environments
 
 The original larger environments below remain available for manual experiments.
-They are not included in the four-task runner suite or its 200-call guidance.
+They are not included in the five-task runner suite or its 200-call guidance.
 
 | folder               | task                                                                 | needs                     |
 | -------------------- | -------------------------------------------------------------------- | ------------------------- |

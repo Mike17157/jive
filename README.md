@@ -69,7 +69,7 @@ folder keeps its own sessions and records. `--cwd DIR` still overrides it.
 
 For repeatable task runs with fresh workspaces, use `bun run taskground run
 intent_routing --agent jive` (or `--agent codex` / `--agent claude`). The
-[taskground guide](taskground/README.md) covers the four bundled tasks, headless
+[taskground guide](taskground/README.md) covers the five bundled tasks, headless
 parent-agent runs, credentials, logs and verification.
 
 At session creation, Jive snapshots that folder's `AGENTS.md` into the leading

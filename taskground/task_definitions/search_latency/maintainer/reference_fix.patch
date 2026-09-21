@@ -1,0 +1,5 @@
+--- a/searchapp/catalog.py
++++ b/searchapp/catalog.py
+@@ -9 +9 @@
+-        return self.store.revision
++        return self.store.tenant_revision(tenant)

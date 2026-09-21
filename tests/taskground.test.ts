@@ -45,12 +45,17 @@ if (process.argv.includes('--hold')) {
   return path;
 }
 
-test("four checked-in tasks fit the requested allowance, carry source metadata, and hide answer fields", async () => {
+test("five checked-in tasks fit the allowance; dataset adaptations hide answer fields", async () => {
   const tasks = await listTasks();
-  expect(tasks.map(t => t.id)).toEqual(["conversation_eval", "intent_routing", "product_matching", "sembench_movie"]);
+  expect(tasks.map(t => t.id)).toEqual(["conversation_eval", "intent_routing", "product_matching", "search_latency", "sembench_movie"]);
   for (const task of tasks) {
     expect(task.estimatedCalls).toBeLessThanOrEqual(200);
     const source = await json(join(DEFINITIONS, task.id, "SOURCE.json"));
+    if (task.id === "search_latency") {
+      expect(task.setup).toBeDefined();
+      expect(task.verify).toBeDefined();
+      continue;
+    }
     expect(source.adaptation).toBe(true);
     const rows = (await readFile(join(DEFINITIONS, task.id, "workspace/data/test.jsonl"), "utf8")).trim().split("\n").map(line => JSON.parse(line));
     expect(new Set(rows.map(row => row.id)).size).toBe(rows.length);
@@ -105,6 +110,20 @@ test("fixture copying refuses symlinks and excludes credentials and old sessions
   await symlink(join(source, "input.txt"), join(source, "link"));
   await expect(copyDefinition(source, join(root, "another"))).rejects.toThrow("symlinks");
 });
+
+test("search latency prepares reproducible diagnostic inputs without leaking its repair", async () => {
+  const first = await fixture({ task: "search_latency", agent: "jive" });
+  const second = await fixture({ task: "search_latency", agent: "jive" });
+  const manifest = await json(join(first.workspace, "data/MANIFEST.json"));
+  expect(manifest.records).toBe(18000);
+  expect(await json(join(second.workspace, "data/MANIFEST.json"))).toEqual(manifest);
+  expect(await Bun.file(join(first.workspace, "maintainer/DESIGN.md")).exists()).toBe(false);
+  expect(await Bun.file(join(first.workspace, "maintainer/reference_fix.patch")).exists()).toBe(false);
+  expect(await Bun.file(join(first.workspace, "verifier/verify.py")).exists()).toBe(false);
+  expect(await readFile(join(first.workspace, "README.md"), "utf8")).not.toContain("OpenRouter");
+  expect(await capture(["python3", "-m", "unittest", "discover", "-s", "tests"], first.workspace)).not.toBeNull();
+  expect(await capture(["git", "status", "--porcelain"], first.workspace)).toBe("");
+}, 15000);
 
 test("headless runner preserves prompts as literal arguments, reports agent failure, and never equates exit zero with a grade", async () => {
   const root = await scratch(), executable = await fakeAgent(root);
@@ -179,7 +198,7 @@ async function oracle(run: RunRecord) {
 }
 
 test("all four verifiers accept correct artifacts and reject incomplete, duplicate, or modified-reference submissions", async () => {
-  for (const task of await listTasks()) {
+  for (const task of (await listTasks()).filter(task => task.id !== "search_latency")) {
     const run = await fixture({ task: task.id });
     expect((await verifyRun(run.id, resolve(run.directory, ".."))).grading.status).toBe("failed");
     await oracle(run);
@@ -215,7 +234,7 @@ test("the real Jive launcher executes its offline demo through the headless adap
 test("CLI JSON output is parseable and invalid run paths are rejected", async () => {
   const cli = resolve(import.meta.dir, "../bin/taskground.ts");
   const result = await capture([process.execPath, cli, "list", "--json"], resolve(import.meta.dir, ".."));
-  expect(JSON.parse(result!)).toHaveLength(4);
+  expect(JSON.parse(result!)).toHaveLength(5);
   await expect(readRun("../escape")).rejects.toThrow("Invalid run ID");
 });
 

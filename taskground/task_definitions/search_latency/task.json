@@ -1,0 +1,9 @@
+{
+  "schemaVersion": 1,
+  "id": "search_latency",
+  "title": "Investigate uneven search latency",
+  "description": "Diagnose workload-dependent latency across a multi-tenant search endpoint, then optimize it while preserving freshness, audit receipts, and concurrent behavior.",
+  "estimatedCalls": 8,
+  "setup": ["python3", "{workspace}/scripts/setup.py"],
+  "verify": ["python3", "{definition}/verifier/verify.py"]
+}
