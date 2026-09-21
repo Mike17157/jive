@@ -1,7 +1,7 @@
 # Using Jive
 
 This guide covers the interactive terminal UI, sessions, headless commands, and
-per-project configuration. The [README](../README.md) has installation and a
+per-project configuration. The [overview](README.md) has installation and a
 short tour; [GRAPH_CONTRACT.md](GRAPH_CONTRACT.md) describes the graphs the
 planner writes; [CONTEXT.md](CONTEXT.md) covers context and compaction.
 

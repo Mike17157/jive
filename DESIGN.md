@@ -2,7 +2,7 @@
 
 Status: first runnable implementation. Confirmed decisions below reflect the
 discussion; evaluation proposals remain future work. See
-README.md, the executable examples, and `--schema` for the runnable contract.
+docs/README.md, the executable examples, and `--schema` for the runnable contract.
 
 ## Objective
 
@@ -138,9 +138,9 @@ Provide structural constructs for per-item template expansion and bounded
 repetition. They do not add new executable node types. A template can contain
 bash and Jev nodes, references, branches, and further bounded structure.
 
-Limits apply to total expanded work as well as individual loops. Defaults are
-300 nodes/groups, six concurrent leaf executions, five minutes per graph, and
-100 Jev calls. Graphs can request higher limits within the schema's ceilings.
+There is no graph-wide node-count cap. Defaults are six concurrent leaf
+executions, five minutes per graph, and 100 Jev calls. Graphs can request higher
+limits within the schema's ceilings; loops still declare their own bounds.
 
 ### Failure and handoff
 
@@ -186,11 +186,12 @@ The planner has two tool definitions, `execute_graph` and `execute_graph_mod`,
 and may also answer the
 user directly. The runtime owns concurrency within a graph. V1
 serializes separate graph invocations within one session even if
-a model emits multiple tool calls. Validate the complete graph before scheduling
-any operations in normal mode. In eager mode, a fully closed node/group becomes
-an immutable commitment after validating its complete prefix. Headers and
-templates precede work; dependencies point to already committed root entries.
-Incomplete JSON values never execute. See README.md for the streaming contract.
+a model emits multiple tool calls. Streamed execution is automatic: a fully closed
+node/group becomes an immutable commitment after validating its complete prefix.
+Settings and templates precede work; omitted settings use defaults, and dependencies
+point to already committed root entries. Requested returns may come last. Saved
+graph replay validates the complete graph before scheduling.
+Incomplete JSON values never execute. See docs/README.md for the streaming contract.
 
 Sources: [model catalog](https://openrouter.ai/api/v1/models),
 [tool calling](https://openrouter.ai/docs/guides/features/tool-calling).

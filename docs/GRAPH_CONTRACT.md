@@ -18,12 +18,13 @@ A graph containing one bash node is valid. The planner can perform an immediate
 observation or write a prepared patch without constructing an unnecessary Jev
 decision.
 
-The optional `eager: true` mode commits each fully closed, validated root entry
-while tool arguments stream. All headers (including context, templates, limits,
-and requested returns) must precede nodes/groups, and committed definitions are
-immutable. Dependencies must already exist in the committed prefix. Normal mode
-permits forward references and waits for the entire graph. See the streaming
-example and recovery behavior in [README.md](../README.md).
+Each fully closed, validated root entry commits automatically while tool arguments
+stream. Write version, label, and any context, templates, limits or output before
+nodes/groups; omitted settings use defaults. Committed definitions are immutable,
+and dependencies must already exist in the committed prefix. Requested returns
+may come last. There is no eager option. Saved graph replay and non-streaming hosts
+validate the entire graph and permit forward references. See the streaming
+example and recovery behavior in [the overview](README.md).
 
 ## Saved graph replay
 
@@ -132,7 +133,7 @@ Results retain stable input order and item identities, regardless of completion
 order. Each item has a result envelope, including failures. Collection consumers
 must be able to inspect partial success rather than silently losing failed items.
 
-Nested expansion shares the graph's total node and concurrency limits. If an
+Nested expansion shares the graph's concurrency, timeout, and Jev-call limits. If an
 input collection exceeds its declared limit, report that explicitly rather than
 quietly ignoring remaining items. An empty collection produces an empty result
 and no child executions.
@@ -168,7 +169,7 @@ completed. Replaying the event log never reruns commands or plugin operations.
 
 ## Limits
 
-Configure total instantiated-node count, concurrent executions, elapsed time,
+Configure concurrent executions, elapsed time,
 Jev request count, and local loop/expansion limits. Runtime ceilings apply even
 when a submitted graph requests larger values. A reached limit produces a
 recorded stopping reason and preserves partial results.
