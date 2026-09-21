@@ -428,6 +428,7 @@
     const effort = node("span", "status-effort", `Effort: ${run.effort || "default"}`);
     effort.title = `Reasoning effort: ${run.effort || "Agent default"}`;
     append(status, node("span", `status-badge status-${run.status || "unknown"}`, statusLabel(run.status)), model, effort);
+    if (run.mode === "terminal" && run.processStatus === "running" && !ACTIVE_STATUSES.has(run.status)) status.append(node("span", "status-effort", "Terminal open"));
     const elapsed = node("span", "run-time", formatDuration(runElapsed(run), ACTIVE_STATUSES.has(run.status)));
     const date = node("span", "run-date", formatDate(run.createdAt));
     date.append(node("small", "", formatTime(run.createdAt)));
@@ -487,6 +488,7 @@
 
   function renderActions(run, parent) {
     if (ACTIVE_STATUSES.has(run.status)) parent.append(actionButton("Cancel", "button-danger", () => mutateRun(run.id, "stop", "Cancellation requested."), `cancel:${run.id}`));
+    else if (run.mode === "terminal" && run.processStatus === "running") parent.append(actionButton("Close terminal", "button-secondary", () => mutateRun(run.id, "stop", "Terminal close requested."), `cancel:${run.id}`));
     if (TERMINAL_STATUSES.has(run.status) || run.status === "ready") parent.append(actionButton("Verify", "button-secondary", () => mutateRun(run.id, "verify", "Verification finished."), `verify:${run.id}`));
     if (run.recording) {
       const exportState = run.export && run.export.status;

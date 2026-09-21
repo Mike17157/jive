@@ -6,6 +6,7 @@ import { AGENTS, type Agent } from "../taskground/app/agents";
 import { prepareRun, executeRun, scheduleRun, executeScheduledRun, runStatus, stopRun, verifyRun, logTail, type RunRecord, type RunOptions } from "../taskground/app/runner";
 import { defaultRunsRoot, listRuns, locateRun } from "../taskground/app/storage";
 import { type SourceMode } from "../taskground/app/source";
+import { taskRunView, type TaskRunView } from "../taskground/app/activity";
 
 const HELP = `Taskground — fresh, retained workspaces for agent tasks
 
@@ -43,8 +44,8 @@ API-call or spend limit; all READMEs state the same 200-call helper allowance.
 The bundled task preparation and verifiers make no model calls.
 `;
 
-function summary(run: RunRecord) {
-  return { id: run.id, task: run.task, agent: run.agent, model: run.model, effort: run.effort, mode: run.mode, status: run.status, grading: run.grading, elapsedMs: run.elapsedMs, source: run.source, recording: run.recording, workspace: run.workspace, run: `${run.directory}/run.json`, result: `${run.directory}/result.json`, logs: `${run.directory}/logs`, error: run.error };
+function summary(run: RunRecord | TaskRunView) {
+  return { id: run.id, task: run.task, agent: run.agent, model: run.model, effort: run.effort, mode: run.mode, status: run.status, processStatus: "processStatus" in run ? run.processStatus : run.status, grading: run.grading, startedAt: run.startedAt, finishedAt: run.finishedAt, elapsedMs: run.elapsedMs, source: run.source, recording: run.recording, workspace: run.workspace, run: `${run.directory}/run.json`, result: `${run.directory}/result.json`, logs: `${run.directory}/logs`, error: run.error };
 }
 
 async function main() {
@@ -83,7 +84,7 @@ async function main() {
     return;
   }
   if (command === "runs") {
-    const runs = await listRuns(root);
+    const runs = await Promise.all((await listRuns(root)).map(taskRunView));
     console.log(values.json ? JSON.stringify(runs.map(summary)) : runs.map(run => `${run.id}  ${run.agent.padEnd(6)} ${run.status.padEnd(10)} ${run.grading.status}`).join("\n") || "No managed runs yet.");
     return;
   }
@@ -118,7 +119,7 @@ async function main() {
     console.log(await logTail(id, root, lines)); return;
   }
   if (command === "status") {
-    const run = await runStatus(id, root);
+    const run = await taskRunView(await runStatus(id, root));
     if (values.json && run.mode !== "interactive") {
       const { getRunMetrics } = await import("../taskground/app/metrics");
       console.log(JSON.stringify({ ...summary(run), metrics: await getRunMetrics(run) }));

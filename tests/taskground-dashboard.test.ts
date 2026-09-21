@@ -85,10 +85,20 @@ const fs = require('node:fs');
 fs.writeFileSync('native-start.json',JSON.stringify({tty:process.stdin.isTTY,args:process.argv}));
 process.stdin.setRawMode(true);
 process.stdout.write('\\x1b[?1049h\\x1b[2J\\x1b[HNative agent ready');
+const path = require('node:path');
+const rolloutDir = path.join(process.env.CODEX_HOME,'sessions',new Date().toISOString().slice(0,10).replaceAll('-','/'));
+fs.mkdirSync(rolloutDir,{recursive:true});
+const stamp = new Date().toISOString();
+fs.writeFileSync(path.join(rolloutDir,'fixture.jsonl'),[
+ {type:'session_meta',timestamp:stamp,payload:{cwd:process.cwd(),source:'cli'}},
+ {type:'event_msg',timestamp:stamp,payload:{type:'task_started',turn_id:'initial'}},
+ {type:'event_msg',timestamp:stamp,payload:{type:'task_complete',turn_id:'initial'}}
+].map(value=>JSON.stringify(value)).join('\\n')+'\\n');
 process.stdin.on('data',data=>{fs.appendFileSync('native-input.txt',data);process.stdout.write('\\r\\nreceived:'+data);});
 setInterval(()=>{},1000);
 `, { mode: 0o755 });
   const previousPath = process.env.PATH; process.env.PATH = bin + ":" + previousPath;
+  const previousCodexHome = process.env.CODEX_HOME; process.env.CODEX_HOME = join(data, "codex-home");
   let id: string | undefined;
   const sockets: WebSocket[] = [];
   const waitFor = async (check: () => boolean | Promise<boolean>) => {
@@ -111,6 +121,14 @@ setInterval(()=>{},1000);
     const start = await Bun.file(join(run.workspace, "native-start.json")).json();
     expect(start.tty).toBe(true); expect(start.args).not.toContain("exec"); expect(start.args.at(-1)).toContain("Read README.md");
     const first = await connect(url, token);
+    const taskState = await (await fetch(url + `/api/runs/${id}`)).json() as any;
+    expect(taskState.status).toBe("completed"); expect(taskState.processStatus).toBe("running");
+    await Bun.sleep(100);
+    expect((await (await fetch(url + `/api/runs/${id}`)).json() as any).elapsedMs).toBe(taskState.elapsedMs);
+    const verified = await (await fetch(url + `/api/runs/${id}/verify`, { method: "POST", headers: { "Content-Type": "application/json", "X-Taskground-Token": token }, body: "{}" })).json() as any;
+    expect(verified.grading.status).toBe("failed");
+    expect(verified.status).toBe("completed"); expect(verified.processStatus).toBe("running");
+    expect((await readRun(id!, root)).status).toBe("running");
     first.socket.send(JSON.stringify({ type: "input", data: "forbidden" }));
     await Bun.sleep(100);
     expect(await Bun.file(join(run.workspace, "native-input.txt")).exists()).toBe(false);
@@ -132,8 +150,12 @@ setInterval(()=>{},1000);
     await waitFor(async () => (await Bun.file(join(run.workspace, "native-input.txt")).text()) === "helloagain");
   } finally {
     process.env.PATH = previousPath;
+    if (previousCodexHome === undefined) delete process.env.CODEX_HOME; else process.env.CODEX_HOME = previousCodexHome;
     for (const socket of sockets) socket.close();
-    if (id) { await stopRun(id, root); await waitFor(async () => ["cancelled", "failed", "completed"].includes((await readRun(id!, root)).status)); }
+    if (id) {
+      await stopRun(id, root); await waitFor(async () => ["cancelled", "failed", "completed"].includes((await readRun(id!, root)).status));
+      expect((await readRun(id!, root)).grading.status).toBe("failed");
+    }
   }
 }, 30000);
 

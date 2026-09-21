@@ -44,8 +44,19 @@ tmux is not required. Open **Attach** to type into that same process, answer per
 prompts, or submit follow-up messages. **Detach** returns to read-only viewing without
 stopping the agent. Only one viewer controls input at a time. Resizing an attached
 pane resizes the agent's terminal. Native agents receive the initial task immediately
-but can pause at their own setup/trust prompts. The session remains running after a
-response until you quit the agent or cancel the run; metrics cover the whole session.
+but can pause at their own setup/trust prompts. Task status follows the agent's saved
+turn events: a final response marks the task completed and freezes its timer, even
+when the terminal remains open. **Terminal open** identifies these attachable sessions;
+**Close terminal** releases the process without relabelling finished work as cancelled.
+Submitting a follow-up makes the task running again. Verification is available after
+a task finishes; new work invalidates its previous grade. Process status is reported
+separately as `processStatus` by the API and CLI.
+
+Completion tracking reads Jive session messages, Codex rollout task events, and
+Claude transcript turn events for the run's exact workspace. It ignores tool/graph
+completion and child-agent sessions. Existing recorded native history is recognized
+without rerunning tasks. Codex/Claude session data must remain available in their
+normal local storage (or the `CODEX_HOME`/`CLAUDE_CONFIG_DIR` saved when launched).
 
 Only expanded panes with **Terminal** selected create a browser terminal and live
 connection. Collapsing a run, filtering it out, or switching to **Logs** disposes of
@@ -164,6 +175,7 @@ taskground/
     prompt.txt              # Exact initial prompt
     run.json                # Configuration, process state, provenance
     result.json             # Final execution/verification result
+    grading.json            # Latest grading, independent of a live terminal process
     logs/                   # Headless output, native terminal bytes, supervisor logs
     terminal.json           # Private live PTY endpoint (while running)
     terminal-screen.json    # Final native screen and terminal dimensions

@@ -9,6 +9,8 @@ import { primarySource, snapshotSource, snapshotDependencies, type SourceMode, t
 import { defaultRunsRoot, registerRunsRoot } from "./storage";
 import { validateRecording, type RecordingOptions } from "./recording";
 import { runTerminalProcess } from "./terminal";
+import { taskRunView } from "./activity";
+import { nativeSessionRoot } from "./native-sessions";
 
 export interface RunOptions {
   task: string; agent: Agent; headless?: boolean; terminal?: boolean; model?: string; effort?: string; executable?: string; extraArgs?: string[];
@@ -25,7 +27,8 @@ export interface RunRecord {
   model?: string; effort?: string; executable?: string; extraArgs: string[]; timeoutSeconds?: number; command?: string[];
   runnerPid?: number; runnerStarted?: string | null; agentPid?: number; agentVersion?: string | null; envFile?: string;
   exitCode?: number | null; signal?: string | null; error?: string; sessionArtifacts?: string[];
-  grading: { status: "ungraded" | "passed" | "failed" | "error"; report?: string; attempts?: string[] };
+  sessionRoot?: string;
+  grading: { status: "ungraded" | "passed" | "failed" | "error"; report?: string; attempts?: string[]; activityAt?: string };
 }
 
 const terminal = new Set<RunStatus>(["completed", "failed", "cancelled", "timed_out"]);
@@ -67,6 +70,10 @@ export async function readRun(id: string, root?: string): Promise<RunRecord> {
   const directory = runDirectory(id, root ?? await defaultRunsRoot());
   const run = JSON.parse(await readFile(join(directory, "run.json"), "utf8")) as RunRecord;
   if (run.id !== id || run.directory !== directory || run.workspace !== join(directory, "workspace") || run.definition !== join(directory, "definition")) throw new Error("Run paths do not match this run directory");
+  // Verification can finish while the native agent process remains alive. Keep
+  // its independently written state out of the supervisor's run.json updates.
+  const grading = await readFile(join(directory, "grading.json"), "utf8").then(JSON.parse).catch(() => undefined);
+  if (grading && ["ungraded", "passed", "failed", "error"].includes(grading.status)) run.grading = grading;
   return run;
 }
 
@@ -200,6 +207,7 @@ export async function executeRun(id: string, root?: string): Promise<RunRecord> 
   try {
     const env = await credentials(run.envFile);
     Object.assign(env, parseDotEnv(await readFile(join(run.workspace, ".env"), "utf8")));
+    if (run.mode === "terminal") run.sessionRoot = nativeSessionRoot(run.agent, env);
     if (run.agent === "jive") {
       env.JEV_METRICS_FILE = join(run.directory, "jev-attempts.jsonl");
       if (!run.executable) await snapshotDependencies(run.source);
@@ -231,6 +239,8 @@ export async function executeRun(id: string, root?: string): Promise<RunRecord> 
   }
   run.finishedAt = new Date().toISOString();
   run.elapsedMs = run.startedAt ? Date.parse(run.finishedAt) - Date.parse(run.startedAt) : 0;
+  // An idle native terminal can be graded before its process exits.
+  run.grading = (await readRun(id, root)).grading;
   await save(run);
   await writeJSON(join(run.directory, "result.json"), run);
   return run;
@@ -268,7 +278,8 @@ export async function stopRun(id: string, root?: string): Promise<RunRecord> {
 
 export async function verifyRun(id: string, root?: string): Promise<RunRecord> {
   const run = await runStatus(id, root);
-  if (!terminal.has(run.status) && run.status !== "ready") throw new Error("Wait for the agent to stop before verifying its artifacts");
+  const view = await taskRunView(run);
+  if (!terminal.has(view.status) && run.status !== "ready") throw new Error("Wait for the agent to finish its task before verifying its artifacts");
   const task = await loadTask(run.definition);
   if (!task.verify) return run;
   const result = join(run.directory, "verification", `${Date.now()}-${randomUUID().slice(0, 8)}.json`);
@@ -279,14 +290,20 @@ export async function verifyRun(id: string, root?: string): Promise<RunRecord> {
     const processResult = await runProcess(hook(task.verify, run, result), { cwd: run.workspace, stdout: `${result}.stdout.log`, stderr: `${result}.stderr.log`, env: { ...process.env, TASKGROUND_WORKSPACE: run.workspace, TASKGROUND_DEFINITION: run.definition, TASKGROUND_RESULT: result }, timeoutMs: 60000 });
     const report = JSON.parse(await readFile(result, "utf8"));
     if (!["passed", "failed"].includes(report.status) || !report.checks || processResult.exitCode !== (report.status === "passed" ? 0 : 1)) throw new Error("Verifier failed or returned an invalid report; inspect verification logs");
+    if ((await taskRunView(await readRun(id, root))).activity?.at !== view.activity?.at) throw new Error("The agent started more work during verification; verify again after it finishes");
     run.grading = { status: report.status, report: result, attempts: run.grading.attempts };
   } catch (error) {
     await writeJSON(result, { status: "error", error: error instanceof Error ? error.message : String(error) });
     run.grading = { status: "error", report: result, attempts: run.grading.attempts };
   }
-  await save(run);
-  await writeJSON(join(run.directory, "result.json"), run);
-  return run;
+  run.grading.activityAt = view.activity?.at;
+  await writeJSON(join(run.directory, "grading.json"), run.grading);
+  const latest = await readRun(id, root);
+  if (terminal.has(latest.status) || latest.status === "ready") {
+    await save(latest);
+    await writeJSON(join(run.directory, "result.json"), latest);
+  }
+  return latest;
 }
 
 export async function logTail(id: string, root: string | undefined = undefined, lines = 40): Promise<string> {

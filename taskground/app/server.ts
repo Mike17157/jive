@@ -12,17 +12,20 @@ import { exportRecording, validateRecording } from "./recording";
 import { AGENTS, type Agent } from "./agents";
 import { getAgentModels, validateModelSelection } from "./models";
 import { terminalBridgeHandlers, type TerminalBridge } from "./terminal-proxy";
+import { taskRunView } from "./activity";
 
 const json = (data: unknown, status = 200) => Response.json(data, { status, headers: { "Cache-Control": "no-store" } });
 const stopped = new Set(["completed", "failed", "cancelled", "timed_out", "ready"]);
 
 async function describe(run: RunRecord) {
+  const view = await taskRunView(run);
+  run = view;
   const { id, task, agent, mode, status, grading, createdAt, startedAt, finishedAt, elapsedMs, source, recording, workspace, directory, error, model, effort } = run;
   const exportState = await Bun.file(join(run.directory, "recording.mp4")).exists() ? { status: "ready" } : await readFile(join(run.directory, "export.json"), "utf8").then(JSON.parse).catch(() => undefined);
   if (exportState?.status === "exporting" && exportState.pid) {
     try { process.kill(exportState.pid, 0); } catch { exportState.status = "error"; exportState.error = "Export was interrupted. Export again to retry."; }
   }
-  return { id, task, agent, model, effort, mode, status, grading, createdAt, startedAt, finishedAt, elapsedMs, source, recording, workspace, directory, error, metrics: await getRunMetrics(run), export: exportState };
+  return { id, task, agent, model, effort, mode, status, processStatus: view.processStatus, activity: view.activity, grading, createdAt, startedAt, finishedAt, elapsedMs, source, recording, workspace, directory, error, metrics: await getRunMetrics(run), export: exportState };
 }
 
 export async function startDashboard(options: { port?: number; runsRoot?: string; open?: boolean } = {}) {
