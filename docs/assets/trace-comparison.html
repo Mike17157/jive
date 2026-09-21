@@ -1,0 +1,487 @@
+<meta charset="utf-8">
+<title>Jive Trace Comparison</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+  :root {
+    --bg: #141414;
+    --surface: rgba(26, 26, 26, 0.82);
+    --border: #3a3a3a;
+    --text: #fcfcfb;
+    --dim: #a8a7a3;
+    --faint: #6b6a66;
+    --accent: #7cc4ff;
+    --green: #7fdca0;
+    --purple: #c9a2ff;
+    --yellow: #f2d17a;
+    --sans: "IBM Plex Sans", "Helvetica Neue", Arial, sans-serif;
+    --mono: "IBM Plex Mono", "SF Mono", Menlo, Consolas, monospace;
+    color-scheme: dark;
+  }
+  html, body { height: 100%; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--sans);
+    font-size: 14px;
+    line-height: 1.45;
+  }
+  .wrap { max-width: 1400px; margin: 0 auto; padding-block: 20px 28px; padding-inline: 16px; display: flex; flex-direction: column; gap: 14px; }
+  header { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 6px 24px; }
+  header h1 { font-size: 18px; font-weight: 600; margin: 0; letter-spacing: 0.01em; text-wrap: balance; }
+  header p { margin: 0; color: var(--dim); max-width: 64ch; }
+  header p code { font-family: var(--mono); color: var(--text); font-size: 12.5px; }
+
+  .stage { position: relative; width: 100%; aspect-ratio: 16 / 9; max-width: 100%; border: 1px solid var(--border); border-radius: 6px; overflow: hidden; background: var(--bg); }
+  .stage canvas { display: block; width: 100%; height: 100%; touch-action: none; cursor: grab; }
+  .stage canvas:active { cursor: grabbing; }
+
+  .hud { position: absolute; left: 14px; width: 232px; background: var(--surface); border: 1px solid var(--border); border-radius: 6px; padding: 10px 12px 12px; backdrop-filter: blur(6px); }
+  .hud.top { top: 14px; }
+  .hud.bottom { bottom: 14px; }
+  .hud h2 { margin: 0 0 2px; font-size: 13px; font-weight: 600; display: flex; align-items: center; gap: 8px; }
+  .hud h2 .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--faint); flex: none; transition: background 0.3s; }
+  .hud h2 .dot.live { background: var(--accent); box-shadow: 0 0 8px var(--accent); }
+  .hud h2 .dot.done { background: var(--green); }
+  .hud .sub { margin: 0 0 8px; color: var(--dim); font-size: 12px; }
+  .stats { display: grid; grid-template-columns: 1fr auto; row-gap: 3px; column-gap: 12px; font-family: var(--mono); font-size: 12.5px; font-variant-numeric: tabular-nums; }
+  .stats dt { color: var(--dim); margin: 0; }
+  .stats dd { margin: 0; text-align: right; color: var(--text); }
+  .stats dd.llm { color: var(--accent); }
+  .stats dd.jev { color: var(--purple); }
+  .stats dd.cmd { color: var(--green); }
+
+  .toolbar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px 20px; color: var(--dim); font-size: 12.5px; }
+  .legend { display: flex; flex-wrap: wrap; gap: 6px 18px; align-items: center; }
+  .legend span { display: inline-flex; align-items: center; gap: 6px; }
+  .legend i { display: inline-block; width: 10px; height: 10px; border-radius: 3px; background: var(--faint); }
+  .legend i.llm { background: var(--accent); border-radius: 50%; }
+  .legend i.cmd { background: var(--green); }
+  .legend i.jev { background: var(--purple); transform: rotate(45deg); border-radius: 2px; width: 8px; height: 8px; }
+  .controls { display: flex; align-items: center; gap: 8px; }
+  .controls button, .controls select {
+    font: 500 12.5px var(--sans); color: var(--text); background: #1f1f1f; border: 1px solid var(--border); border-radius: 4px; padding: 5px 10px; cursor: pointer;
+  }
+  .controls button:hover, .controls select:hover { border-color: var(--dim); }
+  .controls button:focus-visible, .controls select:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+  .note { color: var(--faint); font-size: 12px; max-width: 78ch; margin: 0; }
+
+  /* ?capture: only the stage, filling the window, for frame-by-frame recording */
+  body.capture .wrap { max-width: none; padding: 0; gap: 0; height: 100%; }
+  body.capture .wrap > :not(.stage) { display: none; }
+  body.capture .stage { aspect-ratio: auto; height: 100%; border: 0; border-radius: 0; }
+  body.capture .hud { width: 196px; padding: 8px 10px 10px; }
+  body.capture .hud .sub { font-size: 11px; }
+  body.capture .stats { font-size: 11.5px; }
+
+  @media (max-width: 760px) {
+    .stage { aspect-ratio: 4 / 3; }
+    .hud { position: static; width: auto; backdrop-filter: none; }
+    .huds { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  }
+  @media (max-width: 480px) { .huds { grid-template-columns: 1fr; } }
+</style>
+
+<div class="wrap">
+  <header>
+    <h1>One task, two traces</h1>
+    <p>Task: triage 12 failing tests, rerun the flaky ones until they settle, patch the real bugs. Same commands executed. Count the agent icons.</p>
+  </header>
+
+  <div class="stage" id="stage">
+    <canvas id="c" aria-label="Animated comparison of a linear coding-agent trace and a Jive graph trace"></canvas>
+    <div class="huds">
+      <section class="hud top" aria-live="off">
+        <h2><span class="dot" id="dot-r"></span>Regular coding agent</h2>
+        <p class="sub">LLM call → tool call → LLM call → …</p>
+        <dl class="stats">
+          <dt>LLM calls</dt><dd class="llm" id="r-llm">0</dd>
+          <dt>reasoning tokens</dt><dd id="r-tok">0</dd>
+          <dt>Jev calls</dt><dd class="jev" id="r-jev">0</dd>
+          <dt>commands</dt><dd class="cmd" id="r-cmd">0</dd>
+          <dt>elapsed</dt><dd id="r-time">0:00</dd>
+        </dl>
+      </section>
+      <section class="hud bottom" aria-live="off">
+        <h2><span class="dot" id="dot-j"></span>Jive</h2>
+        <p class="sub">LLM writes a graph → bash + Jev run it → LLM sees the result</p>
+        <dl class="stats">
+          <dt>LLM calls</dt><dd class="llm" id="j-llm">0</dd>
+          <dt>reasoning tokens</dt><dd id="j-tok">0</dd>
+          <dt>Jev calls</dt><dd class="jev" id="j-jev">0</dd>
+          <dt>commands</dt><dd class="cmd" id="j-cmd">0</dd>
+          <dt>elapsed</dt><dd id="j-time">0:00</dd>
+        </dl>
+      </section>
+    </div>
+  </div>
+
+  <div class="toolbar">
+    <div class="legend">
+      <span><i class="llm"></i>LLM call (planner)</span>
+      <span><i class="cmd"></i>bash node</span>
+      <span><i class="jev"></i>Jev decision</span>
+      <span><i style="background:transparent;border:1px solid var(--faint)"></i>foreach / repeat group</span>
+    </div>
+    <div class="controls">
+      <label for="speed">speed</label>
+      <select id="speed">
+        <option value="8">8×</option>
+        <option value="15" selected>15×</option>
+        <option value="30">30×</option>
+      </select>
+      <button id="replay" type="button">Replay</button>
+    </div>
+  </div>
+  <p class="note">Timings and token counts are illustrative: ~10 s and ~1.8k reasoning tokens per planner call, ~3 s per test run, ~0.6 s per Jev decision. Drag to orbit, scroll to zoom.</p>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+function main() {
+  const capture = new URLSearchParams(location.search).has('capture');
+  if (capture) document.body.classList.add('capture');
+  const C = { bg: 0x141414, text: '#fcfcfb', dim: '#a8a7a3', faint: '#6b6a66', greyDim: '#3a3a3a', accent: '#7cc4ff', accentPale: '#d2ecff', accentDeep: '#2f6fb0', green: '#7fdca0', greenDim: '#3f7a55', purple: '#c9a2ff', yellow: '#f2d17a' };
+  const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  // ---------- schedule model ----------
+  // node: { kind:'llm'|'bash'|'jev'|'done', x,y,z, runs:[{s,e}], reason (tokens per llm run), lane:'r'|'j' }
+  // edge: { a,b, trigger:'first'|'last', kind:'line'|'turn'|'loop' }
+  const nodes = [], edges = [];
+  const labels = []; // { text, x, y, z, w, color }
+  const groups = []; // { x1,y1,x2,y2,z }
+
+  function node(lane, kind, x, y, z, runs, reason) { const n = { lane, kind, x, y, z: z || 0, runs, reason: reason || 0 }; nodes.push(n); return n; }
+  function edge(a, b, kind, trigger) { edges.push({ a, b, kind: kind || 'line', trigger: trigger || 'first' }); }
+
+  // ----- Regular agent: one long chain across the top band -----
+  const R = { llm: 0, cmd: 0 };
+  const RY = 8.4;
+  (function buildRegular() {
+    const seq = []; // {kind,dur,reason,retry}
+    const llm = (d, r) => seq.push({ kind: 'llm', dur: d, reason: r });
+    const sh = (d) => seq.push({ kind: 'bash', dur: d });
+    const retry = new Set([1, 3]);
+    llm(12, 1800); sh(1);
+    for (let i = 0; i < 5; i++) {
+      llm(12, 1800); sh(3); llm(14, 2400); sh(3); llm(8, 1200);
+      if (retry.has(i)) { llm(10, 1600); seq.push({ kind: 'bash', dur: 3, retry: true }); llm(8, 1200); }
+    }
+    llm(6, 1000); seq.push({ kind: 'done', dur: 0 });
+    const sp = 1.05;
+    let t = 0, prev = null;
+    seq.forEach((s, k) => {
+      const n = node('r', s.kind, k * sp, RY, 0, [{ s: t, e: t + s.dur }], s.reason);
+      if (s.kind === 'llm') R.llm++; else if (s.kind === 'bash') R.cmd++;
+      t += s.dur;
+      if (prev) edge(prev, n, 'line');
+      if (s.retry) edge(n, nodes[nodes.length - 4], 'loop');
+      prev = n;
+    });
+    R.end = t; R.width = (seq.length - 1) * sp;
+    labels.push({ text: 'plan · run · patch · rerun · check … per test', x: 8.4, y: RY + 0.8, z: 0, w: 9.5, color: C.faint });
+  })();
+
+  // ----- Jive: planner writes a graph, the graph runs, planner sees the result; four graphs in a row -----
+  const J = { llm: 0, cmd: 0, jev: 0 };
+  const Y0 = 1.2; // jive band centre
+  (function buildJive() {
+    const planner = (x, s, dur, reason) => { const n = node('j', 'llm', x, Y0, 0, [{ s, e: s + dur }], reason); J.llm++; return n; };
+    const bash = (x, y, s, dur) => { const n = node('j', 'bash', x, y, 0, [{ s, e: s + dur }]); J.cmd++; return n; };
+    const jev = (x, y, s) => { const n = node('j', 'jev', x, y, 0, [{ s, e: s + 0.6 }]); J.jev++; return n; };
+
+    // graph 1: foreach over the 12 tests, with bounded reruns for the flaky ones (starts while the planner streams)
+    const p1 = planner(0, 0, 18, 6000);
+    const g1Start = 10;
+    const flakyIters = { 1: 2, 4: 3, 6: 1, 8: 2, 10: 3 };
+    const slots = new Array(6).fill(g1Start), rowEnds = [], exits = [];
+    for (let i = 0; i < 12; i++) {
+      const y = Y0 + (5.5 - i) * 0.62;
+      let s = Math.min(...slots), si = slots.indexOf(s);
+      const run = bash(2.4, y, s, 3); s += 3;
+      const cat = bash(3.6, y, s, 1); s += 1;
+      const jv = jev(4.8, y, s); s += 0.6;
+      edge(p1, run); edge(run, cat); edge(cat, jv);
+      let tail = jv;
+      if (flakyIters[i]) {
+        const iters = flakyIters[i];
+        const rr = node('j', 'bash', 6.2, y, 0, []), rj = node('j', 'jev', 7.4, y, 0, []);
+        for (let k = 0; k < iters; k++) { rr.runs.push({ s, e: s + 3 }); J.cmd++; s += 3; rj.runs.push({ s, e: s + 0.6 }); J.jev++; s += 0.6; }
+        edge(jv, rr); edge(rr, rj); if (iters > 1) edge(rj, rr, 'loop');
+        tail = rj;
+      }
+      slots[si] = s; rowEnds.push(s); exits.push(tail);
+    }
+    const mergeStart = Math.max(...rowEnds);
+    const merge = bash(9.6, Y0, mergeStart, 1);
+    exits.forEach(t => edge(t, merge, 'line', 'last'));
+    groups.push({ x1: 1.6, y1: Y0 - 4.05, x2: 8.2, y2: Y0 + 4.05, z: 0 });
+    labels.push({ text: 'foreach · 12 tests · 6 in parallel', x: 4.9, y: Y0 + 4.45, z: 0, w: 6.2, color: C.dim });
+    labels.push({ text: 'repeat ≤ 3 · until stable', x: 6.6, y: Y0 - 4.45, z: 0, w: 4.6, color: C.dim });
+    labels.push({ text: 'planner', x: 0, y: Y0 - 0.95, z: 0, w: 2, color: C.faint });
+    labels.push({ text: 'merge', x: 9.6, y: Y0 - 0.7, z: 0, w: 2, color: C.faint });
+
+    // graph 2: a top-level bounded loop — bisect until the culprit commit is found
+    const p2s = mergeStart + 1;
+    const p2 = planner(11.2, p2s, 16, 5000);
+    edge(merge, p2);
+    let s2 = p2s + 10;
+    const co = node('j', 'bash', 13.4, Y0, 0, []), rt = node('j', 'bash', 14.8, Y0, 0, []), jf = node('j', 'jev', 16.2, Y0, 0, []);
+    for (let k = 0; k < 4; k++) {
+      co.runs.push({ s: s2, e: s2 + 1 }); J.cmd++; s2 += 1;
+      rt.runs.push({ s: s2, e: s2 + 3 }); J.cmd++; s2 += 3;
+      jf.runs.push({ s: s2, e: s2 + 0.6 }); J.jev++; s2 += 0.6;
+    }
+    edge(p2, co); edge(co, rt); edge(rt, jf); edge(jf, co, 'loop');
+    groups.push({ x1: 12.6, y1: Y0 - 1.5, x2: 17, y2: Y0 + 1.5, z: 0 });
+    labels.push({ text: 'repeat ≤ 5 · bisect until culprit', x: 14.8, y: Y0 + 1.9, z: 0, w: 5.6, color: C.dim });
+    labels.push({ text: 'checkout · test · still failing?', x: 14.8, y: Y0 - 1.9, z: 0, w: 5.4, color: C.faint });
+
+    // graph 3: branching — Jev names the root cause, only the matching branch runs
+    const p3s = s2;
+    const p3 = planner(18.6, p3s, 14, 4000);
+    edge(jf, p3, 'line', 'last');
+    let s3 = p3s + 9;
+    const logs = bash(20.8, Y0, s3, 1); s3 += 1;
+    const cause = jev(22.2, Y0, s3); s3 += 0.6;
+    edge(p3, logs); edge(logs, cause);
+    const branches = [['env', 0.9, 0], ['config', 0, 0], ['code', -0.9, 2]];
+    const apply = bash(24.8, Y0, s3 + 2, 1);
+    branches.forEach(([name, dy, dur]) => {
+      const n = dur ? bash(23.6, Y0 + dy, s3, dur) : node('j', 'bash', 23.6, Y0 + dy, 0, []);
+      n.skipped = !dur;
+      edge(cause, n); edge(n, apply, 'line', 'last');
+    });
+    s3 += 3;
+    groups.push({ x1: 20, y1: Y0 - 1.5, x2: 25.6, y2: Y0 + 1.5, z: 0 });
+    labels.push({ text: 'jev picks the cause · when-gated branches', x: 22.8, y: Y0 + 1.9, z: 0, w: 7, color: C.dim });
+    labels.push({ text: 'env / config / code · only the chosen branch runs', x: 22.8, y: Y0 - 1.9, z: 0, w: 7, color: C.faint });
+
+    // graph 4: patch, rerun and verify the fix
+    const p4s = s3;
+    const p4 = planner(26.4, p4s, 20, 7000);
+    edge(apply, p4);
+    const g4Start = p4s + 13, verifyEnds = [];
+    for (let i = 0; i < 3; i++) {
+      const y = Y0 + (1 - i) * 0.9; let s = g4Start;
+      const patch = bash(28.6, y, s, 1); s += 1;
+      const rerun = bash(30, y, s, 3); s += 3;
+      const jv = jev(31.2, y, s); s += 0.6;
+      edge(p4, patch); edge(patch, rerun); edge(rerun, jv);
+      verifyEnds.push([jv, s]);
+    }
+    groups.push({ x1: 27.8, y1: Y0 - 1.5, x2: 32, y2: Y0 + 1.5, z: 0 });
+    labels.push({ text: 'patch · rerun · verify', x: 29.9, y: Y0 + 1.9, z: 0, w: 4.2, color: C.dim });
+    const p5s = Math.max(...verifyEnds.map(v => v[1]));
+    const p5 = planner(33.6, p5s, 6, 1500);
+    verifyEnds.forEach(v => edge(v[0], p5));
+    const done = node('j', 'done', 35.2, Y0, 0, [{ s: p5s + 6, e: p5s + 6 }]);
+    edge(p5, done);
+    J.end = p5s + 6;
+  })();
+
+  // ---------- textures ----------
+  function makeCanvas(w, h) { const c = document.createElement('canvas'); c.width = w; c.height = h; return c; }
+  function roundRect(g, x, y, w, h, r) { g.beginPath(); g.moveTo(x + r, y); g.arcTo(x + w, y, x + w, y + h, r); g.arcTo(x + w, y + h, x, y + h, r); g.arcTo(x, y + h, x, y, r); g.arcTo(x, y, x + w, y, r); g.closePath(); }
+  function halo(g, color) { const gr = g.createRadialGradient(64, 64, 20, 64, 64, 64); gr.addColorStop(0, color + 'aa'); gr.addColorStop(1, color + '00'); g.fillStyle = gr; g.fillRect(0, 0, 128, 128); }
+
+  function iconTexture(kind, state) {
+    const c = makeCanvas(128, 128), g = c.getContext('2d');
+    const fill = { pending: C.greyDim, active: C.accentPale, done: { llm: C.accent, bash: C.green, jev: C.purple, done: C.green }[kind] }[state];
+    if (state === 'active') halo(g, kind === 'jev' ? C.purple : C.accent);
+    g.fillStyle = fill;
+    if (kind === 'llm') {
+      // agent: rounded head, two eyes, antenna, ears
+      g.strokeStyle = fill; g.lineWidth = 6; g.lineCap = 'round';
+      g.beginPath(); g.moveTo(64, 40); g.lineTo(64, 24); g.stroke();
+      g.beginPath(); g.arc(64, 20, 7, 0, Math.PI * 2); g.fill();
+      roundRect(g, 26, 40, 76, 64, 18); g.fill();
+      g.fillRect(14, 60, 8, 24); g.fillRect(106, 60, 8, 24);
+      g.fillStyle = '#141414';
+      g.beginPath(); g.arc(50, 70, 8, 0, Math.PI * 2); g.fill();
+      g.beginPath(); g.arc(78, 70, 8, 0, Math.PI * 2); g.fill();
+    } else if (kind === 'bash') {
+      roundRect(g, 26, 26, 76, 76, 14); g.fill();
+      g.strokeStyle = '#141414'; g.lineWidth = 8; g.lineCap = 'round'; g.lineJoin = 'round';
+      g.beginPath(); g.moveTo(44, 50); g.lineTo(60, 64); g.lineTo(44, 78); g.stroke();
+      g.beginPath(); g.moveTo(66, 80); g.lineTo(84, 80); g.stroke();
+    } else if (kind === 'jev') {
+      g.beginPath(); g.moveTo(64, 20); g.lineTo(108, 64); g.lineTo(64, 108); g.lineTo(20, 64); g.closePath(); g.fill();
+      g.fillStyle = '#141414'; g.beginPath(); g.arc(64, 64, 9, 0, Math.PI * 2); g.fill();
+    } else {
+      g.beginPath(); g.arc(64, 64, 40, 0, Math.PI * 2); g.fill();
+      g.strokeStyle = '#141414'; g.lineWidth = 9; g.lineCap = 'round'; g.lineJoin = 'round';
+      g.beginPath(); g.moveTo(44, 66); g.lineTo(58, 80); g.lineTo(86, 50); g.stroke();
+    }
+    const t = new THREE.CanvasTexture(c); t.minFilter = THREE.LinearFilter; return t;
+  }
+  // returns a sprite whose canvas is sized to the text, so short and long labels share one font size
+  function textSprite(text, color, x, y, z, height) {
+    const font = '500 44px "IBM Plex Mono", Menlo, monospace';
+    const m = makeCanvas(8, 8).getContext('2d'); m.font = font;
+    const tw = Math.ceil(m.measureText(text).width) + 24;
+    const c = makeCanvas(tw, 64), g = c.getContext('2d');
+    g.font = font; g.fillStyle = color; g.textAlign = 'center'; g.textBaseline = 'middle';
+    g.fillText(text, tw / 2, 32);
+    const t = new THREE.CanvasTexture(c); t.minFilter = THREE.LinearFilter;
+    const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: t, transparent: true, depthWrite: false }));
+    sp.position.set(x, y, z); sp.scale.set(height * tw / 64, height, 1); return sp;
+  }
+
+  // ---------- scene ----------
+  const canvas = document.getElementById('c');
+  const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: false, preserveDrawingBuffer: capture });
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+  renderer.setClearColor(C.bg, 1);
+  const scene = new THREE.Scene();
+  const camera = new THREE.PerspectiveCamera(38, 16 / 9, 0.1, 200);
+
+  const mats = {};
+  ['llm', 'bash', 'jev', 'done'].forEach(k => ['pending', 'active', 'done'].forEach(s => {
+    mats[k + s] = new THREE.SpriteMaterial({ map: iconTexture(k, s), transparent: true, depthWrite: false, opacity: s === 'pending' ? 0.55 : 1 });
+  }));
+  const sizes = { llm: 1.05, bash: 0.5, jev: 0.5, done: 0.6 };
+  nodes.forEach(n => {
+    const sp = new THREE.Sprite(mats[n.kind + 'pending']);
+    sp.position.set(n.x, n.y, n.z + 0.05); sp.scale.setScalar(sizes[n.kind]);
+    n.sprite = sp; n.state = 'pending'; scene.add(sp);
+  });
+
+  // edges: coloured polylines whose green front advances after the source finishes
+  const SEG = 14;
+  const cGrey = new THREE.Color(C.greyDim), cGreen = new THREE.Color(C.green), cActive = new THREE.Color(C.greenDim);
+  edges.forEach(e => {
+    const a = new THREE.Vector3(e.a.x, e.a.y, e.a.z), b = new THREE.Vector3(e.b.x, e.b.y, e.b.z);
+    let curve;
+    if (e.kind === 'line') curve = new THREE.LineCurve3(a, b);
+    else if (e.kind === 'turn') { const side = a.x > b.x ? 1.35 : -1.35; curve = new THREE.CubicBezierCurve3(a, new THREE.Vector3(a.x + side, a.y, 0), new THREE.Vector3(b.x + side, b.y, 0), b); }
+    else { // loop: arc back toward the camera, above the row
+      const mid = a.clone().add(b).multiplyScalar(0.5); const lift = e.a.lane === 'r' ? 0.9 : 0.55;
+      curve = new THREE.QuadraticBezierCurve3(a, new THREE.Vector3(mid.x, mid.y + lift, 1.4), b);
+    }
+    const pts = curve.getPoints(SEG);
+    // trim the ends so lines stop at the icon edge
+    const trimA = sizes[e.a.kind] * 0.5, trimB = sizes[e.b.kind] * 0.5;
+    if (e.kind === 'line') { const d = b.clone().sub(a).normalize(); pts[0].addScaledVector(d, trimA); pts[SEG].addScaledVector(d, -trimB); }
+    const geo = new THREE.BufferGeometry().setFromPoints(pts);
+    const colors = new Float32Array((SEG + 1) * 3);
+    geo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+    const line = new THREE.Line(geo, new THREE.LineBasicMaterial({ vertexColors: true, transparent: true, opacity: 0.9 }));
+    e.line = line; e.colors = colors; e.progress = -1; scene.add(line);
+  });
+
+  groups.forEach(g => {
+    const w = g.x2 - g.x1, h = g.y2 - g.y1;
+    const box = new THREE.LineSegments(new THREE.EdgesGeometry(new THREE.BoxGeometry(w, h, 0.9)), new THREE.LineBasicMaterial({ color: new THREE.Color(C.greyDim), transparent: true, opacity: 0.9 }));
+    box.position.set(g.x1 + w / 2, g.y1 + h / 2, g.z); scene.add(box);
+  });
+  labels.forEach(l => scene.add(textSprite(l.text, l.color, l.x, l.y, l.z + 0.05, 0.42)));
+  // lane titles in-scene
+  scene.add(textSprite('regular coding agent', C.dim, 17.5, RY + 1.6, 0, 0.5));
+  scene.add(textSprite('jive', C.accent, 17.5, Y0 + 5.1, 0, 0.5));
+  // faint divider between the bands
+  scene.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(-1.5, RY - 1.5, 0), new THREE.Vector3(36, RY - 1.5, 0)]), new THREE.LineBasicMaterial({ color: new THREE.Color(C.greyDim), transparent: true, opacity: 0.6 })));
+
+  // ---------- camera: fit + orbit ----------
+  const target = new THREE.Vector3(14.2, 3.3, 0); // shifted left so the HUD panels sit beside the content
+  const orbit = { yaw: 0, pitch: 0, dist: 0, base: 0 };
+  function fit() {
+    const rect = canvas.getBoundingClientRect();
+    const w = Math.max(1, rect.width), h = Math.max(1, rect.height);
+    renderer.setSize(w, h, false); camera.aspect = w / h; camera.updateProjectionMatrix();
+    const halfH = 7.4, halfW = 23, tan = Math.tan(THREE.MathUtils.degToRad(camera.fov / 2));
+    orbit.base = Math.max(halfH / tan, halfW / (tan * camera.aspect)) * 1.04;
+    if (!orbit.dist) orbit.dist = orbit.base;
+  }
+  function placeCamera(t) {
+    const sway = reduceMotion ? 0 : Math.sin(t * 0.25) * (capture ? 0.02 : 0.06);
+    const yaw = orbit.yaw + sway, pitch = orbit.pitch + (reduceMotion ? 0 : Math.sin(t * 0.17) * 0.03);
+    const d = orbit.dist;
+    camera.position.set(target.x + d * Math.sin(yaw) * Math.cos(pitch), target.y + d * Math.sin(pitch), target.z + d * Math.cos(yaw) * Math.cos(pitch));
+    camera.lookAt(target);
+  }
+  let drag = null;
+  canvas.addEventListener('pointerdown', ev => { drag = { x: ev.clientX, y: ev.clientY, yaw: orbit.yaw, pitch: orbit.pitch }; canvas.setPointerCapture(ev.pointerId); });
+  canvas.addEventListener('pointermove', ev => { if (!drag) return; orbit.yaw = THREE.MathUtils.clamp(drag.yaw + (ev.clientX - drag.x) * 0.005, -1.1, 1.1); orbit.pitch = THREE.MathUtils.clamp(drag.pitch - (ev.clientY - drag.y) * 0.005, -0.8, 0.8); });
+  canvas.addEventListener('pointerup', () => { drag = null; });
+  canvas.addEventListener('pointercancel', () => { drag = null; });
+  canvas.addEventListener('wheel', ev => { ev.preventDefault(); orbit.dist = THREE.MathUtils.clamp(orbit.dist * (1 + ev.deltaY * 0.0012), orbit.base * 0.3, orbit.base * 1.6); }, { passive: false });
+  window.addEventListener('resize', fit);
+
+  // ---------- playback ----------
+  const speedEl = document.getElementById('speed');
+  let speed = Number(speedEl.value), sim = 0, last = performance.now(), holdUntil = 0, clockMs = 0;
+  speedEl.addEventListener('change', () => { speed = Number(speedEl.value); });
+  document.getElementById('replay').addEventListener('click', () => { sim = 0; holdUntil = 0; });
+
+  const el = id => document.getElementById(id);
+  const out = { r: { llm: el('r-llm'), tok: el('r-tok'), jev: el('r-jev'), cmd: el('r-cmd'), time: el('r-time'), dot: el('dot-r'), end: R.end }, j: { llm: el('j-llm'), tok: el('j-tok'), jev: el('j-jev'), cmd: el('j-cmd'), time: el('j-time'), dot: el('dot-j'), end: J.end } };
+  const fmtTime = s => Math.floor(s / 60) + ':' + String(Math.floor(s % 60)).padStart(2, '0');
+  const fmtTok = n => n >= 1000 ? (n / 1000).toFixed(1) + 'k' : String(Math.round(n));
+
+  function nodeState(n, t) {
+    if (!n.runs.length) return 'pending';
+    if (t >= n.runs[n.runs.length - 1].e) return 'done';
+    for (const r of n.runs) if (t >= r.s && t < r.e) return 'active';
+    return t >= n.runs[0].s ? 'done' : 'pending';
+  }
+
+  function update(t) {
+    const counts = { r: { llm: 0, tok: 0, jev: 0, cmd: 0 }, j: { llm: 0, tok: 0, jev: 0, cmd: 0 } };
+    const pulse = reduceMotion ? 1 : 1 + 0.12 * Math.sin(clockMs * 0.012);
+    for (const n of nodes) {
+      const st = nodeState(n, t);
+      if (st !== n.state) { n.state = st; n.sprite.material = mats[n.kind + st]; }
+      n.sprite.scale.setScalar(sizes[n.kind] * (st === 'active' ? pulse : 1));
+      const c = counts[n.lane];
+      for (const r of n.runs) {
+        if (t < r.s) break;
+        if (n.kind === 'llm') { c.llm++; c.tok += n.reason * Math.min(1, (t - r.s) / ((r.e - r.s) * 0.6)); }
+        else if (n.kind === 'bash') c.cmd++;
+        else if (n.kind === 'jev') c.jev++;
+      }
+    }
+    for (const e of edges) {
+      const runs = e.a.runs; if (!runs.length) continue;
+      const from = e.trigger === 'last' ? runs[runs.length - 1].e : runs[0].e;
+      const p = THREE.MathUtils.clamp((t - from) / 1.2, 0, 1);
+      if (p === e.progress) continue;
+      e.progress = p;
+      const col = e.colors, front = p * SEG;
+      for (let i = 0; i <= SEG; i++) {
+        const c = i < front ? (p < 1 ? cActive : cGreen) : cGrey;
+        col[i * 3] = c.r; col[i * 3 + 1] = c.g; col[i * 3 + 2] = c.b;
+      }
+      e.line.geometry.attributes.color.needsUpdate = true;
+    }
+    for (const lane of ['r', 'j']) {
+      const c = counts[lane], o = out[lane];
+      o.llm.textContent = c.llm; o.tok.textContent = fmtTok(c.tok); o.jev.textContent = c.jev; o.cmd.textContent = c.cmd;
+      o.time.textContent = fmtTime(Math.min(t, o.end));
+      o.dot.className = 'dot ' + (t >= o.end ? 'done' : t > 0 ? 'live' : '');
+    }
+  }
+
+  function frame(now) {
+    const dt = Math.min(0.1, (now - last) / 1000); last = now; clockMs = now;
+    const end = Math.max(R.end, J.end);
+    if (sim < end) sim = Math.min(end, sim + dt * speed);
+    else if (!holdUntil) holdUntil = now + 4000;
+    else if (now > holdUntil) { sim = 0; holdUntil = 0; }
+    update(sim);
+    placeCamera(now / 1000);
+    renderer.render(scene, camera);
+    requestAnimationFrame(frame);
+  }
+  fit();
+  if (capture) {
+    // deterministic frames: the recorder sets simulation time and wall-clock seconds, then screenshots
+    window.__frame = (simSeconds, realSeconds) => { sim = simSeconds; clockMs = realSeconds * 1000; fit(); update(sim); placeCamera(realSeconds); renderer.render(scene, camera); return sim; };
+    window.__ends = { regular: R.end, jive: J.end };
+    window.__ready = true;
+  } else {
+    requestAnimationFrame(frame);
+  }
+}
+(document.fonts ? document.fonts.ready : Promise.resolve()).then(main, main);
+</script>

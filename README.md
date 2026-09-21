@@ -6,7 +6,9 @@ I have been thinking that the current Agentic Loop design of LLM Call -> Tool Ca
 
 The agent should be able to do its hard reasoning using the power of modern LLMs, capture an execution graph filled with steps and fast intuitive decisions, and prevent it from making LLM calls for just to "follow through the plan". 
 
-> picture showing a visualization of a jive trace vs a regular trace
+![The same task as a regular coding agent's linear trace and as a Jive graph trace](docs/assets/trace-comparison.gif)
+
+> [Interactive version](docs/assets/trace-comparison.html): the same task as a regular agent's linear LLM → tool → LLM chain and as one Jive planner call whose graph runs bash nodes, Jev decisions, a foreach fan-out and bounded repeat loops. Open the file in a browser to watch the LLM-call and reasoning-token counters diverge.
 
 **Jive** replaces "Tool Calls" with "Graph Calls", where each graph is a DAG-based workflow compromising of Tool Calls and Jev Calls. The agent can do bulk evaluation / analysis of datasets, multi-step profiling, repetitive tasks very efficiently with System One decisions sprinkled in between. 
 
