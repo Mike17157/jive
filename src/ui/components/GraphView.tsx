@@ -9,10 +9,8 @@ import { dimHex, mixHex, palette } from "../theme.ts";
 const TICK_MS = 80;
 const BUILD_TICK_MS = 240;
 const BUILD_DOTS = ["   ", ".  ", ".. ", "..."];
-/** A graph under construction has no name yet, so the header turns these over instead. */
-export const BUILD_WORDS = ["Assembling", "Conducting", "Orchestrating", "Composing", "Arranging", "Wiring", "Plotting", "Weaving"];
-/** How long one word holds: long enough to read, short enough that the line keeps moving. */
-const BUILD_WORD_MS = 1600;
+/** A graph under construction has no name yet, so the header stands one of these in its place. */
+export const BUILD_WORDS = ["Assembling", "Conducting", "Composing", "Arranging", "Wiring", "Plotting", "Weaving"];
 /** Graphs of this many nodes or fewer are read directly; above it the progress counter earns its place. */
 const COUNTER_MIN_NODES = 5;
 
@@ -84,12 +82,15 @@ export function phaseCaption(graph: GraphModel): { text: string; color: string }
 }
 
 /**
- * The stand-in header for a graph that has not streamed its own label yet. Both cycles
- * run off the clock rather than the tick, so the words hold their pace whatever cadence
- * the surrounding animation is running at.
+ * The stand-in header for a graph that has not streamed its own label yet. The word is drawn
+ * from the graph's own id, so one build keeps the word it opened with however long it runs;
+ * only the dots move, and they run off the clock rather than the tick, so they hold their pace
+ * whatever cadence the surrounding animation is running at.
  */
-export function buildingTitle(now: number): string {
-  return BUILD_WORDS[Math.floor(now / BUILD_WORD_MS) % BUILD_WORDS.length]! + BUILD_DOTS[Math.floor(now / BUILD_TICK_MS) % BUILD_DOTS.length];
+export function buildingTitle(graphId: string, now: number): string {
+  let hash = 0;
+  for (let i = 0; i < graphId.length; i++) hash = (hash * 31 + graphId.charCodeAt(i)) >>> 0;
+  return BUILD_WORDS[hash % BUILD_WORDS.length]! + BUILD_DOTS[Math.floor(now / BUILD_TICK_MS) % BUILD_DOTS.length];
 }
 
 /** Header badge: how many files the run changed and by how much, e.g. "✎ 3 files +42 −7". */
@@ -210,7 +211,7 @@ export function GraphView(props: GraphViewProps) {
     .join(" · ");
   const graphDuration = graph.startedAt !== undefined ? formatDuration((graph.finishedAt ?? now) - graph.startedAt) : "";
   // Until the stream names the graph, its header cycles a word rather than sitting on a placeholder.
-  const heading = building && graph.label === BUILDING_LABEL ? buildingTitle(now) : graph.label;
+  const heading = building && graph.label === BUILDING_LABEL ? buildingTitle(graph.id, now) : graph.label;
   const title = truncate(heading, Math.max(8, width - 40));
   // Everything the title line carries after the title, measured so the badge can be the
   // first thing to go when the line is full: the files are named on the line below anyway.

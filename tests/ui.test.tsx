@@ -8,7 +8,7 @@ import { COMMANDS, filterCommands, parseComposerInput, slashQuery } from "../src
 import { EDGE_SWEEP_MS_PER_CELL, edgeCellState, foldableIds, groupSummary, gutterText, layoutGraph, layoutToText, sweepActive, visibleRows } from "../src/ui/graph/layout.ts";
 import { countStatuses, edgeReady, reduceGraphs, statusTone, type UIExecutionEvent } from "../src/ui/graph/model.ts";
 import { orbSize, orbToString, renderOrb } from "../src/ui/orb.ts";
-import { BUILD_WORDS, changeBadge, changeList, GraphView, toneColor } from "../src/ui/components/GraphView.tsx";
+import { BUILD_WORDS, buildingTitle, changeBadge, changeList, GraphView, toneColor } from "../src/ui/components/GraphView.tsx";
 import { BUILDING_LABEL } from "../src/core/graph-stream.ts";
 import { palette } from "../src/ui/theme.ts";
 
@@ -402,6 +402,9 @@ describe("graph presentation", () => {
     ]);
     expect(lines[0]).not.toContain(BUILDING_LABEL);
     expect(lines[0]).toMatch(new RegExp(`◌ (${BUILD_WORDS.join("|")})`));
+    // One build keeps the word it opened with: only the dots move while it runs.
+    const word = (id: string, now: number) => buildingTitle(id, now).trimEnd().replace(/\.+$/, "");
+    expect(word("unnamed", 0)).toBe(word("unnamed", 97_000));
     // The header carries the state on its own: no second line waiting on nodes.
     expect(lines.join("\n")).not.toContain("waiting for");
   });
