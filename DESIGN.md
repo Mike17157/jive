@@ -167,8 +167,10 @@ not exposed in the initial UI.
 Candidate presets checked against OpenRouter's public catalog on 2026-09-17:
 
 - `anthropic/claude-fable-5.1`
+- `anthropic/claude-opus-5.5`
 - `anthropic/claude-sonnet-5`
 - `openai/gpt-6-astra`
+- `openai/gpt-6-sol`
 - `openai/gpt-5.6-sol`
 - `google/gemini-3.1-pro-preview`
 - `google/gemini-3.8-flash`

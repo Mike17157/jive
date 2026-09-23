@@ -5,9 +5,10 @@ import type { ModelOption } from "../core/types.ts";
 
 export const CURATED_MODEL_IDS = [
   "anthropic/claude-fable-5.1",
-  "anthropic/claude-opus-5",
+  "anthropic/claude-opus-5.5",
   "anthropic/claude-sonnet-5",
   "openai/gpt-6-astra",
+  "openai/gpt-6-sol",
   "openai/gpt-5.6-sol",
   "google/gemini-3.1-pro-preview",
   "google/gemini-3.8-flash",
@@ -21,9 +22,10 @@ export type CuratedModelId = (typeof CURATED_MODEL_IDS)[number];
 
 const MODEL_NAMES: Record<CuratedModelId, string> = {
   "anthropic/claude-fable-5.1": "Claude Fable 5.1",
-  "anthropic/claude-opus-5": "Claude Opus 5",
+  "anthropic/claude-opus-5.5": "Claude Opus 5.5",
   "anthropic/claude-sonnet-5": "Claude Sonnet 5",
   "openai/gpt-6-astra": "GPT-6 Astra",
+  "openai/gpt-6-sol": "GPT-6 Sol",
   "openai/gpt-5.6-sol": "GPT-5.6 Sol",
   "google/gemini-3.1-pro-preview": "Gemini 3.1 Pro Preview",
   "google/gemini-3.8-flash": "Gemini 3.8 Flash",
