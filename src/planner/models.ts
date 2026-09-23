@@ -21,18 +21,18 @@ export const CURATED_MODEL_IDS = [
 export type CuratedModelId = (typeof CURATED_MODEL_IDS)[number];
 
 const MODEL_NAMES: Record<CuratedModelId, string> = {
-  "anthropic/claude-fable-5.1": "Claude Fable 5.1",
-  "anthropic/claude-opus-5.5": "Claude Opus 5.5",
-  "anthropic/claude-sonnet-5": "Claude Sonnet 5",
-  "openai/gpt-6-astra": "GPT-6 Astra",
-  "openai/gpt-6-sol": "GPT-6 Sol",
-  "openai/gpt-5.6-sol": "GPT-5.6 Sol",
-  "google/gemini-3.1-pro-preview": "Gemini 3.1 Pro Preview",
-  "google/gemini-3.8-flash": "Gemini 3.8 Flash",
-  "moonshotai/kimi-k3": "Kimi K3",
-  "meta/muse-spark-1.3": "Muse Spark 1.3",
-  "deepseek/deepseek-v4-pro-0813": "DeepSeek V4 Pro 0813",
-  "z-ai/glm-5.3": "GLM 5.3",
+  "anthropic/claude-fable-5.1": "Anthropic: Claude Fable 5.1",
+  "anthropic/claude-opus-5.5": "Anthropic: Claude Opus 5.5",
+  "anthropic/claude-sonnet-5": "Anthropic: Claude Sonnet 5",
+  "openai/gpt-6-astra": "OpenAI: GPT-6 Astra",
+  "openai/gpt-6-sol": "OpenAI: GPT-6 Sol",
+  "openai/gpt-5.6-sol": "OpenAI: GPT-5.6 Sol",
+  "google/gemini-3.1-pro-preview": "Google: Gemini 3.1 Pro Preview",
+  "google/gemini-3.8-flash": "Google: Gemini 3.8 Flash",
+  "moonshotai/kimi-k3": "MoonshotAI: Kimi K3",
+  "meta/muse-spark-1.3": "Meta: Muse Spark 1.3",
+  "deepseek/deepseek-v4-pro-0813": "DeepSeek: DeepSeek V4 Pro 0813",
+  "z-ai/glm-5.3": "Z.ai: GLM 5.3",
 };
 
 export const CURATED_MODELS: readonly ModelOption[] = CURATED_MODEL_IDS.map((id) => ({
