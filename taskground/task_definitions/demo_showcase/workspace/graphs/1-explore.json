@@ -1,0 +1,153 @@
+{
+  "version": 1,
+  "label": "Map how support_bot routes requests",
+  "context": {
+    "goal": "Find the code that decides where an incoming support request goes, and check whether it covers the intent taxonomy"
+  },
+  "limits": {
+    "concurrency": 6,
+    "maxJevCalls": 4,
+    "timeoutMs": 300000
+  },
+  "nodes": {
+    "modules": {
+      "type": "bash",
+      "label": "List modules",
+      "script": "sleep 0.6; find support_bot -name '*.py' | sort | xargs wc -l"
+    },
+    "functions": {
+      "type": "bash",
+      "label": "Search function definitions",
+      "script": "sleep 0.9; rg --json -n '^\\s*def ' support_bot"
+    },
+    "taxonomy": {
+      "type": "bash",
+      "label": "Read intent taxonomy",
+      "script": "sleep 0.5; cat support_bot/intents.json",
+      "outputFormat": "json"
+    },
+    "inbox": {
+      "type": "bash",
+      "label": "Peek at the inbox",
+      "script": "sleep 0.7; wc -l < data/inbox.jsonl; head -n 3 data/inbox.jsonl"
+    },
+    "entry": {
+      "type": "jev",
+      "label": "Pick the routing entry point",
+      "prepare": [
+        {
+          "use": "rg-matches",
+          "as": "defs",
+          "input": {
+            "$ref": "/nodes/functions/output/stdout"
+          }
+        }
+      ],
+      "state": {
+        "goal": {
+          "$ref": "/context/goal"
+        },
+        "modules": {
+          "$ref": "/nodes/modules/output/stdout"
+        },
+        "candidates": {
+          "$ref": "/prepared/defs/records"
+        }
+      },
+      "questions": {
+        "function": {
+          "type": "choice",
+          "instructions": "Which function decides the domain and intent that an incoming customer request is routed to? Choose none if no candidate does.",
+          "criteria": {
+            "$ref": "/prepared/defs/options"
+          }
+        }
+      },
+      "accept": {
+        "op": "ne",
+        "args": [
+          {
+            "$ref": "/answers/function/choice"
+          },
+          "none"
+        ]
+      },
+      "select": {
+        "function": {
+          "from": {
+            "$ref": "/prepared/defs/records"
+          },
+          "key": {
+            "$ref": "/answers/function/choice"
+          }
+        }
+      }
+    },
+    "router": {
+      "type": "bash",
+      "label": "Read the router",
+      "script": "sleep 0.4; cat \"$FILE\"",
+      "env": {
+        "FILE": {
+          "$ref": "/nodes/entry/output/selected/function/path"
+        }
+      }
+    },
+    "coverage": {
+      "type": "jev",
+      "label": "Judge taxonomy coverage",
+      "state": {
+        "router_source": {
+          "$ref": "/nodes/router/output/stdout"
+        },
+        "intent_taxonomy": {
+          "$ref": "/nodes/taxonomy/output/json"
+        }
+      },
+      "questions": {
+        "coverage": {
+          "type": "choice",
+          "instructions": "Can the router's rules produce every intent in the taxonomy, or are some intents unreachable?",
+          "criteria": {
+            "complete": "Every taxonomy intent has at least one routing rule",
+            "gaps": "Some taxonomy intents have no routing rule and can never be produced"
+          }
+        }
+      }
+    },
+    "gaps": {
+      "type": "bash",
+      "label": "List unrouted intents",
+      "when": {
+        "op": "eq",
+        "args": [
+          {
+            "$ref": "/nodes/coverage/output/answers/coverage/choice"
+          },
+          "gaps"
+        ]
+      },
+      "script": "sleep 0.5; python3 scripts/find_gaps.py"
+    },
+    "covered": {
+      "type": "bash",
+      "label": "Record full coverage",
+      "when": {
+        "op": "eq",
+        "args": [
+          {
+            "$ref": "/nodes/coverage/output/answers/coverage/choice"
+          },
+          "complete"
+        ]
+      },
+      "script": "echo 'router covers the full taxonomy'"
+    }
+  },
+  "returns": [
+    "entry",
+    "coverage",
+    "gaps",
+    "inbox"
+  ]
+}

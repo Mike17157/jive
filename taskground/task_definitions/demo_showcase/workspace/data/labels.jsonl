@@ -1,0 +1,12 @@
+{"id": "T-1041", "domain": "cards", "intent": "lost_or_stolen_card", "source_id": "dev-006"}
+{"id": "T-1042", "domain": "transfers", "intent": "cancel_transfer", "source_id": "dev-022"}
+{"id": "T-1043", "domain": "account", "intent": "passcode_forgotten", "source_id": "dev-018"}
+{"id": "T-1044", "domain": "cards", "intent": "card_swallowed", "source_id": "dev-062"}
+{"id": "T-1045", "domain": "transfers", "intent": "failed_transfer", "source_id": "dev-039"}
+{"id": "T-1046", "domain": "account", "intent": "terminate_account", "source_id": "dev-027"}
+{"id": "T-1047", "domain": "cards", "intent": "pin_blocked", "source_id": "dev-028"}
+{"id": "T-1048", "domain": "transfers", "intent": "transfer_into_account", "source_id": "dev-000"}
+{"id": "T-1049", "domain": "account", "intent": "lost_or_stolen_phone", "source_id": "dev-044"}
+{"id": "T-1050", "domain": "cards", "intent": "contactless_not_working", "source_id": "dev-054"}
+{"id": "T-1051", "domain": "transfers", "intent": "transfer_fee_charged", "source_id": "dev-067"}
+{"id": "T-1052", "domain": "account", "intent": "edit_personal_details", "source_id": "dev-041"}

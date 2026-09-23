@@ -1,0 +1,348 @@
+{
+  "version": 1,
+  "label": "Triage the support inbox with Jev",
+  "limits": {
+    "concurrency": 8,
+    "maxJevCalls": 60,
+    "timeoutMs": 600000
+  },
+  "templates": {
+    "ticket": {
+      "nodes": {
+        "triage": {
+          "type": "jev",
+          "label": "Triage domain",
+          "state": {
+            "request": {
+              "$ref": "/input/text"
+            }
+          },
+          "questions": {
+            "domain": {
+              "type": "choice",
+              "instructions": "Which support team should handle this banking customer request?",
+              "criteria": {
+                "cards": "Physical or virtual cards: loss, theft, delivery, activation, PIN, card payments failing",
+                "transfers": "Sending or receiving money between bank accounts, transfer status and transfer fees",
+                "account": "App login, identity verification, personal details, phone security, closing the account"
+              }
+            }
+          }
+        },
+        "cards_intent": {
+          "type": "jev",
+          "label": "Cards intent",
+          "when": {
+            "op": "eq",
+            "args": [
+              {
+                "$ref": "/nodes/triage/output/answers/domain/choice"
+              },
+              "cards"
+            ]
+          },
+          "state": {
+            "request": {
+              "$ref": "/input/text"
+            }
+          },
+          "questions": {
+            "intent": {
+              "type": "choice",
+              "instructions": "This cards support request must be assigned exactly one intent. Which intent best matches it?",
+              "criteria": {
+                "$ref": "/input/taxonomy/cards"
+              }
+            }
+          }
+        },
+        "cards_urgency": {
+          "type": "jev",
+          "label": "Cards urgency",
+          "when": {
+            "op": "eq",
+            "args": [
+              {
+                "$ref": "/nodes/triage/output/answers/domain/choice"
+              },
+              "cards"
+            ]
+          },
+          "state": {
+            "request": {
+              "$ref": "/input/text"
+            }
+          },
+          "questions": {
+            "urgency": {
+              "type": "score",
+              "instructions": "How urgently does this support request need a human response?",
+              "criteria": [
+                "Routine: an informational question that can wait",
+                "Today: the customer is blocked but no money or access is at risk",
+                "Urgent: money, card security or account access is at risk right now"
+              ]
+            }
+          }
+        },
+        "cards_save": {
+          "type": "bash",
+          "label": "Save cards ticket",
+          "when": {
+            "op": "eq",
+            "args": [
+              {
+                "$ref": "/nodes/triage/output/answers/domain/choice"
+              },
+              "cards"
+            ]
+          },
+          "allowFailedDependencies": true,
+          "stdin": {
+            "id": {
+              "$ref": "/input/id"
+            },
+            "text": {
+              "$ref": "/input/text"
+            },
+            "domain": {
+              "$ref": "/nodes/triage/output/answers/domain"
+            },
+            "intent": {
+              "$ref": "/nodes/cards_intent/output/answers/intent"
+            },
+            "urgency": {
+              "$ref": "/nodes/cards_urgency/output/answers/urgency"
+            }
+          },
+          "script": "sleep 0.6; python3 scripts/save_ticket.py"
+        },
+        "transfers_intent": {
+          "type": "jev",
+          "label": "Transfers intent",
+          "when": {
+            "op": "eq",
+            "args": [
+              {
+                "$ref": "/nodes/triage/output/answers/domain/choice"
+              },
+              "transfers"
+            ]
+          },
+          "state": {
+            "request": {
+              "$ref": "/input/text"
+            }
+          },
+          "questions": {
+            "intent": {
+              "type": "choice",
+              "instructions": "This transfers support request must be assigned exactly one intent. Which intent best matches it?",
+              "criteria": {
+                "$ref": "/input/taxonomy/transfers"
+              }
+            }
+          }
+        },
+        "transfers_urgency": {
+          "type": "jev",
+          "label": "Transfers urgency",
+          "when": {
+            "op": "eq",
+            "args": [
+              {
+                "$ref": "/nodes/triage/output/answers/domain/choice"
+              },
+              "transfers"
+            ]
+          },
+          "state": {
+            "request": {
+              "$ref": "/input/text"
+            }
+          },
+          "questions": {
+            "urgency": {
+              "type": "score",
+              "instructions": "How urgently does this support request need a human response?",
+              "criteria": [
+                "Routine: an informational question that can wait",
+                "Today: the customer is blocked but no money or access is at risk",
+                "Urgent: money, card security or account access is at risk right now"
+              ]
+            }
+          }
+        },
+        "transfers_save": {
+          "type": "bash",
+          "label": "Save transfers ticket",
+          "when": {
+            "op": "eq",
+            "args": [
+              {
+                "$ref": "/nodes/triage/output/answers/domain/choice"
+              },
+              "transfers"
+            ]
+          },
+          "allowFailedDependencies": true,
+          "stdin": {
+            "id": {
+              "$ref": "/input/id"
+            },
+            "text": {
+              "$ref": "/input/text"
+            },
+            "domain": {
+              "$ref": "/nodes/triage/output/answers/domain"
+            },
+            "intent": {
+              "$ref": "/nodes/transfers_intent/output/answers/intent"
+            },
+            "urgency": {
+              "$ref": "/nodes/transfers_urgency/output/answers/urgency"
+            }
+          },
+          "script": "sleep 0.6; python3 scripts/save_ticket.py"
+        },
+        "account_intent": {
+          "type": "jev",
+          "label": "Account intent",
+          "when": {
+            "op": "eq",
+            "args": [
+              {
+                "$ref": "/nodes/triage/output/answers/domain/choice"
+              },
+              "account"
+            ]
+          },
+          "state": {
+            "request": {
+              "$ref": "/input/text"
+            }
+          },
+          "questions": {
+            "intent": {
+              "type": "choice",
+              "instructions": "This account support request must be assigned exactly one intent. Which intent best matches it?",
+              "criteria": {
+                "$ref": "/input/taxonomy/account"
+              }
+            }
+          }
+        },
+        "account_urgency": {
+          "type": "jev",
+          "label": "Account urgency",
+          "when": {
+            "op": "eq",
+            "args": [
+              {
+                "$ref": "/nodes/triage/output/answers/domain/choice"
+              },
+              "account"
+            ]
+          },
+          "state": {
+            "request": {
+              "$ref": "/input/text"
+            }
+          },
+          "questions": {
+            "urgency": {
+              "type": "score",
+              "instructions": "How urgently does this support request need a human response?",
+              "criteria": [
+                "Routine: an informational question that can wait",
+                "Today: the customer is blocked but no money or access is at risk",
+                "Urgent: money, card security or account access is at risk right now"
+              ]
+            }
+          }
+        },
+        "account_save": {
+          "type": "bash",
+          "label": "Save account ticket",
+          "when": {
+            "op": "eq",
+            "args": [
+              {
+                "$ref": "/nodes/triage/output/answers/domain/choice"
+              },
+              "account"
+            ]
+          },
+          "allowFailedDependencies": true,
+          "stdin": {
+            "id": {
+              "$ref": "/input/id"
+            },
+            "text": {
+              "$ref": "/input/text"
+            },
+            "domain": {
+              "$ref": "/nodes/triage/output/answers/domain"
+            },
+            "intent": {
+              "$ref": "/nodes/account_intent/output/answers/intent"
+            },
+            "urgency": {
+              "$ref": "/nodes/account_urgency/output/answers/urgency"
+            }
+          },
+          "script": "sleep 0.6; python3 scripts/save_ticket.py"
+        }
+      }
+    }
+  },
+  "nodes": {
+    "load": {
+      "type": "bash",
+      "label": "Load inbox",
+      "script": "python3 -c 'import json,sys; print(json.dumps([json.loads(l) for l in open(\"data/inbox.jsonl\")]))'",
+      "outputFormat": "json"
+    },
+    "taxonomy": {
+      "type": "bash",
+      "label": "Load taxonomy",
+      "script": "cat support_bot/intents.json",
+      "outputFormat": "json"
+    },
+    "scoreboard": {
+      "type": "bash",
+      "label": "Score against labels",
+      "needs": [
+        "inbox"
+      ],
+      "script": "python3 scripts/scoreboard.py"
+    }
+  },
+  "groups": {
+    "inbox": {
+      "kind": "foreach",
+      "label": "Route each ticket",
+      "items": {
+        "$ref": "/nodes/load/output/json"
+      },
+      "input": {
+        "id": {
+          "$ref": "/item/id"
+        },
+        "text": {
+          "$ref": "/item/text"
+        },
+        "taxonomy": {
+          "$ref": "/nodes/taxonomy/output/json"
+        }
+      },
+      "template": "ticket",
+      "maxItems": 20,
+      "concurrency": 3,
+      "onItemFailure": "continue"
+    }
+  },
+  "returns": [
+    "scoreboard"
+  ]
+}

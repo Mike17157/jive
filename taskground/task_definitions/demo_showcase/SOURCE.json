@@ -1,0 +1,11 @@
+{
+  "demo": true,
+  "purpose": "Demo recording fixture, not a benchmark. No verifier.",
+  "data": {
+    "dataset": "BANKING77 (PolyAI), via taskground/task_definitions/intent_routing/workspace/data/dev.jsonl",
+    "license": "CC-BY-4.0",
+    "attribution": "Iñigo Casanueva et al., Efficient Intent Detection with Dual Sentence Encoders (2020), PolyAI",
+    "sampling": "12 hand-picked labeled dev requests, 4 per domain; source IDs are in workspace/data/labels.jsonl"
+  },
+  "support_bot": "Synthetic package written for this demo."
+}

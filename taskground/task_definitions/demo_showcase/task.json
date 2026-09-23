@@ -1,0 +1,7 @@
+{
+  "schemaVersion": 1,
+  "id": "demo_showcase",
+  "title": "Support inbox triage (demo)",
+  "description": "Scripted showcase for recording: replay an exploration graph and a Jev triage loop, then the agent writes a report graph. Not a benchmark.",
+  "estimatedCalls": 40
+}

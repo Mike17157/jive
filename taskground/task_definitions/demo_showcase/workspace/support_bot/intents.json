@@ -1,0 +1,32 @@
+{
+  "cards": {
+    "card_arrival": "A new or replacement card has not arrived yet, or the customer wants to track its delivery",
+    "activate_my_card": "The customer has received a card and wants to activate it",
+    "lost_or_stolen_card": "The customer's card is lost, missing or stolen",
+    "compromised_card": "Someone else may be using the card or it shows transactions the customer did not make",
+    "card_swallowed": "An ATM or cash machine kept or took the card",
+    "pin_blocked": "The card PIN is blocked after failed attempts and must be unblocked",
+    "card_not_working": "The card fails for unexplained reasons across payments",
+    "contactless_not_working": "Contactless or tap payments specifically stopped working"
+  },
+  "transfers": {
+    "transfer_into_account": "Moving money into this account from another bank account",
+    "cancel_transfer": "Stopping or reversing a transfer the customer already sent",
+    "failed_transfer": "The app reports that an outgoing transfer failed",
+    "pending_transfer": "An outgoing transfer is still shown as pending",
+    "transfer_timing": "How long transfers normally take to arrive",
+    "transfer_fee_charged": "The customer was charged a fee for making a transfer",
+    "beneficiary_not_allowed": "A transfer to a specific beneficiary or recipient is not permitted",
+    "transfer_not_received_by_recipient": "The recipient says a completed transfer never reached them"
+  },
+  "account": {
+    "passcode_forgotten": "The customer forgot the app password or passcode",
+    "edit_personal_details": "Changing name, address or other personal details",
+    "terminate_account": "Closing or deleting the account",
+    "lost_or_stolen_phone": "The phone with the banking app is lost or stolen",
+    "verify_my_identity": "How to complete identity verification",
+    "unable_to_verify_identity": "Identity verification keeps failing",
+    "why_verify_identity": "Why identity verification is required at all",
+    "age_limit": "Minimum age requirements for opening an account"
+  }
+}

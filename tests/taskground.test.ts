@@ -51,6 +51,11 @@ test("bundled tasks fit the allowance; dataset adaptations hide answer fields", 
   for (const task of tasks) {
     expect(task.estimatedCalls).toBeLessThanOrEqual(200);
     const source = await json(join(DEFINITIONS, task.id, "SOURCE.json"));
+    // Recording fixtures are not graded, so their labels may sit in the workspace.
+    if (source.demo === true) {
+      expect(task.verify).toBeUndefined();
+      continue;
+    }
     if (["async_blocking_audit", "error_handling_audit", "retry_audit"].includes(task.id)) {
       expect(task.verify).toBeDefined();
       continue;
