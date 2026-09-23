@@ -20,6 +20,16 @@ export interface BuildingGraph {
   callId?: string;
 }
 
+function isWholeObject(text: string): boolean {
+  if (!text.trimEnd().endsWith("}")) return false;
+  try {
+    const value: unknown = JSON.parse(text);
+    return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+  } catch {
+    return false;
+  }
+}
+
 /** UI previews and committed execution share one identity throughout a planner turn. */
 export class GraphBuildingRound {
   readonly states = new Map<number, BuildingGraph>();
@@ -52,6 +62,10 @@ export class GraphBuildingRound {
     }
     if (state.error) return;
     const fresh = delta.arguments.slice(state.length);
+    // Some providers (Gemini) deliver a finished call in one fragment, re-serialized with its keys
+    // in arbitrary order. Nothing was streamed, so validate it as a whole graph, like a replay,
+    // rather than committing entries and freezing settings in the order they happen to appear.
+    if (state.length === 0 && isWholeObject(fresh)) state.parser = new GraphStreamParser(false);
     state.length = delta.arguments.length;
     try {
       for (const update of state.parser.push(fresh)) {

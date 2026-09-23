@@ -190,9 +190,11 @@ user directly. The runtime owns concurrency within a graph. V1
 serializes separate graph invocations within one session even if
 a model emits multiple tool calls. Streamed execution is automatic: a fully closed
 node/group becomes an immutable commitment after validating its complete prefix.
-Settings and templates precede work; omitted settings use defaults, and dependencies
-point to already committed root entries. Requested returns may come last. Saved
-graph replay validates the complete graph before scheduling.
+Settings and templates precede work; omitted settings use defaults. An entry
+written before a root entry it depends on waits until that dependency commits.
+Requested returns may come last. Saved graph replay, and tool arguments a provider
+delivers in one fragment (Gemini re-serializes them with shuffled keys), validate
+the complete graph before scheduling.
 Incomplete JSON values never execute. See docs/README.md for the streaming contract.
 
 Sources: [model catalog](https://openrouter.ai/api/v1/models),

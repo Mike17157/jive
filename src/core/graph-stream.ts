@@ -1,4 +1,4 @@
-import { BUILDING_LABEL, defaultGraphLabel, repairGraph, strayEntryTarget, validateGraph } from "./schema";
+import { BUILDING_LABEL, defaultGraphLabel, pendingDependencies, repairGraph, strayEntryTarget, validateGraph } from "./schema";
 import type { Graph } from "./types";
 
 /** The header a graph carries until the stream names it; the UI cycles a word over it. */
@@ -77,6 +77,8 @@ export class GraphStreamParser {
   #rootValues = new Map<string, unknown>();
   #nodes = new Map<string, unknown>();
   #groups = new Map<string, unknown>();
+  /** "nodes/ID" or "groups/ID" of entries handed to execution; the rest wait for a dependency. */
+  #committed = new Set<string>();
   #workMaps = new Set<"nodes" | "groups">();
   #headerLocked = false;
   #headerValidated = false;
@@ -423,9 +425,8 @@ export class GraphStreamParser {
         if (this.#adoptStray(key, value)) {
           // Only work that arrives after the frozen header is a commitment; a stray entry
           // written before nodes begins stays a preview until the header is complete.
-          const commit = this.commitEntries && this.#headerLocked;
-          const graph = commit ? this.#commitGraph() : this.#previewGraph();
-          this.#updates.push({ kind: commit ? "commit" : "preview", graph: structuredClone(graph) });
+          if (this.commitEntries && this.#headerLocked) this.#commitReady();
+          else this.#updates.push({ kind: "preview", graph: structuredClone(this.#previewGraph()) });
           return;
         }
         this.#rootValues.set(key, value);
@@ -440,12 +441,32 @@ export class GraphStreamParser {
       const value = this.#parseSlice(start, end, path);
       const entries = path[0] === "nodes" ? this.#nodes : this.#groups;
       entries.set(path[1], value);
-      const graph = this.commitEntries ? this.#commitGraph() : this.#previewGraph();
-      this.#updates.push({
-        kind: this.commitEntries ? "commit" : "preview",
-        graph: structuredClone(graph),
-      });
+      if (this.commitEntries) this.#commitReady();
+      else this.#updates.push({ kind: "preview", graph: structuredClone(this.#previewGraph()) });
     }
+  }
+
+  /**
+   * Commit every received entry whose dependencies are already committed, repeating as each
+   * commitment unblocks others. An entry written before its dependency waits for it instead of
+   * failing; one whose dependency never arrives is rejected by the final whole-graph validation.
+   */
+  #commitReady(): void {
+    for (let key = this.#nextReady(); key !== undefined; key = this.#nextReady()) {
+      this.#committed.add(key);
+      this.#updates.push({ kind: "commit", graph: structuredClone(this.#commitGraph()) });
+    }
+  }
+
+  #nextReady(): string | undefined {
+    const committed = (id: string) => this.#committed.has(`nodes/${id}`) || this.#committed.has(`groups/${id}`);
+    for (const [namespace, entries] of [["nodes", this.#nodes], ["groups", this.#groups]] as const) {
+      for (const [id, value] of entries) {
+        const key = `${namespace}/${id}`;
+        if (!this.#committed.has(key) && pendingDependencies(value).every(committed)) return key;
+      }
+    }
+    return undefined;
   }
 
   #parseSlice(start: number, end: number, path: Path): unknown {
@@ -484,19 +505,23 @@ export class GraphStreamParser {
   }
 
   #buildGraph(commit: boolean): Graph {
+    // A commitment carries only committed entries; a preview shows everything received.
+    const entries = (namespace: "nodes" | "groups", received: Map<string, unknown>) =>
+      Object.fromEntries([...received].filter(([id]) => !commit || this.#committed.has(`${namespace}/${id}`)));
     const value: Record<string, unknown> = {
       version: this.#rootValues.has("version") ? this.#rootValues.get("version") : 1,
-      nodes: Object.fromEntries(this.#nodes),
+      nodes: entries("nodes", this.#nodes),
     };
     // A graph the model never named takes its title from its first node; until one arrives the
     // preview keeps the placeholder the UI animates. The commit path repairs this the same way.
+    // The first node received names it even while it waits, so the frozen header never changes.
     const label = this.#rootValues.get("label");
-    value.label = typeof label === "string" && label.trim() ? label : commit || this.#nodes.size ? defaultGraphLabel(value.nodes) : BUILDING_LABEL;
+    value.label = typeof label === "string" && label.trim() ? label : commit || this.#nodes.size ? defaultGraphLabel(Object.fromEntries(this.#nodes)) : BUILDING_LABEL;
     for (const [key, entry] of this.#rootValues) {
       if (key !== "version" && key !== "label" && key !== "returns") value[key] = entry;
     }
     if (this.#workMaps.has("groups") || this.#groups.size) {
-      value.groups = Object.fromEntries(this.#groups);
+      value.groups = entries("groups", this.#groups);
     }
     if (this.#rootValues.has("returns")) {
       const returns = this.#rootValues.get("returns");
@@ -506,7 +531,7 @@ export class GraphStreamParser {
         returns.every((id): id is string => typeof id === "string") &&
         new Set(returns).size === returns.length
       ) {
-        const known = new Set([...this.#nodes.keys(), ...this.#groups.keys()]);
+        const known = new Set([...Object.keys(value.nodes as object), ...Object.keys((value.groups ?? {}) as object)]);
         value.returns = returns.filter((id) => known.has(id));
       } else value.returns = returns;
     }

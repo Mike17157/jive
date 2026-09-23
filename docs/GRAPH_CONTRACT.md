@@ -20,11 +20,14 @@ decision.
 
 Each fully closed, validated root entry commits automatically while tool arguments
 stream. Write version, label, and any context, templates, limits or output before
-nodes/groups; omitted settings use defaults. Committed definitions are immutable,
-and dependencies must already exist in the committed prefix. Requested returns
-may come last. There is no eager option. Saved graph replay and non-streaming hosts
-validate the entire graph and permit forward references. See the streaming
-example and recovery behavior in [the overview](README.md).
+nodes/groups; omitted settings use defaults. Committed definitions are immutable.
+An entry commits once every root entry it depends on has committed; one written
+before its dependencies waits for them, and one whose dependency never arrives
+fails the final whole-graph validation. Requested returns may come last. There is
+no eager option. Saved graph replay, non-streaming hosts, and tool arguments that
+arrive in a single fragment validate the entire graph and permit forward
+references and any key order. Unset optional fields sent as null are dropped. See
+the streaming example and recovery behavior in [the overview](README.md).
 
 ## Saved graph replay
 

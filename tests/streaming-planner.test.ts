@@ -126,3 +126,51 @@ test("a node written past a closed nodes map is committed instead of ending the 
   expect(content.requested.second.output.stdout).toBe("second");
   expect(content.repairs).toEqual(["/second: moved into /nodes; the nodes map was closed before this definition. Send the corrected shape next time."]);
 });
+
+test("arguments delivered whole in arbitrary key order run as one validated graph", async () => {
+  const cwd = await mkdtemp(join(tmpdir(),"jev-stream-planner-")); dirs.push(cwd);
+  // Gemini's shape: an empty fragment, then the finished call re-serialized with shuffled keys,
+  // settings after nodes, a node before its dependencies, and an unset optional field as null.
+  const args = JSON.stringify({
+    returns:["summarize","chart","commit"],
+    nodes:{
+      commit:{when:null,needs:["report","chart"],type:"bash",script:"cat report chart > commit; printf committed"},
+      report:{needs:["summarize"],type:"bash",script:"cat summary > report"},
+      summarize:{type:"bash",script:"printf summary > summary"},
+      chart:{needs:["summarize"],type:"bash",script:"cat summary > chart"},
+    },
+    limits:{maxJevCalls:0}, version:1, label:"Publish and commit",
+  });
+  const bodies: any[] = [];
+  let executions = 0;
+  globalThis.fetch = (async (_input:unknown,init?:RequestInit) => {
+    bodies.push(JSON.parse(String(init?.body)));
+    if (bodies.length > 1) return new Response(new Uint8Array([
+      ...encode({choices:[{delta:{content:"Finished."},finish_reason:"stop"}]}),...encode("[DONE]"),
+    ]));
+    return new Response(new Uint8Array([
+      ...encode({choices:[{delta:{tool_calls:[{index:0,id:"call-whole",type:"function",function:{name:"execute_graph",arguments:""}}]}}]}),
+      ...encode({choices:[{delta:{tool_calls:[{index:0,function:{arguments:args}}]},finish_reason:"tool_calls"}]}),
+      ...encode("[DONE]"),
+    ]));
+  }) as unknown as typeof fetch;
+  const agent = new GraphAgentController({cwd,sessionId:"whole",model:"test/model",apiKey:"fixture",toolSchema:graphSchema,
+    supportsStreaming:true,getPluginCatalog:async()=>"",execute:async(graph,signal,onEvent,streaming)=>{
+      executions++;
+      return executeGraph(graph,{cwd,signal,...streaming,onEvent});
+    },
+  });
+  await agent.ready();
+  await agent.submit("Publish the report");
+
+  expect(agent.getSnapshot().error).toBeUndefined();
+  expect(executions).toBe(1);
+  expect(await readFile(join(cwd,"commit"),"utf8")).toBe("summarysummary");
+  const events = agent.getSnapshot().events;
+  expect(new Set(events.map(event=>event.graphId)).size).toBe(1);
+  expect(events.find(event=>event.type==="graph.building.finished")?.data.status).toBe("ready");
+  const content = JSON.parse(bodies[1].messages.find((message:any)=>message.role==="tool").content);
+  expect(content.status).toBe("done");
+  expect(content.requested.commit.output.stdout).toBe("committed");
+  expect(content.repairs).toEqual(["/nodes/commit/when: dropped null; leave out optional fields that are not set. Send the corrected shape next time."]);
+});

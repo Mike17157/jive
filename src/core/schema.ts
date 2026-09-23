@@ -65,6 +65,17 @@ export function dependencies(def: Node | Group): string[] {
     const match = /^\/(?:nodes|groups)\/([^/]+)/.exec(ref); return match ? [match[1]!] : [];
   })])];
 }
+
+/**
+ * Root entries a streamed definition must wait for, read after the same expression repairs a
+ * commit applies. Malformed input waits for nothing, so validation reports it immediately.
+ */
+export function pendingDependencies(value: unknown): string[] {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return [];
+  const entry = repairExpressions(value, "", []) as Node | Group;
+  if (entry.needs != null && !(Array.isArray(entry.needs) && entry.needs.every(id => typeof id === "string"))) return [];
+  return dependencies(entry);
+}
 type AjvError = NonNullable<typeof validate.errors>[number];
 
 function valueAt(root: unknown, pointer: string): unknown {
@@ -167,6 +178,17 @@ export function strayEntryTarget(key: string, value: unknown): "nodes" | "groups
   if (entry.kind === "foreach" || entry.kind === "repeat") return "groups";
   return undefined;
 }
+/** Optional fields whose schema never accepts null; unconstrained data fields such as stdin keep it. */
+function nullOmittable(properties: Record<string, object>, required: readonly string[] = []): string[] {
+  return Object.entries(properties).filter(([key, schema]) => !required.includes(key) && Object.keys(schema).length > 0).map(([key]) => key);
+}
+const ROOT_NULL_OMITTABLE: ReadonlySet<string> = new Set(nullOmittable(graphSchema.properties, graphSchema.required));
+const LIMITS_NULL_OMITTABLE: ReadonlySet<string> = new Set(nullOmittable(graphSchema.properties.limits.properties));
+const ENTRY_NULL_OMITTABLE: ReadonlySet<string> = new Set(
+  [...graphSchema.$defs.nodes.additionalProperties.oneOf, ...graphSchema.$defs.groups.additionalProperties.oneOf]
+    .flatMap((branch: { properties: Record<string, object>; required: string[] }) => nullOmittable(branch.properties, branch.required)),
+);
+
 /** Keys models use in place of $ref when a provider drops the schema descriptions. */
 const POINTER_ALIASES = new Set(["ref", "path", "pointer", "$path", "$pointer"]);
 /** A pointer into a graph namespace; a file path such as /src/index.ts never matches. */
@@ -212,13 +234,31 @@ export function defaultGraphLabel(nodes: unknown): string {
 /**
  * Normalize the mistakes that models on loosely-typed tool schemas make most: version sent as the
  * string "1", nodes/groups/templates/context sent as JSON-encoded strings, root fields written
- * inside the nodes map, and references spelled ref/path instead of $ref.
+ * inside the nodes map, references spelled ref/path instead of $ref, and unset optional fields
+ * sent as null.
  * Returns a copy; the original is untouched. Repairs are described for the tool result.
  */
 export function repairGraph(value: unknown): { value: unknown; repairs: string[] } {
   if (!value || typeof value !== "object" || Array.isArray(value)) return { value, repairs: [] };
   const repairs: string[] = [];
-  const graph: Record<string, unknown> = { ...(value as Record<string, unknown>) };
+  // Some providers (Gemini) fill unused optional parameters with null; there it means "not set".
+  const withoutNulls = (entry: unknown, fields: ReadonlySet<string>, path: string): unknown => {
+    if (!entry || typeof entry !== "object" || Array.isArray(entry)) return entry;
+    const record = entry as Record<string, unknown>;
+    const nulls = Object.keys(record).filter(key => record[key] === null && fields.has(key));
+    if (!nulls.length) return entry;
+    const copy = { ...record };
+    for (const key of nulls) {
+      delete copy[key];
+      repairs.push(`${path}/${key}: dropped null; leave out optional fields that are not set`);
+    }
+    return copy;
+  };
+  const entriesWithoutNulls = (map: unknown, path: string): unknown => map && typeof map === "object" && !Array.isArray(map)
+    ? Object.fromEntries(Object.entries(map).map(([id, entry]) => [id, withoutNulls(entry, ENTRY_NULL_OMITTABLE, `${path}/${id}`)]))
+    : map;
+  const graph: Record<string, unknown> = { ...(withoutNulls(value, ROOT_NULL_OMITTABLE, "") as Record<string, unknown>) };
+  if (graph.limits !== undefined) graph.limits = withoutNulls(graph.limits, LIMITS_NULL_OMITTABLE, "/limits");
   if (graph.version === "1") { graph.version = 1; repairs.push('/version: coerced the string "1" to the number 1'); }
   if (graph.version === undefined) { graph.version = 1; repairs.push("/version: missing; assumed the only contract version, 1"); }
   const parseEmbedded = (target: Record<string, unknown>, key: string, path: string) => {
@@ -258,11 +298,15 @@ export function repairGraph(value: unknown): { value: unknown; repairs: string[]
     for (const [name, body] of Object.entries(templates)) {
       if (!body || typeof body !== "object" || Array.isArray(body)) continue;
       const copy: Record<string, unknown> = { ...(body as Record<string, unknown>) };
-      for (const key of ["nodes", "groups"]) parseEmbedded(copy, key, `/templates/${name}/${key}`);
+      for (const key of ["nodes", "groups"]) {
+        parseEmbedded(copy, key, `/templates/${name}/${key}`);
+        if (copy[key] !== undefined) copy[key] = entriesWithoutNulls(copy[key], `/templates/${name}/${key}`);
+      }
       templates[name] = copy;
     }
     graph.templates = templates;
   }
+  for (const key of ["nodes", "groups"]) if (graph[key] !== undefined) graph[key] = entriesWithoutNulls(graph[key], `/${key}`);
   // context is data and may legitimately hold {path: ...}; only program text is rewritten.
   for (const key of ["nodes", "groups", "templates"]) if (graph[key] !== undefined) graph[key] = repairExpressions(graph[key], `/${key}`, repairs);
   if (typeof graph.label !== "string" || graph.label.trim() === "") {

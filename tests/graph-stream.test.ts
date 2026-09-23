@@ -210,7 +210,7 @@ describe("GraphStreamParser", () => {
       .toThrow('Duplicate nodes entry "collect"');
   });
 
-  test("preview-only hosts allow forward references but streaming commits reject them", () => {
+  test("preview-only hosts allow forward references and streaming commits wait for them", () => {
     const normalGraph = {
       version: 1,
       label: "normal forward reference",
@@ -225,9 +225,75 @@ describe("GraphStreamParser", () => {
     expect(previews[0]?.kind).toBe("preview");
     expect(normal.finish()).toEqual(normalGraph as any);
 
+    const eagerGraph = { ...streamHeader(["first", "later"]), nodes: normalGraph.nodes };
     const eager = new GraphStreamParser();
-    const eagerGraph = { ...streamHeader([]), nodes: normalGraph.nodes };
-    expect(() => eager.push(JSON.stringify(eagerGraph))).toThrow("Unknown dependency later");
+    const updates = feedByCharacter(eager, JSON.stringify(eagerGraph));
+    expect(updates.map(update => update.kind)).toEqual(["commit", "commit"]);
+    expect(Object.keys(updates[0]!.graph.nodes)).toEqual(["later"]);
+    expect(updates[0]!.graph.returns).toEqual(["later"]);
+    expect(Object.keys(updates[1]!.graph.nodes).sort()).toEqual(["first", "later"]);
+    expect(updates[1]!.graph.returns).toEqual(["first", "later"]);
+    expect(eager.finish()).toEqual(eagerGraph as any);
+  });
+
+  test("a waiting entry commits as soon as its last dependency does, through references and groups", () => {
+    const graph = {
+      ...streamHeader(["merge"]),
+      templates: { item: { nodes: { show: { type: "bash", script: "printf item" } } } },
+      nodes: {
+        merge: { type: "bash", stdin: { ref: "/groups/batch/output/items" }, needs: ["load"], script: "cat" },
+        load: { type: "bash", script: "printf '[]'", outputFormat: "json" },
+        unrelated: { type: "bash", script: "printf free" },
+      },
+      groups: {
+        batch: { kind: "foreach", items: { $ref: "/nodes/load/output/json" }, template: "item", maxItems: 5 },
+      },
+    };
+    const parser = new GraphStreamParser();
+    const updates = feedByCharacter(parser, JSON.stringify(graph));
+    const committed = updates.map(update => [...Object.keys(update.graph.nodes), ...Object.keys(update.graph.groups ?? {})]);
+    // merge waits for load and for the batch group its ref alias names; unrelated work is not held back.
+    expect(committed).toEqual([["load"], ["load", "unrelated"], ["load", "unrelated", "batch"], ["merge", "load", "unrelated", "batch"]]);
+    expect(parser.finish().nodes.merge).toMatchObject({ stdin: { $ref: "/groups/batch/output/items" } });
+  });
+
+  test("an unnamed graph keeps the name of its first node while that node waits", () => {
+    const graph = {
+      version: 1,
+      nodes: {
+        report: { type: "bash", needs: ["summarize"], script: "printf report" },
+        summarize: { type: "bash", script: "printf summary" },
+      },
+    };
+    const parser = new GraphStreamParser();
+    const updates = parser.push(JSON.stringify(graph));
+    expect(updates.map(update => update.graph.label)).toEqual(["printf report", "printf report"]);
+    expect(parser.finish().label).toBe("printf report");
+  });
+
+  test("an entry whose dependency never arrives fails the final validation, not the stream", () => {
+    const parser = new GraphStreamParser();
+    const updates = parser.push(`${JSON.stringify(streamHeader([])).slice(0, -1)},"nodes":{"a":{"type":"bash","needs":["missing"],"script":"never"},"b":{"type":"bash","script":"printf b"}}}`);
+    expect(updates.map(update => Object.keys(update.graph.nodes))).toEqual([["b"]]);
+    expect(() => parser.finish()).toThrow("Unknown dependency missing");
+
+    const cycle = new GraphStreamParser();
+    expect(cycle.push('{"version":1,"label":"x","nodes":{"a":{"type":"bash","needs":["b"],"script":"a"},"b":{"type":"bash","needs":["a"],"script":"b"}}}')).toEqual([]);
+    expect(() => cycle.finish()).toThrow("Dependency cycle");
+  });
+
+  test("a malformed entry is rejected as soon as it closes, even with unmet dependencies", () => {
+    const parser = new GraphStreamParser();
+    expect(() => parser.push('{"version":1,"label":"x","nodes":{"a":{"type":"bash","needs":"later","script":"a"}')).toThrow("Invalid graph");
+  });
+
+  test("an optional field sent as null commits without it", () => {
+    const parser = new GraphStreamParser();
+    const updates = parser.push('{"version":1,"label":"x","nodes":{"a":{"type":"bash","script":"printf a"},"b":{"when":null,"type":"bash","needs":["a"],"script":"printf b"}}}');
+    expect(updates.map(update => update.kind)).toEqual(["commit", "commit"]);
+    expect(updates[1]!.graph.nodes.b).toEqual({ type: "bash", needs: ["a"], script: "printf b" });
+    expect(parser.finish().nodes.b).toEqual({ type: "bash", needs: ["a"], script: "printf b" });
+    expect(parser.repairs).toEqual(["/nodes/b/when: dropped null; leave out optional fields that are not set"]);
   });
 
   test("repairs a string version in both eager commits and the final graph, and remembers what it changed", () => {

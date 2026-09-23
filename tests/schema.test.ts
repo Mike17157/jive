@@ -206,6 +206,33 @@ describe("repairGraph shapes seen in sessions", () => {
     expect(() => validateGraph(value)).not.toThrow();
   });
 
+  test("drops null from unset optional fields but keeps null as data", () => {
+    const raw = {
+      version: 1, label: "x", returns: null, groups: null, context: null,
+      limits: { concurrency: null, maxJevCalls: 0 },
+      nodes: { a: { ...bash, when: null, needs: null, label: null, stdin: null } },
+      templates: { t: { nodes: { b: { ...bash, onError: null } } } },
+    };
+    const { value, repairs } = repairGraph(raw) as { value: any; repairs: string[] };
+    expect(value).toEqual({
+      version: 1, label: "x", context: null, limits: { maxJevCalls: 0 },
+      nodes: { a: { ...bash, stdin: null } }, templates: { t: { nodes: { b: bash } } },
+    });
+    expect(repairs).toEqual([
+      "/returns: dropped null; leave out optional fields that are not set",
+      "/groups: dropped null; leave out optional fields that are not set",
+      "/limits/concurrency: dropped null; leave out optional fields that are not set",
+      "/templates/t/nodes/b/onError: dropped null; leave out optional fields that are not set",
+      "/nodes/a/when: dropped null; leave out optional fields that are not set",
+      "/nodes/a/needs: dropped null; leave out optional fields that are not set",
+      "/nodes/a/label: dropped null; leave out optional fields that are not set",
+    ]);
+    expect(raw.nodes.a.when).toBeNull();
+    expect(() => validateGraph(value)).not.toThrow();
+    // A required field stays invalid rather than being silently removed.
+    expect(rejection(repairGraph({ version: 1, label: "x", nodes: { a: { type: "bash", script: null } } }).value)).toContain("/nodes/a/script");
+  });
+
   test("parses a JSON-encoded context object but leaves plain text alone", () => {
     expect(repairGraph({ version: 1, label: "x", nodes: {}, context: '{"goal":"g"}' }).value).toMatchObject({ context: { goal: "g" } });
     expect(repairGraph({ version: 1, label: "x", nodes: {}, context: "testing" }).value).toMatchObject({ context: "testing" });
