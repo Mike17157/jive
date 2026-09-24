@@ -22,22 +22,22 @@ curl -fsSL https://raw.githubusercontent.com/merijjeyn/jive/main/install.sh | sh
 
 | Task | Agent | Time | Tool calls | LLM calls | Jev calls | Output tokens | Demo |
 |---|---|---|---|---|---|---|---|
-| `conversation_eval` | **Jive** | 3m 26s | 128 | 16 | 50 | 11,070 | [video](demos/edits/Jive%20vs%20Codex%20vs%20Claude%20-%20conversation_eval.mp4) |
+| `conversation_eval` | **Jive** | 3m 26s | 128 | 16 | 50 | 11,070 | [video](https://youtu.be/6ALYl0WVxTI) |
 |  | Codex | 29m 33s | 59 | 60 | 0 | 20,467 |  |
 |  | Claude Code | 16m 48s | 97 | 98 | 0 | 47,899 |  |
-| `error_handling_audit` | **Jive** | 3m 10s | 43 | 10 | 0 | 10,656 | [video](demos/edits/Jive%20vs%20Codex%20vs%20Claude%20-%20error_handling_audit.mp4) |
+| `error_handling_audit` | **Jive** | 3m 10s | 43 | 10 | 0 | 10,656 | [video](https://youtu.be/KForiYcq0CM) |
 |  | Codex | 19m 29s | 49 | 50 | 0 | 25,774 |  |
 |  | Claude Code | 5m 08s | 53 | 54 | 0 | 42,508 |  |
-| `product_matching` | **Jive** | 3m 03s | 299 | 9 | 140 | 8,921 | [video](demos/edits/Jive%20vs%20Codex%20vs%20Claude%20-%20product_matching.mp4) |
+| `product_matching` | **Jive** | 3m 03s | 299 | 9 | 140 | 8,921 | [video](https://youtu.be/g9j6arIXuD0) |
 |  | Codex | 22m 00s | 47 | 48 | 0 | 19,742 |  |
 |  | Claude Code | 32m 02s | 21 | 23 | 0 | 19,345 |  |
-| `search_latency` | **Jive** | 2m 00s | 13 | 8 | 0 | 9,568 | [video](demos/edits/Jive%20vs%20Codex%20vs%20Claude%20-%20search_latency.mp4) |
+| `search_latency` | **Jive** | 2m 00s | 13 | 8 | 0 | 9,568 | [video](https://youtu.be/XNU82NhMsIQ) |
 |  | Codex | 9m 00s | 17 | 18 | 0 | 12,793 |  |
 |  | Claude Code | 7m 18s | 36 | 37 | 0 | 51,356 |  |
-| `sembench_movie` | **Jive** | 1m 47s | 255 | 10 | 120 | 6,114 | [video](demos/edits/Jive%20vs%20Codex%20vs%20Claude%20-%20sembench_movie.mp4) |
+| `sembench_movie` | **Jive** | 1m 47s | 255 | 10 | 120 | 6,114 | [video](https://youtu.be/Jfd9PIt5MuE) |
 |  | Codex | 19m 58s | 41 | 42 | 0 | 10,334 |  |
 |  | Claude Code | 8m 51s | 13 | 14 | 0 | 15,723 |  |
-| `slow_trace_search` | **Jive** | 1m 41s | 12 | 7 | 0 | 5,719 | [video](demos/edits/Jive%20vs%20Codex%20vs%20Claude%20-%20slow_trace_search.mp4) |
+| `slow_trace_search` | **Jive** | 1m 41s | 12 | 7 | 0 | 5,719 | [video](https://youtu.be/KTsSLrOjY2Q) |
 |  | Codex | 6m 00s | 10 | 11 | 0 | 8,064 |  |
 |  | Claude Code | 3m 04s | 21 | 22 | 0 | 19,253 |  |
 

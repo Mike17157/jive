@@ -10,7 +10,7 @@ dist/
 .DS_Store
 __pycache__/
 
-# Screen recordings and rendered demo videos are too large for git.
+# Raw recordings and rendered demos are hosted outside git.
 demos/source/
 demos/edits/
 
