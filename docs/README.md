@@ -84,6 +84,15 @@ that use `jev` decision nodes; bash-only graphs run without it. Defaults are
 `google/gemini-3.8-flash` for planning and `jev-1.13.0` for decisions, both
 overridable with `OPENROUTER_MODEL` and `JEV_MODEL`.
 
+Selecting an `anthropic/claude-*` model normally routes through OpenRouter like
+any other model. If `ANTHROPIC_OAUTH_TOKEN` or `ANTHROPIC_API_KEY` is also set,
+Jive calls Anthropic's API directly instead, skipping OpenRouter for that model
+entirely — `ANTHROPIC_OAUTH_TOKEN` is checked first. A token from `claude
+setup-token` (a Claude Code subcommand) bills against your Claude subscription
+rather than pay-per-token API pricing. See
+[Working directory and credentials](USAGE.md#working-directory-and-credentials)
+for details.
+
 The UI has a bottom composer, a conversation that grows upward, and live graph
 rows that turn green as nodes finish. Type `/` for commands (`/model`,
 `/effort`, `/resume`, `/pin`, `/new`), Ctrl+G to inspect a graph, and Ctrl+O

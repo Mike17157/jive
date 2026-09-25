@@ -52,10 +52,22 @@ import {
 import {
   OpenRouterClient,
   OpenRouterError,
+  type CompleteOptions,
   type OpenRouterCompletion,
   type OpenRouterUsage,
   type RetryPolicy,
 } from "./openrouter.ts";
+import {
+  AnthropicClient,
+  AnthropicError,
+  isDirectAnthropicModel,
+  resolveAnthropicCredential,
+} from "./anthropic.ts";
+
+/** Either transport can serve a planner request; agent.ts picks one per model. */
+interface PlannerClient {
+  complete(options: CompleteOptions): Promise<OpenRouterCompletion>;
+}
 
 export interface AgentOptions {
   cwd: string;
@@ -235,6 +247,7 @@ export class GraphAgentController implements AgentController {
   #listeners = new Set<() => void>();
   #abort?: AbortController;
   #client?: OpenRouterClient;
+  #anthropicClient?: AnthropicClient;
   #apiKey?: string;
   #ready: Promise<void>;
   #sideEffects: Promise<unknown> = Promise.resolve();
@@ -267,6 +280,10 @@ export class GraphAgentController implements AgentController {
       phase: "idle",
     };
     if (this.#apiKey) this.#client = new OpenRouterClient({ apiKey: this.#apiKey, ...(this.options.retry ? { retry: this.options.retry } : {}) });
+    const anthropicCredential = resolveAnthropicCredential();
+    if (anthropicCredential) {
+      this.#anthropicClient = new AnthropicClient({ credential: anthropicCredential, ...(this.options.retry ? { retry: this.options.retry } : {}) });
+    }
     this.#ready = this.#initialize().catch((error) => {
       this.#update({ error: `Could not restore session: ${errorMessage(error)}` });
     });
@@ -326,10 +343,12 @@ export class GraphAgentController implements AgentController {
       this.#scheduleAutoName(requestStore);
       return;
     }
-    if (!this.#apiKey || !this.#client) {
+    if (!this.#clientFor(this.#snapshot.model)) {
       await this.store.appendMessage({ role: "user", content: input }, chatId);
       await this.#fail(
-        "OpenRouter API key is missing. Set OPENROUTER_API_KEY or pass apiKey to createAgent(), then restart or create a new controller.",
+        isDirectAnthropicModel(this.#snapshot.model)
+          ? "No credentials for this model. Set ANTHROPIC_OAUTH_TOKEN or ANTHROPIC_API_KEY to call Anthropic directly, or OPENROUTER_API_KEY to route through OpenRouter."
+          : "OpenRouter API key is missing. Set OPENROUTER_API_KEY or pass apiKey to createAgent(), then restart or create a new controller.",
       );
       this.#scheduleAutoName(requestStore);
       return;
@@ -354,7 +373,9 @@ export class GraphAgentController implements AgentController {
           ? "Planner context is over capacity"
           : error instanceof OpenRouterError
             ? "OpenRouter error"
-            : "Planner error";
+            : error instanceof AnthropicError
+              ? "Anthropic error"
+              : "Planner error";
         await this.#fail(`${prefix}: ${errorMessage(error)}`, error);
       }
     } finally {
@@ -854,6 +875,7 @@ export class GraphAgentController implements AgentController {
       let streamed = false;
       let reasoned = false;
       let completion: OpenRouterCompletion;
+      const client = this.#clientFor(model)!;
       const building = new GraphBuildingRound({
         store: requestStore, signal, execute: this.options.execute,
         supportsStreaming: this.options.supportsStreaming,
@@ -866,7 +888,7 @@ export class GraphAgentController implements AgentController {
         },
       });
       try {
-        completion = await this.#client!.complete({
+        completion = await client.complete({
           model,
           sessionId: requestStore.sessionId,
           messages: prepared.messages,
@@ -1231,6 +1253,12 @@ export class GraphAgentController implements AgentController {
     })();
   }
 
+  /** Anthropic direct, when credentialed and selected; OpenRouter otherwise, unchanged. */
+  #clientFor(model: string): PlannerClient | undefined {
+    if (isDirectAnthropicModel(model) && this.#anthropicClient) return this.#anthropicClient;
+    return this.#client;
+  }
+
   #contextLimit(model: string, models: readonly ModelOption[]): number {
     return models.find((option) => option.id === model)?.contextLength ?? DEFAULT_CONTEXT_LIMIT;
   }
@@ -1276,12 +1304,11 @@ export class GraphAgentController implements AgentController {
   async #fail(message: string, cause?: unknown): Promise<void> {
     this.#update({ error: message });
     await this.#notice(message);
+    const transportError = cause instanceof OpenRouterError || cause instanceof AnthropicError ? cause : undefined;
     await this.store.append("transport.error", {
       message,
-      ...(cause instanceof OpenRouterError && cause.status ? { status: cause.status } : {}),
-      ...(cause instanceof OpenRouterError && cause.details !== undefined
-        ? { details: cause.details }
-        : {}),
+      ...(transportError?.status ? { status: transportError.status } : {}),
+      ...(transportError?.details !== undefined ? { details: transportError.details } : {}),
     });
   }
 
