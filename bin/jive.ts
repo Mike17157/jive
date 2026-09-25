@@ -4,7 +4,8 @@
 // up the latest changes without a separate build step.
 import { existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
-import { dirname, join, resolve } from "node:path";
+import { join, resolve } from "node:path";
+import { envSearchPaths } from "../src/core/env-file.ts";
 
 const repoRoot = resolve(import.meta.dir, "..");
 
@@ -12,14 +13,8 @@ const repoRoot = resolve(import.meta.dir, "..");
 // still unset from .env files up the tree, then from the jive checkout, so credentials
 // keep working when the agent is launched from a taskground folder.
 async function loadEnvFallbacks() {
-  const directories: string[] = [];
-  for (let dir = process.cwd(); ; dir = dirname(dir)) { directories.push(dir); if (dirname(dir) === dir) break; }
-  directories.push(repoRoot);
-  const seen = new Set<string>();
-  for (const directory of directories) {
-    const path = join(directory, ".env");
-    if (seen.has(path) || !existsSync(path)) continue;
-    seen.add(path);
+  for (const path of envSearchPaths(process.cwd(), repoRoot)) {
+    if (!existsSync(path)) continue;
     for (const line of (await readFile(path, "utf8")).split("\n")) {
       const match = /^\s*(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*)$/.exec(line);
       if (!match) continue;

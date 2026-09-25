@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 import { parseArgs } from "node:util";
-import { readFile } from "node:fs/promises";
+import { readFile, writeFile } from "node:fs/promises";
 import { resolve, join } from "node:path";
 import { executeGraph } from "./core/executor";
 import { graphSchema } from "./core/schema";
@@ -11,6 +11,10 @@ import { JevClient } from "./jev/client";
 import { createDemoController, demoGraph, FixtureJev } from "./demo";
 import { CURATED_MODELS, fetchOpenRouterModelCatalog, saveModelCatalog } from "./planner/models";
 import { listSessions, resolveSessionReference } from "./session/index";
+import { runClaudeSetupToken } from "./planner/anthropic-auth";
+import { resolveEnvFileForWrite, upsertEnvVariable } from "./core/env-file";
+
+const repoRoot = resolve(import.meta.dir, "..");
 
 const {values,positionals}=parseArgs({args:process.argv.slice(2),allowPositionals:true,options:{
   help:{type:"boolean",short:"h"},version:{type:"boolean",short:"v"},demo:{type:"boolean"},headless:{type:"boolean"},json:{type:"boolean"},
@@ -37,6 +41,7 @@ async function main(){
   jive --schema                     Print execute_graph JSON Schema
   jive --version                    Print the installed version
   jive update                       Pull the latest sources (git installs)
+  jive auth                         Run "claude setup-token" and save it to .env
 
 Options: --cwd DIR --model ID --effort LEVEL --json --headless --prompt TEXT --prefill TEXT
 --prompt submits immediately. --prefill fills the interactive composer without submitting.
@@ -45,9 +50,20 @@ Interactive commands: /resume [ID], /sessions, /name TEXT, /rename TEXT,
 The agent works in the current directory: AGENTS.md, .jev/extractors and
 .jev/sessions are read and written there. Override with --cwd DIR.
 See README.md for keys.
-Credentials: OPENROUTER_API_KEY and JEV_API_TOKEN, from .env in the working
-directory (searched upward) or the jive checkout. Install: see README.md.
+Credentials: OPENROUTER_API_KEY and JEV_API_TOKEN, plus optional
+ANTHROPIC_OAUTH_TOKEN or ANTHROPIC_API_KEY to call anthropic/claude-* models
+directly ("jive auth" sets the OAuth token for you) — from .env in the
+working directory (searched upward) or the jive checkout. Install: see
+README.md.
 `);return;}
+  if(positionals[0]==="auth"){
+    const token=await runClaudeSetupToken();
+    const envPath=resolveEnvFileForWrite(cwd,repoRoot);
+    const existing=await readFile(envPath,"utf8").catch(()=>"");
+    await writeFile(envPath,upsertEnvVariable(existing,"ANTHROPIC_OAUTH_TOKEN",token));
+    console.log(`Saved ANTHROPIC_OAUTH_TOKEN to ${envPath}`);
+    return;
+  }
   if(values.prefill!==undefined && (values.headless || values.run || values.prompt!==undefined || positionals.length))throw new Error("--prefill is interactive-only and cannot be combined with --prompt, positional prompts, --headless, or --run");
   if(values.schema){console.log(JSON.stringify(graphSchema,null,2));return;}
   if(values["refresh-models"]){const catalog=await fetchOpenRouterModelCatalog({signal:AbortSignal.timeout(15000)});await saveModelCatalog(cwd,catalog);console.log(`Saved ${catalog.models.length} tool-capable models.`);return;}
