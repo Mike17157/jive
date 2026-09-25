@@ -23,6 +23,11 @@ sequential where their data dependencies require it.
 
 - Use OpenRouter for the main planning LLM.
 - Offer a choice of leading models rather than binding the agent to one model.
+- `anthropic/claude-*` selections may instead call Anthropic's Messages API
+  directly, bypassing OpenRouter, when `ANTHROPIC_OAUTH_TOKEN` or
+  `ANTHROPIC_API_KEY` is configured (`ANTHROPIC_OAUTH_TOKEN` takes precedence).
+  This is additive: every model keeps routing through OpenRouter by default.
+  See [docs/USAGE.md](docs/USAGE.md#working-directory-and-credentials).
 
 ### Implementation stack
 

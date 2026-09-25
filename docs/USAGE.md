@@ -17,14 +17,28 @@ further up the tree, and finally the `.env` in the Jive checkout. A project can
 therefore override the global keys with its own `.env`.
 
 ```dotenv
-OPENROUTER_API_KEY=...   # planner model
-JEV_API_TOKEN=...        # Jev decision service, used by `jev` nodes
-OPENROUTER_MODEL=...     # optional; default google/gemini-3.8-flash
-JEV_MODEL=...            # optional; default jev-1.13.0
+OPENROUTER_API_KEY=...     # planner model
+JEV_API_TOKEN=...          # Jev decision service, used by `jev` nodes
+OPENROUTER_MODEL=...       # optional; default google/gemini-3.8-flash
+JEV_MODEL=...              # optional; default jev-1.13.0
+ANTHROPIC_OAUTH_TOKEN=...  # optional; call Anthropic directly for anthropic/claude-* models
+ANTHROPIC_API_KEY=...      # optional; fallback for the same direct path
 ```
 
 Changing models is explicit, in the UI or with `--model`. There is no automatic
 model fallback.
+
+An `anthropic/claude-*` selection normally routes through OpenRouter, same as
+every other model. Setting `ANTHROPIC_OAUTH_TOKEN` or `ANTHROPIC_API_KEY` adds a
+second path: Jive calls `api.anthropic.com` directly for that model instead,
+bypassing OpenRouter entirely (neither variable is read for any other model).
+`ANTHROPIC_OAUTH_TOKEN` is checked first; `ANTHROPIC_API_KEY` is the fallback —
+the same precedence and variable names Claude Code itself uses. Generate an
+OAuth token with `claude setup-token` (a Claude Code subcommand that requires a
+Claude subscription) to bill Jive's planner calls against that subscription
+instead of pay-per-token API pricing; `ANTHROPIC_API_KEY` is a regular
+pay-per-token Anthropic API key. Reasoning effort maps to the same explicit
+thinking budgets on both paths.
 
 At session creation, Jive snapshots the working directory's `AGENTS.md` into the
 system prompt and persists the snapshot with the session. Edits to the file take
