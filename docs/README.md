@@ -89,7 +89,8 @@ any other model. If `ANTHROPIC_OAUTH_TOKEN` or `ANTHROPIC_API_KEY` is also set,
 Jive calls Anthropic's API directly instead, skipping OpenRouter for that model
 entirely — `ANTHROPIC_OAUTH_TOKEN` is checked first. A token from `claude
 setup-token` (a Claude Code subcommand) bills against your Claude subscription
-rather than pay-per-token API pricing. See
+rather than pay-per-token API pricing; `jive auth` runs that command and saves
+the token for you. See
 [Working directory and credentials](USAGE.md#working-directory-and-credentials)
 for details.
 
@@ -163,6 +164,7 @@ jive --models | --refresh-models  List or refresh planner models
 jive --schema                     Print the execute_graph JSON Schema
 jive --cwd DIR --model ID         Override the working directory or model
 jive update                       Pull the latest sources (git installs)
+jive auth                         Run `claude setup-token` and save it to .env
 jive --version
 ```
 
