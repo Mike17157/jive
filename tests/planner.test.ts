@@ -654,7 +654,13 @@ describe("OpenRouter planner", () => {
     process.env.ANTHROPIC_API_KEY = "sk-ant-test";
     const urls: string[] = [];
     globalThis.fetch = (async (input: RequestInfo | URL) => {
-      urls.push(String(input));
+      const url = String(input);
+      urls.push(url);
+      // Switching /provider to anthropic also refreshes the (now Anthropic-sourced) model
+      // catalog in the background; give that GET its own JSON response.
+      if (url.startsWith("https://api.anthropic.com/v1/models")) {
+        return new Response(JSON.stringify({ data: [] }), { status: 200, headers: { "Content-Type": "application/json" } });
+      }
       return new Response([
         { type: "message_start", message: { usage: { input_tokens: 10 } } },
         { type: "content_block_start", index: 0, content_block: { type: "text" } },
@@ -671,11 +677,110 @@ describe("OpenRouter planner", () => {
       await controller.ready();
       controller.setProvider("anthropic");
       await controller.submit("hello");
-      expect(urls[0]).toBe("https://api.anthropic.com/v1/messages");
+      expect(urls).toContain("https://api.anthropic.com/v1/messages");
+      expect(controller.getSnapshot().messages.at(-1)?.text).toBe("hi");
       expect(controller.getSnapshot().error).toBeUndefined();
     } finally {
       if (saved.apiKey === undefined) delete process.env.ANTHROPIC_API_KEY; else process.env.ANTHROPIC_API_KEY = saved.apiKey;
     }
+  });
+
+  test("/provider anthropic narrows the model list to Anthropic's own catalog, refreshed automatically on switch", async () => {
+    const cwd = await makeCwd();
+    const saved = { apiKey: process.env.ANTHROPIC_API_KEY };
+    process.env.ANTHROPIC_API_KEY = "sk-ant-test";
+    let resolveModelsFetch: () => void;
+    const modelsFetched = new Promise<void>((resolve) => { resolveModelsFetch = resolve; });
+    globalThis.fetch = (async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.startsWith("https://api.anthropic.com/v1/models")) {
+        resolveModelsFetch();
+        return new Response(JSON.stringify({
+          data: [{ id: "claude-sonnet-5", display_name: "Claude Sonnet 5", capabilities: { thinking: { supported: true } } }],
+          has_more: false,
+        }), { status: 200 });
+      }
+      throw new Error(`unexpected fetch: ${url}`);
+    }) as unknown as typeof fetch;
+    try {
+      const controller = new GraphAgentController({
+        cwd, model: "openai/gpt-6-astra", sessionId: "anthropic-catalog-narrow-test", apiKey: "test-key", toolSchema,
+        getPluginCatalog: async () => "", execute: async () => { throw new Error("no graph expected"); },
+      });
+      await controller.ready();
+      expect(controller.getSnapshot().models.map((model) => model.id)).toContain("openai/gpt-6-astra");
+      // No explicit /model or --refresh-models call in between: switching /provider alone
+      // must be enough to swap the catalog source, following the same opt-in refresh path
+      // /effort's picker already uses rather than a second trigger.
+      controller.setProvider("anthropic");
+      await modelsFetched;
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      const models = controller.getSnapshot().models.map((model) => model.id);
+      expect(models).toEqual(["anthropic/claude-sonnet-5"]);
+      expect(models).not.toContain("openai/gpt-6-astra");
+    } finally {
+      if (saved.apiKey === undefined) delete process.env.ANTHROPIC_API_KEY; else process.env.ANTHROPIC_API_KEY = saved.apiKey;
+    }
+  });
+
+  test("switching /provider back to auto restores the full OpenRouter-sourced catalog", async () => {
+    const cwd = await makeCwd();
+    const saved = { apiKey: process.env.ANTHROPIC_API_KEY };
+    process.env.ANTHROPIC_API_KEY = "sk-ant-test";
+    let resolveFetch: () => void;
+    let awaited = new Promise<void>((resolve) => { resolveFetch = resolve; });
+    let mode: "anthropic" | "openrouter" = "anthropic";
+    globalThis.fetch = (async (input: RequestInfo | URL) => {
+      const url = String(input);
+      resolveFetch();
+      if (mode === "anthropic") {
+        expect(url).toStartWith("https://api.anthropic.com/v1/models");
+        return new Response(JSON.stringify({ data: [{ id: "claude-sonnet-5" }], has_more: false }), { status: 200 });
+      }
+      expect(url).toStartWith("https://openrouter.ai/api/v1/models");
+      return new Response(JSON.stringify({ data: [] }), { status: 200 });
+    }) as unknown as typeof fetch;
+    try {
+      const controller = new GraphAgentController({
+        cwd, model: "anthropic/claude-sonnet-5", sessionId: "provider-switch-back-test", apiKey: "test-key", toolSchema,
+        getPluginCatalog: async () => "", execute: async () => { throw new Error("no graph expected"); },
+      });
+      await controller.ready();
+      controller.setProvider("anthropic");
+      await awaited;
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      expect(controller.getSnapshot().models.map((model) => model.id)).toEqual(["anthropic/claude-sonnet-5"]);
+
+      mode = "openrouter";
+      awaited = new Promise((resolve) => { resolveFetch = resolve; });
+      controller.setProvider("auto");
+      await awaited;
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      const restored = controller.getSnapshot().models.map((model) => model.id);
+      expect(restored).toContain("openai/gpt-6-astra");
+      expect(restored.length).toBeGreaterThan(1);
+    } finally {
+      if (saved.apiKey === undefined) delete process.env.ANTHROPIC_API_KEY; else process.env.ANTHROPIC_API_KEY = saved.apiKey;
+    }
+  });
+
+  test("/provider openrouter and /provider auto both keep the full OpenRouter-sourced catalog without an extra refresh", async () => {
+    const cwd = await makeCwd();
+    let fetchCalls = 0;
+    globalThis.fetch = (async () => {
+      fetchCalls += 1;
+      return answerResponse();
+    }) as unknown as typeof fetch;
+    const controller = new GraphAgentController({
+      cwd, model: "openai/gpt-6-astra", sessionId: "provider-openrouter-no-refresh-test", apiKey: "test-key", toolSchema,
+      getPluginCatalog: async () => "", execute: async () => { throw new Error("no graph expected"); },
+    });
+    await controller.ready();
+    const before = controller.getSnapshot().models.map((model) => model.id);
+    controller.setProvider("openrouter");
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    expect(fetchCalls).toBe(0); // openrouter and auto share the same catalog source: no refresh needed
+    expect(controller.getSnapshot().models.map((model) => model.id)).toEqual(before);
   });
 
   test("an anthropic/claude-* model still routes through OpenRouter when no Anthropic credential is configured", async () => {

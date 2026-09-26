@@ -58,6 +58,23 @@ The choice only affects `anthropic/claude-*` models — every other model always
 routes through OpenRouter. It persists with the session, the same as `/model`
 and `/effort`.
 
+`/model`'s list tracks the same choice, since the picker should only ever name
+models the active provider is actually about to call:
+
+| Choice | Model list |
+| --- | --- |
+| `auto` (default) | OpenRouter's full curated/refreshed catalog — auto can still route any model |
+| `openrouter` | The same OpenRouter-sourced catalog |
+| `anthropic` | Anthropic's own model list, queried directly from `api.anthropic.com/v1/models` and narrowed to what it actually serves |
+
+Switching `/provider` into or out of `anthropic` refreshes the list through the
+same opt-in network call `/effort`'s picker already makes when a model's
+metadata is unknown — there is no separate refresh step to remember. Anthropic's
+own catalog is cached at `.jev/anthropic-models.json`, alongside OpenRouter's at
+`.jev/openrouter-models.json`; `--refresh-models --provider anthropic` refreshes
+that cache directly from the command line (`--refresh-models` alone still
+refreshes OpenRouter's).
+
 Run `jive auth claude` instead of `claude setup-token` directly to skip the
 hand-copy: it runs the same interactive sign-in (still opens a browser and
 still asks you to paste a code if the browser can't redirect back), then
@@ -92,7 +109,7 @@ Type `/` for a searchable command selector.
 
 | Command | Effect |
 | --- | --- |
-| `/model` | Choose the planner model |
+| `/model` | Choose the planner model; type to filter the list by name or id, the list itself is scoped to the active `/provider` |
 | `/effort [LEVEL]` | Reasoning effort slider, or set directly (`low`, `medium`, `high`, `xhigh`, `auto`) |
 | `/provider [CHOICE]` | Force which backend serves anthropic/claude-* calls (`auto`, `anthropic`, `openrouter`) |
 | `/new`, `/clear` | Cancel active work and start a fresh session with the same model and effort |
@@ -189,6 +206,7 @@ jive --run examples/investigate.json --json
 jive --demo --headless --json
 jive --models
 jive --refresh-models
+jive --refresh-models --provider anthropic
 jive --schema
 jive --version
 ```
