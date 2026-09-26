@@ -213,6 +213,13 @@ export class SessionStore {
       : undefined;
   }
 
+  latestProvider(): string | undefined {
+    const selected = this.#events.findLast((event) => event.type === "provider.selected");
+    return selected && typeof selected.data.provider === "string"
+      ? selected.data.provider
+      : undefined;
+  }
+
   projectInstructions(): ProjectInstructionsEventData | undefined {
     const event = this.#events.find((entry) => entry.type === "project.instructions");
     if (!event || typeof event.data.path !== "string") return undefined;

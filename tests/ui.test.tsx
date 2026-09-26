@@ -148,6 +148,9 @@ function makeController(initial: Partial<AgentSnapshot> = {}): MockController {
     setEffort: async (effort) => {
       calls.push(`effort:${effort}`);state={...state,effort:effort==="auto"?undefined:effort,error:undefined};notify();
     },
+    setProvider: (provider) => {
+      calls.push(`provider:${provider}`);state={...state,provider:provider==="auto"?undefined:provider,error:undefined};notify();
+    },
     newSession: async () => {
       calls.push("new");state={...state,sessionId:crypto.randomUUID(),sessionName:"Blue Lantern",messages:[],events:[],busy:false,error:undefined};notify();
     },
@@ -681,6 +684,9 @@ describe("parseComposerInput", () => {
     expect(parseComposerInput("/quit")).toEqual({ kind: "quit" });
     expect(parseComposerInput("/nope")).toEqual({ kind: "unknown", name: "nope" });
     expect(parseComposerInput("/g")).toEqual({ kind: "graph" });
+    expect(parseComposerInput("/provider")).toEqual({ kind: "provider" });
+    expect(parseComposerInput("/provider anthropic")).toEqual({ kind: "provider", choice: "anthropic" });
+    expect(parseComposerInput("/provider OpenRouter")).toEqual({ kind: "provider", choice: "openrouter" });
   });
 
   test("slash popup query and filtering", () => {
@@ -738,6 +744,25 @@ describe("App", () => {
       await type("/effort");await enter();await press("HOME");await escape();
       expect(c.getSnapshot().effort).toBe("high");
       await type("/effort auto");await enter();expect(c.getSnapshot().effort).toBeUndefined();
+    }finally{setup.renderer.destroy();}
+  });
+
+  test("provider picker and shorthand commands force explicit routing", async () => {
+    const c=makeController();
+    const {setup,type,enter,frame,press,escape}=await mount(c);
+    try{
+      await type("/provider");await enter();
+      expect(await frame()).toContain("←/→ adjust");
+      expect(await frame()).toContain("auto");
+      await press("END");
+      expect(await frame()).toContain("Force OpenRouter");
+      await enter();expect(c.calls).toContain("provider:openrouter");
+      expect(c.getSnapshot().provider).toBe("openrouter");
+      await type("/provider anthropic");await enter();expect(c.calls).toContain("provider:anthropic");
+      expect(c.getSnapshot().provider).toBe("anthropic");
+      await type("/provider");await enter();await press("HOME");await escape();
+      expect(c.getSnapshot().provider).toBe("anthropic");
+      await type("/provider auto");await enter();expect(c.getSnapshot().provider).toBeUndefined();
     }finally{setup.renderer.destroy();}
   });
 

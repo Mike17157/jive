@@ -115,6 +115,8 @@ export interface AgentSnapshot {
   contextLimit: number;
   cachedTokens: number;
   effort?: string;
+  /** Undefined means "auto": today's default of direct Anthropic when credentialed, OpenRouter otherwise. */
+  provider?: string;
   phase?: AgentPhase;
   activityStartedAt?: number;
   /** Set while a transient transport failure is waiting to be retried. */
@@ -128,6 +130,7 @@ export interface AgentController {
   interrupt(): void;
   setModel(id: string): void;
   setEffort(effort: string): Promise<void>;
+  setProvider(provider: string): void;
   newSession(): Promise<void>;
   listSessions(): Promise<SessionSummary[]>;
   resumeSession(idOrPrefix: string): Promise<void>;

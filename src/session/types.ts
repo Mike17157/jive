@@ -33,6 +33,7 @@ export type SessionEventType =
   | "pin.added"
   | "model.selected"
   | "effort.selected"
+  | "provider.selected"
   | "project.instructions"
   | "project.skills"
   | "plugin.catalog"

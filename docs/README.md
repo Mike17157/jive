@@ -79,10 +79,13 @@ jive --prefill "Find where request retries are configured and explain the policy
 jive --headless --prompt "Run the tests and summarise failures"
 ```
 
-`OPENROUTER_API_KEY` is required. `JEV_API_TOKEN` is needed only for graphs
-that use `jev` decision nodes; bash-only graphs run without it. Defaults are
-`google/gemini-3.8-flash` for planning and `jev-1.13.0` for decisions, both
-overridable with `OPENROUTER_MODEL` and `JEV_MODEL`.
+`OPENROUTER_API_KEY` is a base requirement — Jive fails to start without it,
+even when a direct Anthropic credential is also configured, because the
+OpenRouter model catalog and every non-Anthropic model depend on it.
+`JEV_API_TOKEN` is needed only for graphs that use `jev` decision nodes;
+bash-only graphs run without it. Defaults are `google/gemini-3.8-flash` for
+planning and `jev-1.13.0` for decisions, both overridable with
+`OPENROUTER_MODEL` and `JEV_MODEL`.
 
 Selecting an `anthropic/claude-*` model normally routes through OpenRouter like
 any other model. If `ANTHROPIC_OAUTH_TOKEN` or `ANTHROPIC_API_KEY` is also set,
@@ -91,14 +94,16 @@ entirely — `ANTHROPIC_OAUTH_TOKEN` is checked first. A token from `claude
 setup-token` (a Claude Code subcommand) bills against your Claude subscription
 rather than pay-per-token API pricing; `jive auth claude` runs that command and
 saves the token for you. `jive auth openrouter` prompts for an OpenRouter API
-key instead and saves that. See
+key instead and saves that. `/provider` (or `--provider`) picks explicitly
+between the two for `anthropic/claude-*` calls instead of relying on that
+default. See
 [Working directory and credentials](USAGE.md#working-directory-and-credentials)
 for details.
 
 The UI has a bottom composer, a conversation that grows upward, and live graph
 rows that turn green as nodes finish. Type `/` for commands (`/model`,
-`/effort`, `/resume`, `/pin`, `/new`), Ctrl+G to inspect a graph, and Ctrl+O
-to read the planner's reasoning. The full reference is in
+`/effort`, `/provider`, `/resume`, `/pin`, `/new`), Ctrl+G to inspect a graph,
+and Ctrl+O to read the planner's reasoning. The full reference is in
 [docs/USAGE.md](USAGE.md).
 
 ## How it works
@@ -164,6 +169,7 @@ jive --sessions                   List saved sessions
 jive --models | --refresh-models  List or refresh planner models
 jive --schema                     Print the execute_graph JSON Schema
 jive --cwd DIR --model ID         Override the working directory or model
+jive --provider CHOICE            Force auto, anthropic, or openrouter routing
 jive update                       Pull the latest sources (git installs)
 jive auth claude                  Run `claude setup-token` and save it to .env
 jive auth openrouter              Prompt for an OpenRouter API key and save it to .env
