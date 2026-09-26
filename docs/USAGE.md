@@ -40,11 +40,17 @@ instead of pay-per-token API pricing; `ANTHROPIC_API_KEY` is a regular
 pay-per-token Anthropic API key. Reasoning effort maps to the same explicit
 thinking budgets on both paths.
 
-Run `jive auth` instead of `claude setup-token` directly to skip the
+Run `jive auth claude` instead of `claude setup-token` directly to skip the
 hand-copy: it runs the same interactive sign-in (still opens a browser and
 still asks you to paste a code if the browser can't redirect back), then
 writes the resulting token into `ANTHROPIC_OAUTH_TOKEN` in the `.env` above
 itself — replacing an existing `ANTHROPIC_OAUTH_TOKEN` line if there is one.
+
+Run `jive auth openrouter` to set `OPENROUTER_API_KEY` the same way: it prompts
+for the key with the input masked as you type, then writes it into the same
+`.env` — replacing an existing `OPENROUTER_API_KEY` line if there is one. `jive
+auth` with no provider, or an unrecognized one, prints a usage line naming both
+instead of guessing which credential you meant.
 
 At session creation, Jive snapshots the working directory's `AGENTS.md` into the
 system prompt and persists the snapshot with the session. Edits to the file take

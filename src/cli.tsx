@@ -12,6 +12,7 @@ import { createDemoController, demoGraph, FixtureJev } from "./demo";
 import { CURATED_MODELS, fetchOpenRouterModelCatalog, saveModelCatalog } from "./planner/models";
 import { listSessions, resolveSessionReference } from "./session/index";
 import { runClaudeSetupToken } from "./planner/anthropic-auth";
+import { promptOpenRouterApiKey } from "./planner/openrouter-auth";
 import { resolveEnvFileForWrite, upsertEnvVariable } from "./core/env-file";
 
 const repoRoot = resolve(import.meta.dir, "..");
@@ -41,7 +42,8 @@ async function main(){
   jive --schema                     Print execute_graph JSON Schema
   jive --version                    Print the installed version
   jive update                       Pull the latest sources (git installs)
-  jive auth                         Run "claude setup-token" and save it to .env
+  jive auth claude                  Run "claude setup-token" and save it to .env
+  jive auth openrouter              Prompt for an OpenRouter API key and save it to .env
 
 Options: --cwd DIR --model ID --effort LEVEL --json --headless --prompt TEXT --prefill TEXT
 --prompt submits immediately. --prefill fills the interactive composer without submitting.
@@ -52,16 +54,26 @@ The agent works in the current directory: AGENTS.md, .jev/extractors and
 See README.md for keys.
 Credentials: OPENROUTER_API_KEY and JEV_API_TOKEN, plus optional
 ANTHROPIC_OAUTH_TOKEN or ANTHROPIC_API_KEY to call anthropic/claude-* models
-directly ("jive auth" sets the OAuth token for you) — from .env in the
+directly ("jive auth claude" sets the OAuth token for you) — from .env in the
 working directory (searched upward) or the jive checkout. Install: see
 README.md.
 `);return;}
   if(positionals[0]==="auth"){
-    const token=await runClaudeSetupToken();
+    const provider=positionals[1];
+    if(provider!=="claude" && provider!=="openrouter"){
+      throw new Error("Usage: jive auth claude | jive auth openrouter");
+    }
     const envPath=resolveEnvFileForWrite(cwd,repoRoot);
     const existing=await readFile(envPath,"utf8").catch(()=>"");
-    await writeFile(envPath,upsertEnvVariable(existing,"ANTHROPIC_OAUTH_TOKEN",token));
-    console.log(`Saved ANTHROPIC_OAUTH_TOKEN to ${envPath}`);
+    if(provider==="claude"){
+      const token=await runClaudeSetupToken();
+      await writeFile(envPath,upsertEnvVariable(existing,"ANTHROPIC_OAUTH_TOKEN",token));
+      console.log(`Saved ANTHROPIC_OAUTH_TOKEN to ${envPath}`);
+      return;
+    }
+    const apiKey=await promptOpenRouterApiKey();
+    await writeFile(envPath,upsertEnvVariable(existing,"OPENROUTER_API_KEY",apiKey));
+    console.log(`Saved OPENROUTER_API_KEY to ${envPath}`);
     return;
   }
   if(values.prefill!==undefined && (values.headless || values.run || values.prompt!==undefined || positionals.length))throw new Error("--prefill is interactive-only and cannot be combined with --prompt, positional prompts, --headless, or --run");
