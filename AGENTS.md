@@ -11,6 +11,12 @@ This file is the project's committed home for project-intrinsic agent knowledge:
   `src/planner/anthropic-auth.ts`) attaches a real PTY to a child process — the only
   way to run another raw-mode/full-screen terminal program (e.g. `claude setup-token`,
   which renders nothing without a real TTY) and still capture its output.
+- `GraphAgentController`'s constructor (`src/planner/agent.ts`) throws synchronously
+  if no `OPENROUTER_API_KEY`/`apiKey` is resolved, even when a direct Anthropic
+  credential is configured — every test construction needs `apiKey`. Which backend
+  serves `anthropic/claude-*` calls (direct Anthropic vs OpenRouter) is controlled by
+  `#clientFor`, overridable via `/provider` / `--provider` (session-persisted like
+  `/model`/`/effort`); every other model always goes through OpenRouter.
 
 ## Maintaining this file
 

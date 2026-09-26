@@ -20,7 +20,7 @@ const repoRoot = resolve(import.meta.dir, "..");
 const {values,positionals}=parseArgs({args:process.argv.slice(2),allowPositionals:true,options:{
   help:{type:"boolean",short:"h"},version:{type:"boolean",short:"v"},demo:{type:"boolean"},headless:{type:"boolean"},json:{type:"boolean"},
   run:{type:"string"},model:{type:"string"},resume:{type:"string"},cwd:{type:"string"},prompt:{type:"string"},prefill:{type:"string"},
-  schema:{type:"boolean"},models:{type:"boolean"},"refresh-models":{type:"boolean"},sessions:{type:"boolean"},search:{type:"string"},effort:{type:"string"},
+  schema:{type:"boolean"},models:{type:"boolean"},"refresh-models":{type:"boolean"},sessions:{type:"boolean"},search:{type:"string"},effort:{type:"string"},provider:{type:"string"},
 }});
 const cwd=resolve(values.cwd??process.cwd());
 
@@ -45,18 +45,20 @@ async function main(){
   jive auth claude                  Run "claude setup-token" and save it to .env
   jive auth openrouter              Prompt for an OpenRouter API key and save it to .env
 
-Options: --cwd DIR --model ID --effort LEVEL --json --headless --prompt TEXT --prefill TEXT
+Options: --cwd DIR --model ID --effort LEVEL --provider CHOICE --json --headless --prompt TEXT --prefill TEXT
 --prompt submits immediately. --prefill fills the interactive composer without submitting.
 Interactive commands: /resume [ID], /sessions, /name TEXT, /rename TEXT,
-/model, /effort [LEVEL], /new, /clear, /pin TEXT, /quit.
+/model, /effort [LEVEL], /provider [CHOICE], /new, /clear, /pin TEXT, /quit.
 The agent works in the current directory: AGENTS.md, .jev/extractors and
 .jev/sessions are read and written there. Override with --cwd DIR.
 See README.md for keys.
-Credentials: OPENROUTER_API_KEY and JEV_API_TOKEN, plus optional
-ANTHROPIC_OAUTH_TOKEN or ANTHROPIC_API_KEY to call anthropic/claude-* models
-directly ("jive auth claude" sets the OAuth token for you) — from .env in the
-working directory (searched upward) or the jive checkout. Install: see
-README.md.
+Credentials: OPENROUTER_API_KEY is required (JEV_API_TOKEN is needed only for
+graphs that use jev nodes), plus optional ANTHROPIC_OAUTH_TOKEN or
+ANTHROPIC_API_KEY to call anthropic/claude-* models directly ("jive auth
+claude" sets the OAuth token for you) — from .env in the working directory
+(searched upward) or the jive checkout. --provider (or /provider) picks which
+backend serves anthropic/claude-* calls when both are configured: auto
+(default), anthropic, or openrouter. Install: see README.md.
 `);return;}
   if(positionals[0]==="auth"){
     const provider=positionals[1];
@@ -109,6 +111,7 @@ README.md.
     });
   }
   if(values.effort)await controller.setEffort(values.effort);
+  if(values.provider)controller.setProvider(values.provider);
   const prompt=values.prompt??positionals.join(" ");
   if(values.headless){
     if(!prompt)throw new Error("Headless planner requires --prompt TEXT (or use --demo --headless)");

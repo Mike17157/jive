@@ -113,6 +113,7 @@ export function createDemoController(cwd:string):AgentController {
       if(effort&&!efforts.includes(effort)){snapshot={...snapshot,error:`Unknown effort ${level}`};notify();return;}
       snapshot={...snapshot,effort,error:undefined};notify();
     },
+    setProvider(){add("notice","Demo mode uses local fixtures; there is no provider to choose.");},
     newSession(){
       if(resetting)return resetting;
       resetting=(async()=>{

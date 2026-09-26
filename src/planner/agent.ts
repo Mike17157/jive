@@ -124,6 +124,10 @@ const DEFAULT_CONTEXT_LIMIT = 128_000;
 const EFFORT_METADATA_TIMEOUT_MS = 10_000;
 export const REASONING_EFFORTS = ["none", "minimal", "low", "medium", "high", "xhigh", "max"] as const;
 const REASONING_EFFORT_SET = new Set<string>(REASONING_EFFORTS);
+/** "auto" preserves today's routing: direct Anthropic when credentialed, OpenRouter otherwise. */
+export const PROVIDER_CHOICES = ["auto", "anthropic", "openrouter"] as const;
+export type ProviderChoice = typeof PROVIDER_CHOICES[number];
+const PROVIDER_CHOICE_SET = new Set<string>(PROVIDER_CHOICES);
 /** What "auto" sends. Provider defaults tend to be the heaviest thinking level; medium is the intended baseline. */
 export const DEFAULT_REASONING_EFFORT = "medium";
 
@@ -264,6 +268,11 @@ export class GraphAgentController implements AgentController {
     this.options = options;
     this.#store = new SessionStore({ cwd: options.cwd, sessionId: options.sessionId });
     this.#apiKey = options.apiKey ?? process.env.OPENROUTER_API_KEY;
+    if (!this.#apiKey) {
+      throw new Error(
+        "OPENROUTER_API_KEY is required (run \"jive auth openrouter\" to set it), even when a direct Anthropic credential is configured. The OpenRouter catalog and every non-Anthropic model depend on it.",
+      );
+    }
     this.#toolSchemas = [normalizeToolSchema(options.toolSchema), graphModToolSchema()];
     const model = options.model ?? "";
     this.#snapshot = {
@@ -279,7 +288,7 @@ export class GraphAgentController implements AgentController {
       cachedTokens: 0,
       phase: "idle",
     };
-    if (this.#apiKey) this.#client = new OpenRouterClient({ apiKey: this.#apiKey, ...(this.options.retry ? { retry: this.options.retry } : {}) });
+    this.#client = new OpenRouterClient({ apiKey: this.#apiKey, ...(this.options.retry ? { retry: this.options.retry } : {}) });
     const anthropicCredential = resolveAnthropicCredential();
     if (anthropicCredential) {
       this.#anthropicClient = new AnthropicClient({ credential: anthropicCredential, ...(this.options.retry ? { retry: this.options.retry } : {}) });
@@ -345,10 +354,10 @@ export class GraphAgentController implements AgentController {
     }
     if (!this.#clientFor(this.#snapshot.model)) {
       await this.store.appendMessage({ role: "user", content: input }, chatId);
+      // OPENROUTER_API_KEY is required at startup, so the only way #clientFor comes up empty
+      // is an explicit /provider anthropic override with no Anthropic credential configured.
       await this.#fail(
-        isDirectAnthropicModel(this.#snapshot.model)
-          ? "No credentials for this model. Set ANTHROPIC_OAUTH_TOKEN or ANTHROPIC_API_KEY to call Anthropic directly, or OPENROUTER_API_KEY to route through OpenRouter."
-          : "OpenRouter API key is missing. Set OPENROUTER_API_KEY or pass apiKey to createAgent(), then restart or create a new controller.",
+        "No Anthropic credentials for this model, and /provider is forced to anthropic. Set ANTHROPIC_OAUTH_TOKEN or ANTHROPIC_API_KEY, or run /provider auto or /provider openrouter to route through OpenRouter instead.",
       );
       this.#scheduleAutoName(requestStore);
       return;
@@ -417,12 +426,14 @@ export class GraphAgentController implements AgentController {
 
       const model = this.#snapshot.model;
       const effort = this.#snapshot.effort;
+      const provider = this.#snapshot.provider;
       const replacement = new SessionStore({ cwd: this.options.cwd });
       await replacement.initialize();
       const projectInstructions = await this.#loadSessionProjectInstructions(replacement);
       const projectSkills = await this.#loadSessionProjectSkills(replacement, true);
       if (model) await replacement.append("model.selected", { model });
       await replacement.append("effort.selected", { effort: effort ?? null });
+      await replacement.append("provider.selected", { provider: provider ?? null });
       await replacement.flush();
 
       this.#store = replacement;
@@ -441,6 +452,7 @@ export class GraphAgentController implements AgentController {
         contextTokens: 0,
         cachedTokens: 0,
         effort,
+        provider,
         phase: "idle",
         activityStartedAt: undefined,
         error: undefined,
@@ -589,6 +601,30 @@ export class GraphAgentController implements AgentController {
     await persistence;
   }
 
+  /** Force which backend serves anthropic/claude-* calls; "auto" restores today's default routing. */
+  setProvider(input: string): void {
+    const normalized = input.trim().toLowerCase();
+    if (!PROVIDER_CHOICE_SET.has(normalized)) {
+      const message = `Unknown provider ${JSON.stringify(input)}. Use auto, anthropic, or openrouter.`;
+      this.#update({ error: message });
+      throw new Error(message);
+    }
+    if (this.#snapshot.busy) {
+      const message = "Interrupt the active request before changing provider.";
+      this.#update({ error: message });
+      throw new Error(message);
+    }
+    if (this.#resetPending) {
+      const message = "Wait for the new session to finish opening before changing provider.";
+      this.#update({ error: message });
+      throw new Error(message);
+    }
+    this.#controlRevision += 1;
+    const provider = normalized === "auto" ? undefined : (normalized as ProviderChoice);
+    this.#update({ provider, error: undefined });
+    this.#enqueue(() => this.store.append("provider.selected", { provider: provider ?? null }));
+  }
+
   setModel(id: string): void {
     const model = id.trim();
     if (!model) {
@@ -714,6 +750,10 @@ export class GraphAgentController implements AgentController {
       await store.append("effort.selected", { effort: null });
       await store.append("notice", { chatId, text });
     }
+    const storedProvider = store.latestProvider();
+    const provider = storedProvider && storedProvider !== "auto" && PROVIDER_CHOICE_SET.has(storedProvider)
+      ? (storedProvider as ProviderChoice)
+      : undefined;
     const messages: ChatEntry[] = [];
     const executionEvents: ExecutionEvent[] = [];
     let cachedTokens = 0;
@@ -777,6 +817,7 @@ export class GraphAgentController implements AgentController {
       cachedTokens,
       contextTokens: lastPromptTokens,
       effort,
+      provider,
       busy: false,
       phase: "idle",
       activityStartedAt: undefined,
@@ -785,6 +826,7 @@ export class GraphAgentController implements AgentController {
     if (fresh) {
       if (model) await store.append("model.selected", { model });
       await store.append("effort.selected", { effort: effort ?? null });
+      await store.append("provider.selected", { provider: provider ?? null });
     }
     return { snapshot, projectInstructions, projectSkills };
   }
@@ -1253,10 +1295,18 @@ export class GraphAgentController implements AgentController {
     })();
   }
 
-  /** Anthropic direct, when credentialed and selected; OpenRouter otherwise, unchanged. */
+  /**
+   * Anthropic direct, when credentialed and selected; OpenRouter otherwise. `/provider` (or
+   * `--provider`) forces one side for anthropic/claude-* models; "auto" (undefined) keeps today's
+   * default of preferring direct Anthropic whenever it is credentialed. Only anthropic/claude-*
+   * models have a direct route, so any other model always goes through OpenRouter.
+   */
   #clientFor(model: string): PlannerClient | undefined {
-    if (isDirectAnthropicModel(model) && this.#anthropicClient) return this.#anthropicClient;
-    return this.#client;
+    if (!isDirectAnthropicModel(model)) return this.#client;
+    const provider = this.#snapshot.provider;
+    if (provider === "openrouter") return this.#client;
+    if (provider === "anthropic") return this.#anthropicClient;
+    return this.#anthropicClient ?? this.#client;
   }
 
   #contextLimit(model: string, models: readonly ModelOption[]): number {

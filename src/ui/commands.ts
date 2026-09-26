@@ -2,7 +2,7 @@
  * Slash commands: registry, filtering for the composer popup, and parsing.
  * Pure and renderer-independent.
  */
-export type CommandName = "model" | "graph" | "pin" | "help" | "quit" | "new" | "clear" | "effort" | "resume" | "sessions" | "name" | "rename";
+export type CommandName = "model" | "graph" | "pin" | "help" | "quit" | "new" | "clear" | "effort" | "provider" | "resume" | "sessions" | "name" | "rename";
 
 export interface CommandSpec {
   name: CommandName;
@@ -18,6 +18,7 @@ export const COMMANDS: readonly CommandSpec[] = [
   { name: "graph", usage: "/graph", description: "browse and inspect executed graphs (Ctrl+G)", select: "run", aliases: ["g"] },
   { name: "pin", usage: "/pin <text>", description: "keep text verbatim across compaction", select: "edit", aliases: [] },
   { name: "effort", usage: "/effort [level]", description: "adjust reasoning effort", select: "run", aliases: [] },
+  { name: "provider", usage: "/provider [choice]", description: "force anthropic or openrouter for direct models", select: "run", aliases: [] },
   { name: "resume", usage: "/resume [id]", description: "resume a saved session", select: "run", aliases: [] },
   { name: "sessions", usage: "/sessions", description: "browse saved sessions", select: "run", aliases: [] },
   { name: "name", usage: "/name <text>", description: "name the current session", select: "edit", aliases: [] },
@@ -62,6 +63,7 @@ export type ComposerCommand =
   | { kind: "new" }
   | { kind: "clear" }
   | { kind: "effort"; level?: string }
+  | { kind: "provider"; choice?: string }
   | { kind: "resume"; id?: string }
   | { kind: "sessions" }
   | { kind: "name"; text: string }
@@ -82,6 +84,8 @@ export function parseComposerInput(raw: string): ComposerCommand {
       return rest ? { kind: "model", id: rest } : { kind: "model" };
     case "effort":
       return rest ? { kind: "effort", level: rest.toLowerCase() } : { kind: "effort" };
+    case "provider":
+      return rest ? { kind: "provider", choice: rest.toLowerCase() } : { kind: "provider" };
     case "resume":
       return rest ? { kind: "resume", id: rest } : { kind: "resume" };
     case "sessions":

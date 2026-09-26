@@ -12,6 +12,7 @@ import { SessionPicker } from "./components/SessionPicker.tsx";
 import { Orb } from "./components/Orb.tsx";
 import { StatusBar } from "./components/StatusBar.tsx";
 import { EffortPicker, EFFORT_PANEL_ROWS } from "./components/EffortPicker.tsx";
+import { ProviderPicker, PROVIDER_PANEL_ROWS } from "./components/ProviderPicker.tsx";
 import { ThinkingIndicator } from "./components/ThinkingIndicator.tsx";
 import { attachSelectionCopy, copyText } from "./clipboard.ts";
 import { foldableIds, layoutGraph, type LayoutRow } from "./graph/layout.ts";
@@ -20,7 +21,7 @@ import { palette } from "./theme.ts";
 import { useAgentSnapshot } from "./useController.ts";
 import type { SessionSummary } from "../session/types.ts";
 
-export type UIMode = "compose" | "graph" | "inspect" | "model" | "effort" | "session";
+export type UIMode = "compose" | "graph" | "inspect" | "model" | "effort" | "provider" | "session";
 
 const QUIT_WINDOW_MS = 1500;
 
@@ -62,6 +63,7 @@ export function App(props: AppProps) {
   const [notice, setNotice] = useState<string | undefined>();
   const [effortLoading,setEffortLoading]=useState(false);
   const [effortError,setEffortError]=useState<string>();
+  const [providerError,setProviderError]=useState<string>();
   const [sessions,setSessions]=useState<SessionSummary[]>([]);
   const [sessionsLoading,setSessionsLoading]=useState(false);
   const [sessionsError,setSessionsError]=useState<string>();
@@ -207,6 +209,16 @@ export function App(props: AppProps) {
               setEffortLoading(true);
               void controller.refreshModels(AbortSignal.timeout(10000)).catch(error=>setEffortError(String(error))).finally(()=>setEffortLoading(false));
             }
+          }
+          return;
+        case "provider":
+          if(cmd.choice){
+            try{
+              controller.setProvider(cmd.choice);
+              if(!controller.getSnapshot().error)setNotice(`provider → ${controller.getSnapshot().provider??"auto"}`);
+            }catch(error){setNotice(String(error));}
+          }else{
+            setProviderError(undefined);setMode("provider");
           }
           return;
         case "empty":
@@ -366,7 +378,7 @@ export function App(props: AppProps) {
       setNotice(open ? "reasoning shown · Ctrl+O to collapse" : "reasoning collapsed");
       return;
     }
-    if(mode === "effort" || mode === "session")return; // These selectors own their keys.
+    if(mode === "effort" || mode === "provider" || mode === "session")return; // These selectors own their keys.
     // Read native input here: a fast Enter can arrive before React has
     // published the final text-change notification used to render the popup.
     const currentText = textareaRef.current?.plainText ?? composerTextRef.current;
@@ -505,7 +517,7 @@ export function App(props: AppProps) {
   const empty = messages.length === 0 && graphs.length === 0;
   const modeLabel = mode === "compose" ? "compose" : mode === "graph" ? "graph ↑↓ → Esc" : mode === "inspect" ? "inspect Esc" : mode;
   // Rows left for the conversation: total minus status bar, composer card and the popup.
-  const viewportHeight = Math.max(4, height - 1 - (composerLines + COMPOSER_CHROME_ROWS) - popupRows - (mode === "effort" ? EFFORT_PANEL_ROWS + 1 : 0) - (snapshot.busy?1:0));
+  const viewportHeight = Math.max(4, height - 1 - (composerLines + COMPOSER_CHROME_ROWS) - popupRows - (mode === "effort" ? EFFORT_PANEL_ROWS + 1 : 0) - (mode === "provider" ? PROVIDER_PANEL_ROWS + 1 : 0) - (snapshot.busy?1:0));
 
   return (
     <box flexDirection="column" width="100%" height="100%" backgroundColor={palette.bg}>
@@ -553,6 +565,15 @@ export function App(props: AppProps) {
             if(current.error){setEffortError(current.error);return;}
             setMode("compose");setNotice(`effort → ${current.effort??"auto"}`);
           }).catch(error=>setEffortError(String(error)));
+        }}/>:null}
+      {mode === "provider"?<ProviderPicker current={snapshot.provider} width={width} error={providerError}
+        onCancel={()=>setMode("compose")} onChoose={choice=>{
+          try{
+            controller.setProvider(choice);
+            const current=controller.getSnapshot();
+            if(current.error){setProviderError(current.error);return;}
+            setMode("compose");setNotice(`provider → ${current.provider??"auto"}`);
+          }catch(error){setProviderError(String(error));}
         }}/>:null}
       {snapshot.busy?<ThinkingIndicator snapshot={snapshot}/>:null}
       <StatusBar snapshot={snapshot} width={width} mode={modeLabel} notice={notice} />

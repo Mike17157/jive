@@ -17,13 +17,18 @@ further up the tree, and finally the `.env` in the Jive checkout. A project can
 therefore override the global keys with its own `.env`.
 
 ```dotenv
-OPENROUTER_API_KEY=...     # planner model
+OPENROUTER_API_KEY=...     # required; planner model, OpenRouter catalog
 JEV_API_TOKEN=...          # Jev decision service, used by `jev` nodes
 OPENROUTER_MODEL=...       # optional; default google/gemini-3.8-flash
 JEV_MODEL=...              # optional; default jev-1.13.0
 ANTHROPIC_OAUTH_TOKEN=...  # optional; call Anthropic directly for anthropic/claude-* models
 ANTHROPIC_API_KEY=...      # optional; fallback for the same direct path
 ```
+
+`OPENROUTER_API_KEY` is a base requirement: Jive refuses to start without it
+and names the variable in the error, even when a direct Anthropic credential is
+also configured. The OpenRouter model catalog and every non-Anthropic model
+depend on it, so there is no configuration that avoids it.
 
 Changing models is explicit, in the UI or with `--model`. There is no automatic
 model fallback.
@@ -39,6 +44,19 @@ Claude subscription) to bill Jive's planner calls against that subscription
 instead of pay-per-token API pricing; `ANTHROPIC_API_KEY` is a regular
 pay-per-token Anthropic API key. Reasoning effort maps to the same explicit
 thinking budgets on both paths.
+
+`/provider` (or `--provider`) picks explicitly which backend serves
+`anthropic/claude-*` calls, instead of relying on that default:
+
+| Choice | Effect |
+| --- | --- |
+| `auto` (default) | Direct Anthropic when credentialed, OpenRouter otherwise — today's behavior |
+| `anthropic` | Force direct Anthropic; fails clearly if no Anthropic credential is configured |
+| `openrouter` | Force OpenRouter, even when a direct Anthropic credential exists |
+
+The choice only affects `anthropic/claude-*` models — every other model always
+routes through OpenRouter. It persists with the session, the same as `/model`
+and `/effort`.
 
 Run `jive auth claude` instead of `claude setup-token` directly to skip the
 hand-copy: it runs the same interactive sign-in (still opens a browser and
@@ -76,6 +94,7 @@ Type `/` for a searchable command selector.
 | --- | --- |
 | `/model` | Choose the planner model |
 | `/effort [LEVEL]` | Reasoning effort slider, or set directly (`low`, `medium`, `high`, `xhigh`, `auto`) |
+| `/provider [CHOICE]` | Force which backend serves anthropic/claude-* calls (`auto`, `anthropic`, `openrouter`) |
 | `/new`, `/clear` | Cancel active work and start a fresh session with the same model and effort |
 | `/resume [ID]`, `/sessions` | Open the session picker, or resume by ID or unambiguous prefix |
 | `/name TEXT`, `/rename TEXT` | Name the session; automatic naming will not overwrite it |

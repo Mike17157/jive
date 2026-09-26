@@ -535,61 +535,69 @@ describe("OpenRouter planner", () => {
       .toEqual([]);
   });
 
-  test("missing key is actionable and never reports fake success", async () => {
+  test("OPENROUTER_API_KEY is a base requirement: construction fails clearly without it", async () => {
     const cwd = await makeCwd();
     const oldKey = process.env.OPENROUTER_API_KEY;
     delete process.env.OPENROUTER_API_KEY;
     try {
-      const controller = new GraphAgentController({
+      expect(() => new GraphAgentController({
         cwd,
         model: "test/model",
         sessionId: "no-key-test",
         toolSchema,
         getPluginCatalog: async () => "",
         execute: async () => { throw new Error("must not execute"); },
-      });
-      await controller.ready();
-      await controller.submit("hello");
-      expect(controller.getSnapshot().error).toContain("OPENROUTER_API_KEY");
-      expect(controller.getSnapshot().messages.at(-1)?.role).toBe("notice");
+      })).toThrow(/OPENROUTER_API_KEY/);
     } finally {
       if (oldKey === undefined) delete process.env.OPENROUTER_API_KEY;
       else process.env.OPENROUTER_API_KEY = oldKey;
     }
   });
 
-  test("an anthropic/claude-* model with no credentials at all names every option, not just OpenRouter's", async () => {
+  test("OPENROUTER_API_KEY is required even when a direct Anthropic credential is configured", async () => {
     const cwd = await makeCwd();
-    const saved = {
-      oauth: process.env.ANTHROPIC_OAUTH_TOKEN,
-      apiKey: process.env.ANTHROPIC_API_KEY,
-      openrouter: process.env.OPENROUTER_API_KEY,
-    };
-    delete process.env.ANTHROPIC_OAUTH_TOKEN;
-    delete process.env.ANTHROPIC_API_KEY;
+    const saved = { apiKey: process.env.ANTHROPIC_API_KEY, openrouter: process.env.OPENROUTER_API_KEY };
+    process.env.ANTHROPIC_API_KEY = "sk-ant-test";
     delete process.env.OPENROUTER_API_KEY;
     try {
-      const controller = new GraphAgentController({
-        cwd, model: "anthropic/claude-sonnet-5", sessionId: "anthropic-no-key-test", toolSchema,
+      expect(() => new GraphAgentController({
+        cwd, model: "anthropic/claude-sonnet-5", sessionId: "anthropic-no-openrouter-test", toolSchema,
         getPluginCatalog: async () => "", execute: async () => { throw new Error("must not execute"); },
-      });
-      await controller.ready();
-      await controller.submit("hello");
-      expect(controller.getSnapshot().error).toContain("ANTHROPIC_OAUTH_TOKEN");
-      expect(controller.getSnapshot().error).toContain("ANTHROPIC_API_KEY");
-      expect(controller.getSnapshot().error).toContain("OPENROUTER_API_KEY");
+      })).toThrow(/OPENROUTER_API_KEY/);
     } finally {
-      if (saved.oauth === undefined) delete process.env.ANTHROPIC_OAUTH_TOKEN; else process.env.ANTHROPIC_OAUTH_TOKEN = saved.oauth;
       if (saved.apiKey === undefined) delete process.env.ANTHROPIC_API_KEY; else process.env.ANTHROPIC_API_KEY = saved.apiKey;
       if (saved.openrouter === undefined) delete process.env.OPENROUTER_API_KEY; else process.env.OPENROUTER_API_KEY = saved.openrouter;
     }
   });
 
-  test("an anthropic/claude-* model calls Anthropic directly once ANTHROPIC_API_KEY is set, with no OpenRouter key needed", async () => {
+  test("an anthropic/claude-* model with no Anthropic credentials at all names every option, not just OpenRouter's", async () => {
     const cwd = await makeCwd();
-    const saved = { apiKey: process.env.ANTHROPIC_API_KEY, openrouter: process.env.OPENROUTER_API_KEY };
+    const saved = {
+      oauth: process.env.ANTHROPIC_OAUTH_TOKEN,
+      apiKey: process.env.ANTHROPIC_API_KEY,
+    };
+    delete process.env.ANTHROPIC_OAUTH_TOKEN;
+    delete process.env.ANTHROPIC_API_KEY;
+    try {
+      const controller = new GraphAgentController({
+        cwd, model: "anthropic/claude-sonnet-5", sessionId: "anthropic-no-key-test", apiKey: "test-key", toolSchema,
+        getPluginCatalog: async () => "", execute: async () => { throw new Error("must not execute"); },
+      });
+      await controller.ready();
+      controller.setProvider("anthropic");
+      await controller.submit("hello");
+      expect(controller.getSnapshot().error).toContain("ANTHROPIC_OAUTH_TOKEN");
+      expect(controller.getSnapshot().error).toContain("ANTHROPIC_API_KEY");
+    } finally {
+      if (saved.oauth === undefined) delete process.env.ANTHROPIC_OAUTH_TOKEN; else process.env.ANTHROPIC_OAUTH_TOKEN = saved.oauth;
+      if (saved.apiKey === undefined) delete process.env.ANTHROPIC_API_KEY; else process.env.ANTHROPIC_API_KEY = saved.apiKey;
+    }
+  });
+
+  test("an anthropic/claude-* model calls Anthropic directly by default once ANTHROPIC_API_KEY is set", async () => {
+    const cwd = await makeCwd();
+    const saved = { apiKey: process.env.ANTHROPIC_API_KEY };
     process.env.ANTHROPIC_API_KEY = "sk-ant-test";
-    delete process.env.OPENROUTER_API_KEY;
     const urls: string[] = [];
     globalThis.fetch = (async (input: RequestInfo | URL) => {
       urls.push(String(input));
@@ -603,7 +611,7 @@ describe("OpenRouter planner", () => {
     }) as unknown as typeof fetch;
     try {
       const controller = new GraphAgentController({
-        cwd, model: "anthropic/claude-sonnet-5", sessionId: "anthropic-route-test", toolSchema,
+        cwd, model: "anthropic/claude-sonnet-5", sessionId: "anthropic-route-test", apiKey: "test-key", toolSchema,
         getPluginCatalog: async () => "", execute: async () => { throw new Error("no graph expected"); },
       });
       await controller.ready();
@@ -613,7 +621,60 @@ describe("OpenRouter planner", () => {
       expect(controller.getSnapshot().error).toBeUndefined();
     } finally {
       if (saved.apiKey === undefined) delete process.env.ANTHROPIC_API_KEY; else process.env.ANTHROPIC_API_KEY = saved.apiKey;
-      if (saved.openrouter === undefined) delete process.env.OPENROUTER_API_KEY; else process.env.OPENROUTER_API_KEY = saved.openrouter;
+    }
+  });
+
+  test("/provider openrouter overrides the default direct-Anthropic routing even with a credential configured", async () => {
+    const cwd = await makeCwd();
+    const saved = { apiKey: process.env.ANTHROPIC_API_KEY };
+    process.env.ANTHROPIC_API_KEY = "sk-ant-test";
+    const urls: string[] = [];
+    globalThis.fetch = (async (input: RequestInfo | URL) => {
+      urls.push(String(input));
+      return answerResponse();
+    }) as unknown as typeof fetch;
+    try {
+      const controller = new GraphAgentController({
+        cwd, model: "anthropic/claude-sonnet-5", sessionId: "anthropic-forced-openrouter-test", apiKey: "test-key", toolSchema,
+        getPluginCatalog: async () => "", execute: async () => { throw new Error("no graph expected"); },
+      });
+      await controller.ready();
+      controller.setProvider("openrouter");
+      await controller.submit("hello");
+      expect(urls[0]).toBe("https://openrouter.ai/api/v1/chat/completions");
+      expect(controller.getSnapshot().error).toBeUndefined();
+    } finally {
+      if (saved.apiKey === undefined) delete process.env.ANTHROPIC_API_KEY; else process.env.ANTHROPIC_API_KEY = saved.apiKey;
+    }
+  });
+
+  test("/provider anthropic forces direct Anthropic routing explicitly, not just by default fallthrough", async () => {
+    const cwd = await makeCwd();
+    const saved = { apiKey: process.env.ANTHROPIC_API_KEY };
+    process.env.ANTHROPIC_API_KEY = "sk-ant-test";
+    const urls: string[] = [];
+    globalThis.fetch = (async (input: RequestInfo | URL) => {
+      urls.push(String(input));
+      return new Response([
+        { type: "message_start", message: { usage: { input_tokens: 10 } } },
+        { type: "content_block_start", index: 0, content_block: { type: "text" } },
+        { type: "content_block_delta", index: 0, delta: { type: "text_delta", text: "hi" } },
+        { type: "message_delta", delta: { stop_reason: "end_turn" }, usage: { output_tokens: 1 } },
+        { type: "message_stop" },
+      ].map((event) => `data: ${JSON.stringify(event)}\n\n`).join(""));
+    }) as unknown as typeof fetch;
+    try {
+      const controller = new GraphAgentController({
+        cwd, model: "anthropic/claude-sonnet-5", sessionId: "anthropic-forced-anthropic-test", apiKey: "test-key", toolSchema,
+        getPluginCatalog: async () => "", execute: async () => { throw new Error("no graph expected"); },
+      });
+      await controller.ready();
+      controller.setProvider("anthropic");
+      await controller.submit("hello");
+      expect(urls[0]).toBe("https://api.anthropic.com/v1/messages");
+      expect(controller.getSnapshot().error).toBeUndefined();
+    } finally {
+      if (saved.apiKey === undefined) delete process.env.ANTHROPIC_API_KEY; else process.env.ANTHROPIC_API_KEY = saved.apiKey;
     }
   });
 
