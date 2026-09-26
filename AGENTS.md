@@ -17,6 +17,23 @@ This file is the project's committed home for project-intrinsic agent knowledge:
   serves `anthropic/claude-*` calls (direct Anthropic vs OpenRouter) is controlled by
   `#clientFor`, overridable via `/provider` / `--provider` (session-persisted like
   `/model`/`/effort`); every other model always goes through OpenRouter.
+- The `/model` catalog tracks `/provider` (`GraphAgentController#fetchLiveModels`,
+  `src/planner/agent.ts`): `anthropic` sources the list from Anthropic's own
+  `/v1/models` (`fetchAnthropicModelCatalog`/`mergeAnthropicModelOptions`,
+  `src/planner/models.ts`, cached at `.jev/anthropic-models.json`), `auto`/`openrouter`
+  keep OpenRouter's curated/refreshed list (`.jev/openrouter-models.json`) since `auto`
+  can still route anything. Switching `/provider` across that boundary triggers the same
+  opt-in `refreshModels()` fetch `/effort`'s picker already uses — there is no second
+  refresh path. `ANTHROPIC_OAUTH_TOKEN` works against `/v1/models` the same way it does
+  against `/v1/messages` (`anthropicCredentialHeaders` in `src/planner/anthropic.ts` is
+  shared by both); `anthropic-version` is required, `anthropic-beta` is not but is sent
+  anyway. Confirmed live against the real API: some curated ids in `CURATED_MODEL_IDS`
+  use a dotted version suffix (e.g. `anthropic/claude-opus-5.5`) that Anthropic's actual
+  model ids do not (`claude-opus-5-5`, dashed) — `mergeAnthropicModelOptions` only lists
+  a curated id when it matches a live Anthropic id, so a dotted mismatch is silently left
+  off the Anthropic-sourced list rather than shown as servable. That mismatch is untouched
+  in `AnthropicClient`'s own request path (out of scope for the catalog work); worth a
+  look if a curated Claude model ever 404s under `/provider anthropic`.
 
 ## Maintaining this file
 

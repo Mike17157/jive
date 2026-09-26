@@ -1112,6 +1112,52 @@ describe("App", () => {
     }
   });
 
+  test("the model picker narrows by typing, matching name or id substrings", async () => {
+    // The status bar also names the current model, so scope assertions to bordered
+    // picker rows rather than the whole frame.
+    const pickerLines = (text: string) => text.split("\n").filter((line) => line.includes("│"));
+    const c = makeController();
+    const { setup, frame, type, enter, escape, settle } = await mount(c);
+    try {
+      await type("/model");
+      await enter();
+      let f = await frame();
+      expect(pickerLines(f).some((line) => line.includes("Claude Sonnet 5"))).toBe(true);
+      expect(pickerLines(f).some((line) => line.includes("GPT-6 Astra"))).toBe(true);
+
+      await type("astra");
+      f = await frame();
+      expect(f).toContain("filter: astra");
+      expect(pickerLines(f).some((line) => line.includes("GPT-6 Astra"))).toBe(true);
+      expect(pickerLines(f).some((line) => line.includes("Claude Sonnet 5"))).toBe(false);
+
+      await enter();
+      expect(c.calls).toContain("model:openai/gpt-6-astra");
+
+      await type("/model");
+      await enter();
+      await type("openai/gpt-6");
+      f = await frame();
+      expect(pickerLines(f).some((line) => line.includes("GPT-6 Astra"))).toBe(true);
+      expect(pickerLines(f).some((line) => line.includes("Claude Sonnet 5"))).toBe(false);
+
+      await type("zzz-no-match");
+      f = await frame();
+      expect(f).toContain("No matching models");
+
+      for (let i = 0; i < "openai/gpt-6zzz-no-match".length; i++) setup.mockInput.pressBackspace();
+      await settle();
+      f = await frame();
+      expect(pickerLines(f).some((line) => line.includes("Claude Sonnet 5"))).toBe(true);
+      expect(pickerLines(f).some((line) => line.includes("GPT-6 Astra"))).toBe(true);
+
+      await escape();
+      expect(await frame()).not.toContain("─ model ─");
+    } finally {
+      setup.renderer.destroy();
+    }
+  });
+
   test("initial task prompt is an editable draft and is submitted only on Enter", async () => {
     const c = makeController();
     const draft = "Inspect this repository.\nPreserve existing changes.";

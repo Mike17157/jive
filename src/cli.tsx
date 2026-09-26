@@ -9,8 +9,15 @@ import { runtimeCatalog } from "./core/catalog";
 import { ExtractorRegistry } from "./plugins/registry";
 import { JevClient } from "./jev/client";
 import { createDemoController, demoGraph, FixtureJev } from "./demo";
-import { CURATED_MODELS, fetchOpenRouterModelCatalog, saveModelCatalog } from "./planner/models";
+import {
+  CURATED_MODELS,
+  fetchAnthropicModelCatalog,
+  fetchOpenRouterModelCatalog,
+  saveAnthropicModelCatalog,
+  saveModelCatalog,
+} from "./planner/models";
 import { listSessions, resolveSessionReference } from "./session/index";
+import { resolveAnthropicCredential } from "./planner/anthropic";
 import { runClaudeSetupToken } from "./planner/anthropic-auth";
 import { promptOpenRouterApiKey } from "./planner/openrouter-auth";
 import { resolveEnvFileForWrite, upsertEnvVariable } from "./core/env-file";
@@ -39,6 +46,7 @@ async function main(){
   jive --resume ID --search QUERY
   jive --models                     List curated planner models
   jive --refresh-models             Refresh OpenRouter model capabilities
+  jive --refresh-models --provider anthropic  Refresh Anthropic's own model list instead
   jive --schema                     Print execute_graph JSON Schema
   jive --version                    Print the installed version
   jive update                       Pull the latest sources (git installs)
@@ -58,7 +66,10 @@ ANTHROPIC_API_KEY to call anthropic/claude-* models directly ("jive auth
 claude" sets the OAuth token for you) — from .env in the working directory
 (searched upward) or the jive checkout. --provider (or /provider) picks which
 backend serves anthropic/claude-* calls when both are configured: auto
-(default), anthropic, or openrouter. Install: see README.md.
+(default), anthropic, or openrouter. The model list tracks that choice: auto
+and openrouter list OpenRouter's full curated/refreshed catalog (auto can
+still route any model); anthropic narrows /model and --refresh-models to only
+the models Anthropic's own API serves directly. Install: see README.md.
 `);return;}
   if(positionals[0]==="auth"){
     const provider=positionals[1];
@@ -80,7 +91,17 @@ backend serves anthropic/claude-* calls when both are configured: auto
   }
   if(values.prefill!==undefined && (values.headless || values.run || values.prompt!==undefined || positionals.length))throw new Error("--prefill is interactive-only and cannot be combined with --prompt, positional prompts, --headless, or --run");
   if(values.schema){console.log(JSON.stringify(graphSchema,null,2));return;}
-  if(values["refresh-models"]){const catalog=await fetchOpenRouterModelCatalog({signal:AbortSignal.timeout(15000)});await saveModelCatalog(cwd,catalog);console.log(`Saved ${catalog.models.length} tool-capable models.`);return;}
+  if(values["refresh-models"]){
+    if(values.provider==="anthropic"){
+      const credential=resolveAnthropicCredential();
+      if(!credential)throw new Error("No Anthropic credentials configured. Set ANTHROPIC_OAUTH_TOKEN or ANTHROPIC_API_KEY (or run \"jive auth claude\").");
+      const catalog=await fetchAnthropicModelCatalog({credential,signal:AbortSignal.timeout(15000)});
+      await saveAnthropicModelCatalog(cwd,catalog);
+      console.log(`Saved ${catalog.models.length} Anthropic models.`);
+      return;
+    }
+    const catalog=await fetchOpenRouterModelCatalog({signal:AbortSignal.timeout(15000)});await saveModelCatalog(cwd,catalog);console.log(`Saved ${catalog.models.length} tool-capable models.`);return;
+  }
   if(values.models){for(const model of CURATED_MODELS)console.log(`${model.id}\t${model.name}`);return;}
   if(values.sessions){for(const session of await listSessions(cwd))console.log(`${session.id}\t${session.name}\t${session.updatedAt}`);return;}
   if(values.search!==undefined){

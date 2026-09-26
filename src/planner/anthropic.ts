@@ -52,19 +52,31 @@ const CLAUDE_SUBSCRIPTION_IDENTITY = "You are a Claude agent, built on Anthropic
 /** Anthropic requires an explicit ceiling; OpenRouter's client never sets one. */
 const RESPONSE_HEADROOM_TOKENS = 16_000;
 
+/** Anthropic's own version header; every direct call (messages, models) sends this exact value. */
+export const ANTHROPIC_API_VERSION = "2023-06-01";
+
+/**
+ * The Authorization/x-api-key + anthropic-beta shape shared by every Anthropic endpoint
+ * this codebase calls directly, so the models-list catalog fetch (models.ts) can send the
+ * same credential shape as `AnthropicClient` without duplicating it. Verified empirically
+ * against the live models-list endpoint: the OAuth bearer form works there exactly as it
+ * does for messages, and `anthropic-version` is required while `anthropic-beta` is not
+ * (sent anyway to keep one shape).
+ */
+export function anthropicCredentialHeaders(credential: AnthropicCredential): Record<string, string> {
+  if (credential.kind === "oauth") {
+    return { Authorization: `Bearer ${credential.value}`, "anthropic-beta": "oauth-2025-04-20" };
+  }
+  return { "x-api-key": credential.value };
+}
+
 function authHeaders(credential: AnthropicCredential): Record<string, string> {
-  const headers: Record<string, string> = {
+  return {
     "Content-Type": "application/json",
     Accept: "text/event-stream",
-    "anthropic-version": "2023-06-01",
+    "anthropic-version": ANTHROPIC_API_VERSION,
+    ...anthropicCredentialHeaders(credential),
   };
-  if (credential.kind === "oauth") {
-    headers.Authorization = `Bearer ${credential.value}`;
-    headers["anthropic-beta"] = "oauth-2025-04-20";
-  } else {
-    headers["x-api-key"] = credential.value;
-  }
-  return headers;
 }
 
 /** The reasoning object for one request, or undefined to leave thinking off. */

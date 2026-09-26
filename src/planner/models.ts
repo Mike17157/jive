@@ -2,6 +2,13 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 
 import type { ModelOption } from "../core/types.ts";
+import {
+  ANTHROPIC_API_VERSION,
+  anthropicCredentialHeaders,
+  anthropicModelId,
+  isDirectAnthropicModel,
+  type AnthropicCredential,
+} from "./anthropic.ts";
 
 export const CURATED_MODEL_IDS = [
   "anthropic/claude-fable-5.1",
@@ -144,6 +151,124 @@ export function mergeModelOptions(
       ...(typeof reasoning?.mandatory === "boolean"
         ? { reasoningMandatory: reasoning.mandatory }
         : {}),
+    };
+  });
+}
+
+/**
+ * Anthropic's own `/v1/models` shape (verified empirically against the live API): `data[]`
+ * entries carry `capabilities.thinking.supported` (extended thinking available at all) and,
+ * separately, `capabilities.effort` (Anthropic's own graduated-effort feature, which jive's
+ * `AnthropicClient` does not use). jive always sends the classic `thinking: {type:"enabled",
+ * budget_tokens}` shape regardless of the `effort` capability — confirmed live against a
+ * model that advertises `effort.supported: false` (claude-haiku-4-5) and one that advertises
+ * only "adaptive" thinking, not "enabled" (claude-opus-5-5): both accepted the classic shape
+ * and returned a normal completion. So `thinking.supported` alone gates whether jive's fixed
+ * effort vocabulary (below) applies; the graduated `effort` field is not consulted.
+ */
+export interface AnthropicCatalogModel {
+  id: string;
+  display_name?: string;
+  max_input_tokens?: number;
+  capabilities?: {
+    thinking?: { supported?: boolean };
+  };
+}
+
+export interface AnthropicModelCatalog {
+  fetchedAt: string;
+  models: AnthropicCatalogModel[];
+}
+
+export interface FetchAnthropicModelCatalogOptions {
+  fetch?: typeof globalThis.fetch;
+  signal?: AbortSignal;
+  credential: AnthropicCredential;
+  endpoint?: string;
+}
+
+export function anthropicModelCatalogCachePath(cwd: string): string {
+  return join(resolve(cwd), ".jev", "anthropic-models.json");
+}
+
+export async function loadCachedAnthropicModelCatalog(cwd: string): Promise<AnthropicModelCatalog | undefined> {
+  try {
+    const parsed = JSON.parse(await readFile(anthropicModelCatalogCachePath(cwd), "utf8")) as AnthropicModelCatalog;
+    if (!Array.isArray(parsed.models) || typeof parsed.fetchedAt !== "string") return undefined;
+    return parsed;
+  } catch (error) {
+    if (error instanceof Error && "code" in error && error.code === "ENOENT") return undefined;
+    return undefined;
+  }
+}
+
+export async function saveAnthropicModelCatalog(cwd: string, catalog: AnthropicModelCatalog): Promise<void> {
+  const path = anthropicModelCatalogCachePath(cwd);
+  await mkdir(dirname(path), { recursive: true });
+  await writeFile(path, `${JSON.stringify(catalog, null, 2)}\n`, "utf8");
+}
+
+/**
+ * Anthropic's `/v1/models` is cursor-paginated (`has_more`/`last_id` + `after_id`), unlike
+ * OpenRouter's single-page list; verified live that a page without `after_id` already
+ * returns every model with `has_more: false`, but this still follows the cursor in case the
+ * live catalog ever outgrows one page.
+ */
+export async function fetchAnthropicModelCatalog(
+  options: FetchAnthropicModelCatalogOptions,
+): Promise<AnthropicModelCatalog> {
+  const transport = options.fetch ?? globalThis.fetch;
+  const endpoint = options.endpoint ?? "https://api.anthropic.com/v1/models";
+  const headers = { "anthropic-version": ANTHROPIC_API_VERSION, ...anthropicCredentialHeaders(options.credential) };
+  const models: AnthropicCatalogModel[] = [];
+  let afterId: string | undefined;
+  for (;;) {
+    const url = new URL(endpoint);
+    if (afterId) url.searchParams.set("after_id", afterId);
+    const response = await transport(url.toString(), { method: "GET", headers, signal: options.signal });
+    if (!response.ok) {
+      throw new Error(`Anthropic model catalog request failed (${response.status}).`);
+    }
+    const body = await response.json() as { data?: AnthropicCatalogModel[]; has_more?: boolean; last_id?: string };
+    if (!Array.isArray(body.data)) throw new Error("Anthropic returned an invalid model catalog.");
+    models.push(...body.data);
+    if (!body.has_more || !body.last_id) break;
+    afterId = body.last_id;
+  }
+  return { fetchedAt: new Date().toISOString(), models };
+}
+
+/**
+ * The subset of `customIds`/curated ids Anthropic's own API can serve directly right now:
+ * an `anthropic/claude-*` id whose `anthropicModelId()` transform matches a live model id.
+ * A curated id that does not match (jive's dotted version suffixes vs. Anthropic's dashed
+ * ones, confirmed live to 404 for at least one curated id) is left out rather than shown as
+ * servable — this is what keeps the picker honest about what `/provider anthropic` can
+ * actually call, without changing how `AnthropicClient` builds requests.
+ */
+export function mergeAnthropicModelOptions(
+  catalog?: AnthropicModelCatalog,
+  customIds: readonly string[] = [],
+): ModelOption[] {
+  const liveByApiId = new Map(catalog?.models.map((model) => [model.id, model]) ?? []);
+  const candidateIds = [
+    ...CURATED_MODEL_IDS,
+    ...customIds.filter((id) => !CURATED_MODEL_IDS.includes(id as CuratedModelId)),
+  ];
+  const ids = candidateIds.filter(
+    (id) => isDirectAnthropicModel(id) && liveByApiId.has(anthropicModelId(id)),
+  );
+  return ids.map((id) => {
+    const live = liveByApiId.get(anthropicModelId(id))!;
+    const curated = CURATED_MODELS.find((option) => option.id === id);
+    const reasoningEfforts = live.capabilities?.thinking?.supported
+      ? ["none", "low", "medium", "high", "xhigh", "max"]
+      : [];
+    return {
+      id,
+      name: live.display_name || curated?.name || id,
+      ...(typeof live.max_input_tokens === "number" ? { contextLength: live.max_input_tokens } : {}),
+      reasoningEfforts,
     };
   });
 }

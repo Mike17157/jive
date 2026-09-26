@@ -44,9 +44,13 @@ import {
   type PlannerMessage,
 } from "../session/index.ts";
 import {
+  fetchAnthropicModelCatalog,
   fetchOpenRouterModelCatalog,
+  loadCachedAnthropicModelCatalog,
   loadCachedModelCatalog,
+  mergeAnthropicModelOptions,
   mergeModelOptions,
+  saveAnthropicModelCatalog,
   saveModelCatalog,
 } from "./models.ts";
 import {
@@ -62,6 +66,7 @@ import {
   AnthropicError,
   isDirectAnthropicModel,
   resolveAnthropicCredential,
+  type AnthropicCredential,
 } from "./anthropic.ts";
 
 /** Either transport can serve a planner request; agent.ts picks one per model. */
@@ -128,6 +133,15 @@ const REASONING_EFFORT_SET = new Set<string>(REASONING_EFFORTS);
 export const PROVIDER_CHOICES = ["auto", "anthropic", "openrouter"] as const;
 export type ProviderChoice = typeof PROVIDER_CHOICES[number];
 const PROVIDER_CHOICE_SET = new Set<string>(PROVIDER_CHOICES);
+/**
+ * Which live catalog backs the model list for a given `/provider` value: "anthropic" only
+ * when forced there, since that's the only setting that can't serve every model OpenRouter
+ * lists — "auto" keeps the full OpenRouter-sourced list because it can still route any model
+ * (direct Anthropic for anthropic/claude-* when credentialed, OpenRouter for the rest).
+ */
+function catalogSourceFor(provider: string | undefined): "anthropic" | "openrouter" {
+  return provider === "anthropic" ? "anthropic" : "openrouter";
+}
 /** What "auto" sends. Provider defaults tend to be the heaviest thinking level; medium is the intended baseline. */
 export const DEFAULT_REASONING_EFFORT = "medium";
 
@@ -252,6 +266,7 @@ export class GraphAgentController implements AgentController {
   #abort?: AbortController;
   #client?: OpenRouterClient;
   #anthropicClient?: AnthropicClient;
+  #anthropicCredential?: AnthropicCredential;
   #apiKey?: string;
   #ready: Promise<void>;
   #sideEffects: Promise<unknown> = Promise.resolve();
@@ -289,9 +304,9 @@ export class GraphAgentController implements AgentController {
       phase: "idle",
     };
     this.#client = new OpenRouterClient({ apiKey: this.#apiKey, ...(this.options.retry ? { retry: this.options.retry } : {}) });
-    const anthropicCredential = resolveAnthropicCredential();
-    if (anthropicCredential) {
-      this.#anthropicClient = new AnthropicClient({ credential: anthropicCredential, ...(this.options.retry ? { retry: this.options.retry } : {}) });
+    this.#anthropicCredential = resolveAnthropicCredential();
+    if (this.#anthropicCredential) {
+      this.#anthropicClient = new AnthropicClient({ credential: this.#anthropicCredential, ...(this.options.retry ? { retry: this.options.retry } : {}) });
     }
     this.#ready = this.#initialize().catch((error) => {
       this.#update({ error: `Could not restore session: ${errorMessage(error)}` });
@@ -567,13 +582,8 @@ export class GraphAgentController implements AgentController {
     let option = models.find((candidate) => candidate.id === targetModel);
     if (option?.reasoningEfforts === undefined) {
       try {
-        const catalog = await fetchOpenRouterModelCatalog({
-          apiKey: this.#apiKey,
-          signal: AbortSignal.timeout(EFFORT_METADATA_TIMEOUT_MS),
-        });
-        await saveModelCatalog(this.options.cwd, catalog);
+        models = await this.#fetchLiveModels([targetModel], AbortSignal.timeout(EFFORT_METADATA_TIMEOUT_MS));
         this.#assertEffortTarget(targetStore, targetModel, targetRevision);
-        models = mergeModelOptions(catalog, [targetModel]);
       } catch (error) {
         this.#assertEffortTarget(targetStore, targetModel, targetRevision);
         const message = `Could not verify reasoning efforts for ${targetModel}: ${errorMessage(error)}`;
@@ -620,9 +630,20 @@ export class GraphAgentController implements AgentController {
       throw new Error(message);
     }
     this.#controlRevision += 1;
+    const previousSource = catalogSourceFor(this.#snapshot.provider);
     const provider = normalized === "auto" ? undefined : (normalized as ProviderChoice);
     this.#update({ provider, error: undefined });
     this.#enqueue(() => this.store.append("provider.selected", { provider: provider ?? null }));
+    // The model list is provider-scoped (see #fetchLiveModels); crossing the anthropic ↔
+    // openrouter boundary means the cached list is for the wrong source, so refresh through
+    // the same opt-in path /effort's picker already uses rather than adding a second trigger.
+    if (catalogSourceFor(provider) !== previousSource) {
+      const targetRevision = this.#controlRevision;
+      void this.refreshModels().catch((error) => {
+        if (this.#controlRevision !== targetRevision) return;
+        this.#update({ error: `Could not refresh models for /provider ${normalized}: ${errorMessage(error)}` });
+      });
+    }
   }
 
   setModel(id: string): void {
@@ -680,13 +701,34 @@ export class GraphAgentController implements AgentController {
     });
   }
 
+  /**
+   * The live catalog for whichever provider is currently active: OpenRouter's full
+   * curated/refreshed list for "auto" and "openrouter" (auto can still route any model), or
+   * Anthropic's own model list — narrowed to what it actually serves — when forced to
+   * "anthropic". Caches whichever source it fetched, under its own cache file, for the next
+   * cold start.
+   */
+  async #fetchLiveModels(customIds: readonly string[], signal?: AbortSignal): Promise<ModelOption[]> {
+    if (this.#snapshot.provider === "anthropic") {
+      if (!this.#anthropicCredential) {
+        throw new Error(
+          "No Anthropic credentials configured. Set ANTHROPIC_OAUTH_TOKEN or ANTHROPIC_API_KEY, or run /provider auto or /provider openrouter to route through OpenRouter instead.",
+        );
+      }
+      const catalog = await fetchAnthropicModelCatalog({ credential: this.#anthropicCredential, signal });
+      await saveAnthropicModelCatalog(this.options.cwd, catalog);
+      return mergeAnthropicModelOptions(catalog, customIds);
+    }
+    const catalog = await fetchOpenRouterModelCatalog({ apiKey: this.#apiKey, signal });
+    await saveModelCatalog(this.options.cwd, catalog);
+    return mergeModelOptions(catalog, customIds);
+  }
+
   /** Explicit opt-in refresh; construction never waits on the network. */
   async refreshModels(signal?: AbortSignal): Promise<ModelOption[]> {
     await this.#ready;
-    const catalog = await fetchOpenRouterModelCatalog({ apiKey: this.#apiKey, signal });
-    await saveModelCatalog(this.options.cwd, catalog);
     const custom = this.#snapshot.model ? [this.#snapshot.model] : [];
-    const models = mergeModelOptions(catalog, custom);
+    const models = await this.#fetchLiveModels(custom, signal);
     const selected = models.find((option) => option.id === this.#snapshot.model);
     const effort = this.#snapshot.effort;
     const resetEffort = effort !== undefined && !selected?.reasoningEfforts?.includes(effort);
@@ -725,14 +767,21 @@ export class GraphAgentController implements AgentController {
     const projectInstructions = await this.#loadSessionProjectInstructions(store);
     const projectSkills = await this.#loadSessionProjectSkills(store, fresh);
     const recovered = await store.recoverInterruptedToolCalls();
-    const cachedCatalog = await loadCachedModelCatalog(this.options.cwd);
+    const storedProvider = store.latestProvider();
+    const provider = storedProvider && storedProvider !== "auto" && PROVIDER_CHOICE_SET.has(storedProvider)
+      ? (storedProvider as ProviderChoice)
+      : undefined;
     const storedModel = store.latestModel();
     const model = modelOverride ?? storedModel ?? this.#snapshot.model ?? "";
     const storedEffort = store.latestEffort();
     const restoredEffort = storedEffort && REASONING_EFFORT_SET.has(storedEffort)
       ? storedEffort
       : undefined;
-    const models = mergeModelOptions(cachedCatalog, model ? [model] : []);
+    // Catalog source tracks /provider (see #fetchLiveModels): "anthropic" reads its own
+    // cache, everything else keeps reading OpenRouter's.
+    const models = provider === "anthropic"
+      ? mergeAnthropicModelOptions(await loadCachedAnthropicModelCatalog(this.options.cwd), model ? [model] : [])
+      : mergeModelOptions(await loadCachedModelCatalog(this.options.cwd), model ? [model] : []);
     const selected = models.find((option) => option.id === model);
     const changedModel = modelOverride !== undefined && model !== storedModel;
     const resetRestoredEffort = restoredEffort !== undefined && (
@@ -750,10 +799,6 @@ export class GraphAgentController implements AgentController {
       await store.append("effort.selected", { effort: null });
       await store.append("notice", { chatId, text });
     }
-    const storedProvider = store.latestProvider();
-    const provider = storedProvider && storedProvider !== "auto" && PROVIDER_CHOICE_SET.has(storedProvider)
-      ? (storedProvider as ProviderChoice)
-      : undefined;
     const messages: ChatEntry[] = [];
     const executionEvents: ExecutionEvent[] = [];
     let cachedTokens = 0;

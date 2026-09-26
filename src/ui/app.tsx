@@ -378,7 +378,7 @@ export function App(props: AppProps) {
       setNotice(open ? "reasoning shown · Ctrl+O to collapse" : "reasoning collapsed");
       return;
     }
-    if(mode === "effort" || mode === "provider" || mode === "session")return; // These selectors own their keys.
+    if(mode === "effort" || mode === "provider" || mode === "session" || mode === "model")return; // These selectors own their keys.
     // Read native input here: a fast Enter can arrive before React has
     // published the final text-change notification used to render the popup.
     const currentText = textareaRef.current?.plainText ?? composerTextRef.current;
@@ -422,13 +422,6 @@ export function App(props: AppProps) {
       const box = scrollRef.current;
       if (box) box.scrollBy(key.name === "pageup" ? -Math.max(1, height - 8) : Math.max(1, height - 8));
       return;
-    }
-    if (mode === "model") {
-      if (key.name === "escape") {
-        consume();
-        setMode("compose");
-      }
-      return; // the select owns the remaining keys
     }
     if (mode === "inspect") {
       if (key.name === "escape" || key.name === "left" || key.name === "q") {
@@ -584,6 +577,7 @@ export function App(props: AppProps) {
           current={snapshot.model}
           width={width}
           height={height}
+          onCancel={() => setMode("compose")}
           onChoose={(id) => {
             controller.setModel(id);
             setNotice(`model → ${id}`);

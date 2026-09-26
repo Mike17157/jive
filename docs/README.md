@@ -166,7 +166,7 @@ jive --headless --prompt TEXT     Run one prompt and print the result
 jive --run FILE [--json]          Execute a saved graph; --json streams JSONL events
 jive --resume ID [--search QUERY] Restore a session, or search its log
 jive --sessions                   List saved sessions
-jive --models | --refresh-models  List or refresh planner models
+jive --models | --refresh-models  List or refresh planner models (--refresh-models --provider anthropic refreshes Anthropic's own list instead)
 jive --schema                     Print the execute_graph JSON Schema
 jive --cwd DIR --model ID         Override the working directory or model
 jive --provider CHOICE            Force auto, anthropic, or openrouter routing
